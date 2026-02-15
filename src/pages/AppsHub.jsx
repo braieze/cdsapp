@@ -17,7 +17,7 @@ export default function AppsHub() {
     { id: 'servicios', name: 'Mis Servicios', icon: Briefcase, color: 'text-purple-600', bg: 'bg-purple-50', path: '/mis-servicios' },
     
     // 📜 HISTORIAL (Nuevo acceso directo)
-    { id: 'historial', name: 'Historial', icon: History, color: 'text-indigo-600', bg: 'bg-indigo-50', path: '/historial' },
+    //{ id: 'historial', name: 'Historial', icon: History, color: 'text-indigo-600', bg: 'bg-indigo-50', path: '/historial' },
     
     // 🔄 BOTÓN DE ACTUALIZAR
     { id: 'refresh', name: 'Actualizar App', icon: RefreshCw, color: 'text-slate-600', bg: 'bg-slate-100', isAction: true },
