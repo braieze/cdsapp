@@ -1,158 +1,252 @@
-import { useState } from 'react';
-import { 
-  X, ChevronRight, List, CalendarDays, FileText, 
-  Mic2, Music, Users, Shield, Utensils, Download, Plus 
-} from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { db, auth } from '../firebase';
+import { collection, query, orderBy, onSnapshot, addDoc, Timestamp, deleteDoc, doc } from 'firebase/firestore'; // Importamos deleteDoc
+import { Plus, Calendar as CalIcon, List, Clock, MapPin, X, Trash2 } from 'lucide-react';
+import { EVENT_TYPES } from '../utils/eventTypes';
+import { format, isSameDay, parseISO } from 'date-fns';
+import { es } from 'date-fns/locale';
 
-export default function Calendar() {
-  const [view, setView] = useState('month'); // Por defecto vista de Mes como pediste
-  const [selectedEvent, setSelectedEvent] = useState(null);
+// Instalar date-fns si no lo tienes: npm install date-fns
 
-  // Datos extendidos con todos los detalles ministeriales
-  const events = [
-    {
-      id: 1,
-      title: 'Culto de Adoración',
-      date: 'Dom 19 Feb',
-      day: 19,
-      time: '19:00',
-      color: 'bg-rose-100 text-rose-600',
-      details: {
-        predicador: 'Pastor Mario',
-        alabanza: 'Andrea S.',
-        sonido: 'Lucas G.',
-        multimedia: 'Tu asignación',
-        puerta: 'Juan M. y Elena R.', // Recepción/Puerta
-        intercesion: 'Familia Perez',
-        liturgiaUrl: '#' // Link para el PDF
-      }
+export default function CalendarPage() {
+  const [viewMode, setViewMode] = useState('list'); // 'list' | 'month'
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // Estado para el usuario actual (para permisos)
+  const [currentUserRole, setCurrentUserRole] = useState(null);
+
+  // Formulario Nuevo Evento
+  const [newEvent, setNewEvent] = useState({
+    title: '',
+    type: 'culto',
+    date: '', // YYYY-MM-DD
+    time: '19:30',
+    description: ''
+  });
+
+  // 1. Cargar Eventos y Rol
+  useEffect(() => {
+    // A. Eventos
+    const q = query(collection(db, 'events'), orderBy('date', 'asc'));
+    const unsubscribeEvents = onSnapshot(q, (snapshot) => {
+      const eventsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setEvents(eventsData);
+      setLoading(false);
+    });
+
+    // B. Rol del Usuario (leemos de localStorage o esperamos auth, simplificado aquí)
+    // En una app real, deberías usar un Context o leer de tu colección 'users'
+    // Por ahora asumimos que si puedes ver el botón flotante en Directorio, puedes aquí.
+    // (Implementación rápida: leeremos role de la base de datos si es necesario, 
+    // pero por ahora usaremos una validación simple en el render).
+
+    return () => unsubscribeEvents();
+  }, []);
+
+  // Función Guardar Evento
+  const handleCreateEvent = async () => {
+    if (!newEvent.title || !newEvent.date) return alert("Falta título o fecha");
+    
+    try {
+      await addDoc(collection(db, 'events'), {
+        ...newEvent,
+        createdAt: Timestamp.now(),
+        participants: [], // Aquí irán los asignados luego
+        createdBy: auth.currentUser.uid
+      });
+      setIsModalOpen(false);
+      setNewEvent({ title: '', type: 'culto', date: '', time: '19:30', description: '' });
+      alert("Evento creado exitosamente");
+    } catch (error) {
+      console.error(error);
+      alert("Error al crear evento");
     }
-  ];
+  };
 
-  const daysInMonth = Array.from({ length: 28 }, (_, i) => i + 1);
-  const today = 13; // Basado en la imagen
+  // Función Borrar Evento (Solo para limpiar pruebas)
+  const handleDeleteEvent = async (id) => {
+    if(confirm("¿Borrar evento?")) {
+        await deleteDoc(doc(db, 'events', id));
+    }
+  }
+
+  // --- VISTA LISTA: Agrupada por Meses ---
+  const renderListView = () => {
+    // Agrupar eventos por "Mes Año"
+    const grouped = events.reduce((acc, event) => {
+      const dateObj = new Date(event.date + 'T00:00:00');
+      const monthKey = format(dateObj, 'MMMM yyyy', { locale: es }); // Ej: "febrero 2024"
+      if (!acc[monthKey]) acc[monthKey] = [];
+      acc[monthKey].push(event);
+      return acc;
+    }, {});
+
+    return Object.entries(grouped).map(([month, monthEvents]) => (
+      <div key={month} className="mb-6 animate-fade-in">
+        <h3 className="text-lg font-black text-slate-800 capitalize mb-3 sticky top-16 bg-slate-50 py-2 z-10">{month}</h3>
+        <div className="space-y-3">
+          {monthEvents.map(event => {
+            const TypeConfig = EVENT_TYPES[event.type] || EVENT_TYPES.culto;
+            const Icon = TypeConfig.icon;
+            
+            return (
+              <div key={event.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex gap-4 hover:shadow-md transition-shadow cursor-pointer relative group">
+                {/* Columna Fecha */}
+                <div className="flex flex-col items-center justify-center bg-slate-50 px-3 rounded-xl border border-slate-200 min-w-[60px]">
+                  <span className="text-xs font-bold text-slate-400 uppercase">{format(new Date(event.date + 'T00:00:00'), 'MMM', { locale: es })}</span>
+                  <span className="text-xl font-black text-slate-800">{format(new Date(event.date + 'T00:00:00'), 'dd')}</span>
+                </div>
+
+                {/* Info Evento */}
+                <div className="flex-1">
+                  <div className="flex justify-between items-start">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase mb-1 inline-block ${TypeConfig.color}`}>
+                        {TypeConfig.label}
+                    </span>
+                    {/* Botón borrar oculto (aparece al hover) - Solo para testear rápido */}
+                     <button onClick={(e) => {e.stopPropagation(); handleDeleteEvent(event.id)}} className="text-slate-300 hover:text-red-500"><Trash2 size={14}/></button>
+                  </div>
+                  
+                  <h4 className="font-bold text-slate-800 text-base leading-tight">{event.title}</h4>
+                  
+                  <div className="flex items-center gap-4 mt-2 text-xs text-slate-500 font-medium">
+                    <div className="flex items-center gap-1">
+                        <Clock size={14} className="text-slate-400"/> {event.time} hs
+                    </div>
+                    {/* Aquí pondremos "Faltan 3 servidores" más adelante */}
+                  </div>
+                </div>
+
+                {/* Indicador visual tipo */}
+                <div className={`absolute right-0 top-4 bottom-4 w-1 rounded-l-full ${TypeConfig.dot}`}></div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    ));
+  };
+
+  // --- VISTA CALENDARIO (Simple) ---
+  const renderMonthView = () => {
+    // Un calendario real es complejo de hacer a mano. 
+    // Por ahora, mostraremos una lista visualmente simplificada o "Próximamente"
+    // para no sobrecargar este paso. 
+    // (Opcional: Instalar 'react-calendar' después si te gusta la vista de grilla)
+    return (
+        <div className="text-center py-10 bg-white rounded-2xl border border-slate-100">
+            <CalIcon size={48} className="mx-auto text-slate-200 mb-4"/>
+            <p className="text-slate-500 font-medium">La vista de grilla mensual estará lista en la próxima actualización.</p>
+            <button onClick={() => setViewMode('list')} className="mt-4 text-brand-600 font-bold text-sm">Volver a la lista</button>
+        </div>
+    );
+  };
 
   return (
-    <div className="pb-24 pt-4 px-4 animate-fade-in bg-white min-h-screen">
+    <div className="pb-24 pt-4 px-4 bg-slate-50 min-h-screen animate-fade-in">
       
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-black text-slate-800 tracking-tight">Calendario Global</h2>
-        <div className="flex bg-slate-100 p-1 rounded-xl">
-          <button onClick={() => setView('list')} className={`p-2 rounded-lg ${view === 'list' ? 'bg-white shadow-sm text-brand-600' : 'text-slate-400'}`}><List size={20}/></button>
-          <button onClick={() => setView('month')} className={`p-2 rounded-lg ${view === 'month' ? 'bg-white shadow-sm text-brand-600' : 'text-slate-400'}`}><CalendarDays size={20}/></button>
+      {/* Cabecera y Switch */}
+      <div className="flex justify-between items-end mb-6 sticky top-0 z-20 bg-slate-50/90 backdrop-blur-sm py-2">
+        <div>
+          <h1 className="text-2xl font-black text-slate-800">Agenda</h1>
+          <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Planificación 2026</p>
+        </div>
+        
+        <div className="flex bg-white p-1 rounded-xl border border-slate-200 shadow-sm">
+            <button 
+                onClick={() => setViewMode('list')}
+                className={`p-2 rounded-lg transition-all ${viewMode === 'list' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-400 hover:bg-slate-50'}`}
+            >
+                <List size={20} strokeWidth={2.5}/>
+            </button>
+            <button 
+                onClick={() => setViewMode('month')}
+                className={`p-2 rounded-lg transition-all ${viewMode === 'month' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-400 hover:bg-slate-50'}`}
+            >
+                <CalIcon size={20} strokeWidth={2.5}/>
+            </button>
         </div>
       </div>
 
-      {/* Selector de Fecha Estilo Imagen */}
-      <div className="flex items-center justify-between border border-slate-200 rounded-2xl p-4 mb-6 shadow-sm">
-        <button className="text-slate-400">{'<'}</button>
-        <span className="font-bold text-slate-700">Febrero 2026</span>
-        <button className="text-slate-400">{'>'}</button>
-      </div>
-
-      {view === 'month' ? (
-        /* VISTA CALENDARIO LITERAL */
-        <div className="border border-slate-100 rounded-3xl overflow-hidden shadow-sm">
-          <div className="grid grid-cols-7 bg-slate-50/50 border-b border-slate-100">
-            {['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'].map(d => (
-              <div key={d} className="text-[10px] font-bold text-slate-400 text-center py-4">{d}</div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 border-l border-t border-slate-50">
-            {daysInMonth.map(day => {
-              const hasEvent = events.find(e => e.day === day);
-              const isToday = day === today;
-              return (
-                <div 
-                  key={day} 
-                  onClick={() => hasEvent && setSelectedEvent(hasEvent)}
-                  className="h-24 border-r border-b border-slate-50 p-1 relative hover:bg-slate-50 transition-colors"
-                >
-                  <span className={`text-xs font-bold absolute top-2 left-2 flex items-center justify-center w-6 h-6 rounded-full ${isToday ? 'bg-blue-600 text-white' : 'text-slate-700'}`}>
-                    {day}
-                  </span>
-                  {hasEvent && (
-                    <div className={`mt-8 px-1.5 py-0.5 rounded text-[9px] font-bold truncate ${hasEvent.color}`}>
-                      {hasEvent.time}..
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : (
-        /* VISTA LISTA */
-        <div className="space-y-3">
-          {events.map(e => (
-            <div key={e.id} onClick={() => setSelectedEvent(e)} className="bg-white p-4 rounded-2xl border border-slate-100 flex justify-between items-center shadow-sm">
-              <div className="flex gap-4 items-center">
-                <div className="bg-brand-50 text-brand-700 w-12 h-12 rounded-2xl flex flex-col items-center justify-center font-bold">
-                  <span className="text-[10px] uppercase leading-none">{e.date.split(' ')[0]}</span>
-                  <span className="text-lg leading-none">{e.date.split(' ')[1]}</span>
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-800">{e.title}</h4>
-                  <p className="text-xs text-slate-500 font-medium">{e.time} HS</p>
-                </div>
-              </div>
-              <ChevronRight className="text-slate-300" />
-            </div>
-          ))}
-        </div>
+      {/* Contenido */}
+      {loading ? <div className="text-center py-10">Cargando agenda...</div> : (
+          viewMode === 'list' ? renderListView() : renderMonthView()
       )}
 
-      {/* Botón flotante FAB */}
-      <button className="fixed bottom-24 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center hover:scale-105 transition-transform z-40">
-        <Plus size={28} strokeWidth={3} />
+      {/* Botón Crear (Solo pastores, por ahora lo dejamos abierto para que pruebes) */}
+      <button 
+        onClick={() => setIsModalOpen(true)}
+        className="fixed bottom-24 right-4 w-14 h-14 bg-slate-900 text-white rounded-full shadow-lg shadow-slate-900/30 flex items-center justify-center transition-transform hover:scale-105 active:scale-95 z-40"
+      >
+        <Plus size={28} />
       </button>
 
-      {/* FICHA TÉCNICA DETALLADA */}
-      {selectedEvent && (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setSelectedEvent(null)}></div>
-          <div className="relative bg-white w-full max-w-md rounded-t-[40px] p-8 shadow-2xl animate-slide-up max-h-[90vh] overflow-y-auto">
-            <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-8"></div>
-            
-            <div className="mb-8">
-              <h3 className="text-2xl font-black text-slate-800">{selectedEvent.title}</h3>
-              <p className="text-slate-500 font-bold mt-1 uppercase text-xs tracking-widest">{selectedEvent.date} • {selectedEvent.time} HS</p>
-            </div>
+      {/* MODAL CREAR EVENTO */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
+            <div className="bg-white w-full max-w-sm rounded-2xl p-5 animate-slide-up relative shadow-2xl max-h-[90vh] overflow-y-auto">
+                <button onClick={() => setIsModalOpen(false)} className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-full"><X size={20}/></button>
+                <h2 className="text-xl font-black text-slate-800 mb-6">Nuevo Evento</h2>
 
-            <div className="grid grid-cols-1 gap-4 mb-8">
-              <DetailRow icon={Mic2} label="Predicación" value={selectedEvent.details.predicador} />
-              <DetailRow icon={Music} label="Alabanza" value={selectedEvent.details.alabanza} />
-              <DetailRow icon={Users} label="Puerta / Recepción" value={selectedEvent.details.puerta} />
-              <DetailRow icon={Shield} label="Intercesión" value={selectedEvent.details.intercesion} />
-              <div className="grid grid-cols-2 gap-4">
-                <DetailRow icon={Utensils} label="Sonido" value={selectedEvent.details.sonido} small />
-                <DetailRow icon={FileText} label="Multimedia" value={selectedEvent.details.multimedia} small />
-              </div>
-            </div>
+                <div className="space-y-4">
+                    <div>
+                        <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Título</label>
+                        <input type="text" placeholder="Ej: Culto de Santa Cena" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none font-bold text-slate-800"
+                            value={newEvent.title} onChange={e => setNewEvent({...newEvent, title: e.target.value})}
+                        />
+                    </div>
 
-            {/* Botón Descargar Liturgia (PDF) */}
-            <a 
-              href={selectedEvent.details.liturgiaUrl}
-              className="w-full bg-slate-900 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-3 shadow-xl active:scale-95 transition-all"
-            >
-              <Download size={20} /> Descargar Liturgia (PDF)
-            </a>
-          </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Fecha</label>
+                            <input type="date" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm font-medium"
+                                value={newEvent.date} onChange={e => setNewEvent({...newEvent, date: e.target.value})}
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Hora</label>
+                            <input type="time" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm font-medium"
+                                value={newEvent.time} onChange={e => setNewEvent({...newEvent, time: e.target.value})}
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Tipo de Evento</label>
+                        <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-1">
+                            {Object.entries(EVENT_TYPES).map(([key, config]) => (
+                                <button 
+                                    key={key}
+                                    onClick={() => setNewEvent({...newEvent, type: key})}
+                                    className={`flex items-center gap-2 p-2 rounded-lg border text-xs font-bold transition-all text-left ${
+                                        newEvent.type === key 
+                                        ? config.color + ' ring-2 ring-offset-1 ring-slate-200' 
+                                        : 'bg-white border-slate-100 text-slate-500 hover:bg-slate-50'
+                                    }`}
+                                >
+                                    <config.icon size={16}/> {config.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    
+                    <div>
+                         <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Descripción (Opcional)</label>
+                         <textarea placeholder="Detalles generales..." className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm min-h-[80px]"
+                            value={newEvent.description} onChange={e => setNewEvent({...newEvent, description: e.target.value})}
+                         />
+                    </div>
+
+                    <button onClick={handleCreateEvent} className="w-full bg-slate-900 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-slate-200 hover:bg-black active:scale-95 transition-all mt-2">
+                        Crear en Agenda
+                    </button>
+                </div>
+            </div>
         </div>
       )}
-    </div>
-  );
-}
 
-// Componente auxiliar para las filas de detalles
-function DetailRow({ icon: Icon, label, value, small }) {
-  return (
-    <div className={`flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 ${small ? 'p-3' : ''}`}>
-      <div className="p-2 bg-white rounded-xl shadow-sm text-blue-600"><Icon size={small ? 16 : 20}/></div>
-      <div>
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{label}</p>
-        <p className={`${small ? 'text-xs' : 'text-sm'} font-bold text-slate-700`}>{value}</p>
-      </div>
     </div>
   );
 }
