@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase';
 import { doc, getDoc, updateDoc, collection, getDocs, deleteDoc } from 'firebase/firestore'; 
-import { ArrowLeft, Calendar, Clock, MapPin, Save, Trash2, Plus, X, ChevronDown, Users, CheckCircle, Edit3, CheckSquare } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, MapPin, Save, Trash2, Plus, X, ChevronDown, Users, CheckCircle, Edit3, CheckSquare, Search } from 'lucide-react';
 import { EVENT_TYPES } from '../utils/eventTypes';
 import { format, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -14,14 +14,15 @@ export default function EventDetails() {
   const [users, setUsers] = useState([]); 
   const [loading, setLoading] = useState(true);
   
-  // Estado de permisos y edición
+  // Estado de permisos, edición y búsqueda
   const [userRole, setUserRole] = useState(null); 
   const [isEditing, setIsEditing] = useState(false); 
+  const [searchTerm, setSearchTerm] = useState(''); // BUSCADOR DE USUARIOS
   
   const [assignments, setAssignments] = useState({});
   const [expandedDay, setExpandedDay] = useState(null);
 
-  // ✅ CORRECCIÓN: Definimos el usuario AQUÍ ARRIBA, antes de que cualquier función lo use
+  // ✅ CORRECCIÓN CRÍTICA: Definimos el usuario AQUÍ ARRIBA
   const currentUser = auth.currentUser;
   const myUid = currentUser?.uid;
 
@@ -68,19 +69,33 @@ export default function EventDetails() {
     fetchData();
   }, [id, navigate, currentUser]);
 
-  // --- FILTRO INTELIGENTE DE USUARIOS ---
+  // --- FILTRO INTELIGENTE CON BÚSQUEDA ---
   const getFilteredUsers = (roleConfig) => {
-    if (!roleConfig.allowedAreas && !roleConfig.allowedRoles) return users;
-    return users.filter(user => {
-        if (roleConfig.allowedAreas?.length > 0) {
-            if (!user.area || !roleConfig.allowedAreas.includes(user.area)) return false;
-        }
-        if (roleConfig.allowedRoles?.length > 0) {
-             const uRole = user.role || 'miembro'; 
-             if (!roleConfig.allowedRoles.includes(uRole)) return false;
-        }
-        return true;
-    });
+    // 1. Filtrar por texto del buscador (si hay algo escrito)
+    let filtered = users;
+    if (searchTerm) {
+        filtered = users.filter(u => (u.displayName || u.name || '').toLowerCase().includes(searchTerm.toLowerCase()));
+    }
+
+    // 2. Aplicar restricciones SOLO si es un rol CRÍTICO (Pastor/Liderazgo o Alabanza técnica)
+    // Para roles operativos (multimedia, ujieres, limpieza), mostramos A TODOS (ignoramos allowedAreas)
+    // Para Alabanza, si queremos ser estrictos, usamos allowedAreas.
+    
+    if (roleConfig.allowedRoles && roleConfig.allowedRoles.includes('pastor')) {
+         // Si es rol pastoral/lider, filtramos estrictamente
+         return filtered.filter(user => {
+             const uRole = user.role || 'miembro';
+             return roleConfig.allowedRoles.includes(uRole);
+         });
+    }
+    
+    if (roleConfig.allowedAreas && roleConfig.allowedAreas.includes('alabanza')) {
+        // Si es alabanza, filtramos por área
+        return filtered.filter(user => user.area === 'alabanza');
+    }
+
+    // Para el resto (Operativo, Multimedia, Ujieres), devolvemos la lista completa (o filtrada por nombre)
+    return filtered;
   };
 
   // --- LÓGICA CULTOS (ROLES) ---
@@ -90,6 +105,7 @@ export default function EventDetails() {
     if (!currentList.includes(personName)) {
       setAssignments({ ...assignments, [roleKey]: [...currentList, personName] });
     }
+    setSearchTerm(''); // Limpiar busqueda al agregar
   };
 
   const handleRemovePersonRole = (roleKey, personName) => {
@@ -180,7 +196,7 @@ export default function EventDetails() {
 
   const TypeConfig = EVENT_TYPES[event.type] || EVENT_TYPES.culto;
   const isAyuno = event.type === 'ayuno';
-  const hasChecklist = TypeConfig.hasChecklist;
+  const hasChecklist = TypeConfig.hasChecklist; // Definido en eventTypes.js (limpieza/mantenimiento)
   const canEdit = ['pastor', 'lider'].includes(userRole);
 
   return (
@@ -356,16 +372,24 @@ export default function EventDetails() {
                                     ))}
                                   </div>
                                 )}
-                                {(role.type === 'multi' || assignedPeople.length === 0) && (
-                                  <div className="relative">
+                                <div className="relative">
+                                    {/* BUSCADOR INTEGRADO */}
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <Search size={14} className="text-slate-400"/>
+                                        <input 
+                                            type="text" 
+                                            placeholder="Buscar miembro..." 
+                                            className="w-full text-xs p-1 bg-transparent outline-none text-slate-600 border-b border-slate-100 focus:border-brand-500"
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                        />
+                                    </div>
                                     <select className="w-full p-2.5 bg-white border border-slate-200 rounded-xl outline-none text-sm text-slate-600 focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                                       value="" onChange={(e) => { handleAddPersonRole(role.key, e.target.value); e.target.value = ""; }}>
                                       <option value="">{role.type === 'multi' ? '+ Agregar...' : 'Seleccionar...'}</option>
                                       {availableUsers.map(u => (<option key={u.id} value={u.displayName || u.name}>{u.displayName || u.name || 'Sin Nombre'}</option>))}
                                     </select>
-                                    <Plus size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none"/>
-                                  </div>
-                                )}
+                                </div>
                             </>
                         )}
                       </div>
