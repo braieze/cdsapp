@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { auth } from './firebase';
+import { auth, db } from './firebase'; // Importamos db también
 import { onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'; // Importamos funciones de base de datos
 
 // Layouts y Páginas
 import MainLayout from './layouts/MainLayout';
@@ -10,7 +11,7 @@ import Calendar from './pages/Calendar';
 import MyServices from './pages/MyServices';
 import AppsHub from './pages/AppsHub';
 import Login from './pages/Login';
-import Profile from './pages/Profile'; // <--- 1. AQUÍ IMPORTAMOS LA PÁGINA
+import Profile from './pages/Profile';
 import Directory from './pages/Directory';
 
 function App() {
@@ -18,10 +19,32 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        // 1. Si el usuario está logueado, verificamos si existe en la Base de Datos
+        const userRef = doc(db, 'users', currentUser.uid);
+        const userSnap = await getDoc(userRef);
+
+        if (!userSnap.exists()) {
+          // 2. Si NO existe (es nuevo o no se guardó), lo creamos ahora mismo
+          await setDoc(userRef, {
+            displayName: currentUser.displayName,
+            email: currentUser.email,
+            photoURL: currentUser.photoURL,
+            role: 'miembro',      // Rol por defecto
+            area: 'ninguna',      // Área por defecto
+            createdAt: serverTimestamp(),
+            phone: ''
+          });
+          console.log("Usuario creado en el Directorio automáticamente.");
+        }
+      }
+      
+      // 3. Guardamos el usuario en el estado y terminamos la carga
       setUser(currentUser);
       setLoading(false);
     });
+
     return () => unsubscribe();
   }, []);
 
@@ -39,16 +62,14 @@ function App() {
         {/* Si no hay usuario, solo puede ver el Login */}
         <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
 
-        {/* Rutas protegidas: Si no hay usuario, te manda al login */}
+        {/* Rutas protegidas */}
         <Route element={user ? <MainLayout /> : <Navigate to="/login" />}>
           <Route path="/" element={<Home />} />
           <Route path="/calendario" element={<Calendar />} />
           <Route path="/servicios" element={<MyServices />} />
           <Route path="/apps" element={<AppsHub />} />
-          <Route path="/directorio" element={<Directory />} />
-          
-          {/* 2. AQUÍ CONECTAMOS LA PÁGINA REAL */}
           <Route path="/perfil" element={<Profile />} /> 
+          <Route path="/directorio" element={<Directory />} />
         </Route>
       </Routes>
     </BrowserRouter>
