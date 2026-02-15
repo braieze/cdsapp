@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase';
 import { doc, getDoc, updateDoc, collection, getDocs, deleteDoc } from 'firebase/firestore'; 
-import { ArrowLeft, Calendar, Clock, MapPin, Save, Trash2, Plus, X, ChevronDown, Users, CheckCircle, Edit3, CheckSquare, Square } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, MapPin, Save, Trash2, Plus, X, ChevronDown, Users, CheckCircle, Edit3, CheckSquare } from 'lucide-react';
 import { EVENT_TYPES } from '../utils/eventTypes';
 import { format, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -21,11 +21,14 @@ export default function EventDetails() {
   const [assignments, setAssignments] = useState({});
   const [expandedDay, setExpandedDay] = useState(null);
 
+  // ✅ CORRECCIÓN: Definimos el usuario AQUÍ ARRIBA, antes de que cualquier función lo use
+  const currentUser = auth.currentUser;
+  const myUid = currentUser?.uid;
+
   // 1. CARGAR DATOS
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const currentUser = auth.currentUser;
         if (!currentUser) return;
 
         // A. Rol del Usuario
@@ -63,7 +66,7 @@ export default function EventDetails() {
       } catch (error) { console.error(error); } finally { setLoading(false); }
     };
     fetchData();
-  }, [id, navigate]);
+  }, [id, navigate, currentUser]);
 
   // --- FILTRO INTELIGENTE DE USUARIOS ---
   const getFilteredUsers = (roleConfig) => {
@@ -96,17 +99,13 @@ export default function EventDetails() {
 
   // --- LÓGICA CHECKLIST (LIMPIEZA) ---
   const handleToggleTask = async (taskIndex) => {
-    // Solo permitimos marcar si estamos viendo (no hace falta modo edición, es operativo)
-    // Opcional: restringir a userRole 'lider' o 'pastor' o quien esté asignado.
-    // Por ahora lo dejamos abierto para agilidad.
-    
     const newTasks = [...(event.checklist || [])];
     if (!newTasks[taskIndex]) return;
 
     newTasks[taskIndex].completed = !newTasks[taskIndex].completed;
     
     if (newTasks[taskIndex].completed) {
-        newTasks[taskIndex].completedBy = auth.currentUser.displayName;
+        newTasks[taskIndex].completedBy = currentUser?.displayName || 'Usuario';
     } else {
         delete newTasks[taskIndex].completedBy;
     }
@@ -120,19 +119,28 @@ export default function EventDetails() {
 
   // --- LÓGICA AYUNO ---
   const handleToggleFastingDate = async (dateStr) => {
-    const myUid = auth.currentUser?.uid;
-    if (!myUid) return;
+    // Aquí ya no fallará porque myUid está definido al principio
+    if (!myUid) return; 
+
     const currentFasters = assignments[dateStr] || [];
     let newFasters;
-    if (currentFasters.includes(myUid)) newFasters = currentFasters.filter(uid => uid !== myUid);
-    else newFasters = [...currentFasters, myUid];
+    
+    if (currentFasters.includes(myUid)) {
+        newFasters = currentFasters.filter(uid => uid !== myUid);
+    } else {
+        newFasters = [...currentFasters, myUid];
+    }
 
     const newAssignments = { ...assignments, [dateStr]: newFasters };
     setAssignments(newAssignments);
+    
     try {
         const eventRef = doc(db, 'events', id);
         await updateDoc(eventRef, { assignments: newAssignments });
-    } catch (error) { alert("Error de conexión"); }
+    } catch (error) { 
+        console.error(error);
+        alert("Error de conexión"); 
+    }
   };
 
   const handleSaveAssignments = async () => {
@@ -172,7 +180,7 @@ export default function EventDetails() {
 
   const TypeConfig = EVENT_TYPES[event.type] || EVENT_TYPES.culto;
   const isAyuno = event.type === 'ayuno';
-  const hasChecklist = TypeConfig.hasChecklist; // Definido en eventTypes.js (limpieza/mantenimiento)
+  const hasChecklist = TypeConfig.hasChecklist;
   const canEdit = ['pastor', 'lider'].includes(userRole);
 
   return (

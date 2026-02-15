@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useOutletContext } from 'react-router-dom';
-import { Cake, Megaphone, BookOpen, Send, PlusCircle, Trash2, Clock, Pin, Link as LinkIcon, ExternalLink, MessageCircle, MoreVertical, X, Edit3, AlertTriangle } from 'lucide-react';
+import { useOutletContext, useNavigate } from 'react-router-dom'; // ✅ Importamos useNavigate
+import { Cake, Megaphone, BookOpen, Send, PlusCircle, Trash2, Clock, Pin, Link as LinkIcon, ExternalLink, MessageCircle, MoreVertical, X, Edit3, AlertTriangle, Calendar } from 'lucide-react';
 import CreatePostModal from '../components/CreatePostModal';
 import { db, auth } from '../firebase';
 import { collection, query, orderBy, onSnapshot, deleteDoc, doc, updateDoc, limit, addDoc, serverTimestamp } from 'firebase/firestore';
 
 export default function Home() {
+  const navigate = useNavigate(); // ✅ Hook para navegación interna
   const { dbUser } = useOutletContext();
   const currentUser = auth.currentUser;
   const canCreatePost = dbUser?.role === 'pastor' || dbUser?.area === 'recepcion';
@@ -15,8 +16,6 @@ export default function Home() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('Todo');
-
-  // --- NUEVO: ESTADO PARA CUMPLEAÑOS ---
   const [birthdays, setBirthdays] = useState([]);
 
   // Estados de Interfaz
@@ -45,24 +44,16 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // 2. CARGAR Y CALCULAR CUMPLEAÑOS (NUEVO)
+  // 2. CARGAR CUMPLEAÑOS
   useEffect(() => {
-    // Escuchamos la colección de usuarios
     const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
       const today = new Date();
-      // Obtenemos mes y día actual en formato "MM-DD" (Ej: "02-14" para 14 de febrero)
-      // getMonth() devuelve 0-11, por eso sumamos 1. padStart agrega el 0 si es necesario.
       const currentMonthDay = `${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-
       const birthdayPeople = [];
-
       snapshot.forEach(doc => {
         const userData = doc.data();
         if (userData.birthday) {
-          // userData.birthday viene como "YYYY-MM-DD" (Ej: 2001-02-14)
-          // Cortamos los últimos 5 caracteres para tener "MM-DD"
           const userMonthDay = userData.birthday.slice(5); 
-          
           if (userMonthDay === currentMonthDay) {
             birthdayPeople.push(userData.displayName || 'Alguien');
           }
@@ -79,6 +70,21 @@ export default function Home() {
     if (menuOpenId) window.addEventListener('click', closeMenu);
     return () => window.removeEventListener('click', closeMenu);
   }, [menuOpenId]);
+
+  // ✅ FUNCIÓN DE NAVEGACIÓN INTELIGENTE
+  const handleLinkClick = (e, url) => {
+    e.preventDefault();
+    e.stopPropagation(); // Evitar que abra el detalle del post
+    if (!url) return;
+
+    if (url.startsWith('/')) {
+        // Es un link interno (ej: /calendario/...)
+        navigate(url);
+    } else {
+        // Es externo (ej: https://google.com)
+        window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
 
   const toggleExpand = (postId) => {
     const newSet = new Set(expandedPosts);
@@ -139,7 +145,6 @@ export default function Home() {
     return Object.entries(groups); 
   };
 
-  // Función auxiliar para texto de cumpleaños
   const getBirthdayText = () => {
     if (birthdays.length === 0) return "Nadie cumple años hoy";
     if (birthdays.length === 1) return `¡Feliz cumple ${birthdays[0]}! 🎂`;
@@ -150,7 +155,7 @@ export default function Home() {
   return (
     <div className="pb-24 animate-fade-in relative min-h-screen bg-slate-50">
       
-      {/* Widget Cumpleaños REAL */}
+      {/* Widget Cumpleaños */}
       <div className="bg-white p-4 mb-2 border-b border-slate-100 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors">
         <div className="flex items-center gap-3">
           <div className={`p-2.5 rounded-full text-white shadow-sm ${birthdays.length > 0 ? 'bg-gradient-to-tr from-brand-500 to-brand-400 animate-pulse' : 'bg-slate-300'}`}>
@@ -181,7 +186,7 @@ export default function Home() {
           const isExpanded = expandedPosts.has(post.id);
 
           const ManagementMenu = () => (
-             (isPastor || post.authorId === currentUser.uid) && (
+              (isPastor || post.authorId === currentUser.uid) && (
               <div className="relative" onClick={e => e.stopPropagation()}>
                 <button onClick={() => setMenuOpenId(post.id)} className="p-1 text-slate-300 hover:text-slate-600 transition-colors"><MoreVertical size={20}/></button>
                 {menuOpenId === post.id && (
@@ -242,10 +247,10 @@ export default function Home() {
                 <div onClick={() => setReadingPost(post)} className="cursor-pointer">
                   {post.image ? (
                     <div className="h-48 w-full bg-slate-200 relative">
-                       <img src={post.image} className="w-full h-full object-cover" />
-                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
-                       <span className="absolute top-3 left-3 bg-white/20 backdrop-blur-md text-white text-[10px] font-bold px-2 py-0.5 rounded border border-white/20">DEVOCIONAL</span>
-                       <h2 className="absolute bottom-4 left-4 right-4 text-xl font-black text-white leading-tight drop-shadow-md">{post.title || 'Reflexión del día'}</h2>
+                        <img src={post.image} className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
+                        <span className="absolute top-3 left-3 bg-white/20 backdrop-blur-md text-white text-[10px] font-bold px-2 py-0.5 rounded border border-white/20">DEVOCIONAL</span>
+                        <h2 className="absolute bottom-4 left-4 right-4 text-xl font-black text-white leading-tight drop-shadow-md">{post.title || 'Reflexión del día'}</h2>
                     </div>
                   ) : (
                     <div className="h-32 bg-gradient-to-r from-brand-600 to-purple-600 flex items-center justify-center relative p-6">
@@ -254,12 +259,25 @@ export default function Home() {
                     </div>
                   )}
                   <div className="px-4 py-3">
-                    <p className="text-sm text-slate-500 line-clamp-2">{post.content}</p>
+                    <p className="text-sm text-slate-500 line-clamp-2 whitespace-pre-wrap">{post.content}</p>
                     <div className="flex items-center gap-2 mt-3 mb-1">
                       <img src={post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}`} className="w-5 h-5 rounded-full" />
                       <span className="text-xs font-bold text-slate-700">{post.authorName}</span>
                       <span className="text-[10px] text-slate-400">• {new Date(post.createdAt?.toDate()).toLocaleDateString()}</span>
                     </div>
+                    
+                    {/* LINK INTELIGENTE PARA DEVOCIONALES/AYUNOS */}
+                    {post.link && (
+                        <div className="mt-4">
+                            <button 
+                                onClick={(e) => handleLinkClick(e, post.link)} 
+                                className="w-full bg-slate-900 text-white py-2 rounded-xl text-xs font-bold shadow-md hover:bg-black transition-colors flex items-center justify-center gap-2"
+                            >
+                                {post.link.startsWith('/') ? <Calendar size={14}/> : <ExternalLink size={14}/>}
+                                {post.linkText || 'Ver más'}
+                            </button>
+                        </div>
+                    )}
                   </div>
                 </div>
                 <SocialFooter />
@@ -272,11 +290,11 @@ export default function Home() {
               {post.isPinned && <div className="absolute top-0 right-10 bg-slate-200 text-slate-500 px-2 py-0.5 rounded-bl-lg rounded-br-lg text-[9px] font-bold flex items-center gap-1"><Pin size={10} /> FIJADO</div>}
               <div className="flex justify-between items-start mb-3 px-4 pt-1">
                 <div className="flex items-center gap-3">
-                   <img src={post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}`} className="w-10 h-10 rounded-full border border-slate-100" />
-                   <div>
-                     <h3 className="text-sm font-bold text-slate-900">{post.authorName} <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded uppercase">{post.role}</span></h3>
-                     <p className="text-[11px] text-slate-500">{new Date(post.createdAt?.toDate()).toLocaleDateString()}</p>
-                   </div>
+                    <img src={post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}`} className="w-10 h-10 rounded-full border border-slate-100" />
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900">{post.authorName} <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded uppercase">{post.role}</span></h3>
+                      <p className="text-[11px] text-slate-500">{new Date(post.createdAt?.toDate()).toLocaleDateString()}</p>
+                    </div>
                 </div>
                 <ManagementMenu />
               </div>
@@ -287,7 +305,23 @@ export default function Home() {
                 {post.tags?.map((tag, i) => <span key={i} className="inline-block mt-2 mr-1 text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded font-bold">#{tag}</span>)}
               </div>
               {post.image && <div className="w-full mb-3 bg-slate-100 cursor-zoom-in" onClick={() => setFullImage(post.image)}><img src={post.image} className="w-full h-auto max-h-[400px] object-cover" /></div>}
-              {post.link && (<div className="px-4 mb-3"><a href={post.link} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 p-3 rounded-xl transition-colors group"><span className="text-sm font-bold text-brand-700 flex items-center gap-2"><LinkIcon size={16} /> {post.linkText}</span><ExternalLink size={16} className="text-slate-400 group-hover:text-brand-500" /></a></div>)}
+              
+              {/* LINK INTELIGENTE PARA POSTS NORMALES */}
+              {post.link && (
+                  <div className="px-4 mb-3">
+                      <button 
+                        onClick={(e) => handleLinkClick(e, post.link)} 
+                        className="flex items-center justify-between w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 p-3 rounded-xl transition-colors group"
+                      >
+                          <span className="text-sm font-bold text-brand-700 flex items-center gap-2">
+                              {post.link.startsWith('/') ? <LinkIcon size={16} /> : <ExternalLink size={16} />} 
+                              {post.linkText}
+                          </span>
+                          <ExternalLink size={16} className="text-slate-400 group-hover:text-brand-500" />
+                      </button>
+                  </div>
+              )}
+
               {post.poll && (
                 <div className="px-4 mb-3">
                   <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
@@ -324,7 +358,6 @@ export default function Home() {
       {readingPost && <PostDetailModal post={readingPost} currentUser={currentUser} onClose={() => setReadingPost(null)} />}
       {showReactionsFor && <ReactionsListModal post={showReactionsFor} onClose={() => setShowReactionsFor(null)} />}
       
-      {/* MODAL BORRAR */}
       {postToDelete && (
         <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
           <div className="bg-slate-900 w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-slide-up border border-slate-800">
@@ -344,7 +377,7 @@ export default function Home() {
   );
 }
 
-// --- SUBCOMPONENTES ---
+// ... SUBCOMPONENTES (Copiar tal cual del archivo anterior, no han cambiado) ...
 function CommentPreview({ postId, onClick }) {
   const [previewComments, setPreviewComments] = useState([]);
   useEffect(() => {
