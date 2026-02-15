@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db, auth } from '../firebase';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, serverTimestamp, getDoc, setDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc, addDoc, serverTimestamp, getDoc, setDoc } from 'firebase/firestore';
 import { Search, Shield, Briefcase, Camera, Loader2, Save, X, Phone, UserPlus, MapPin, Calendar as CalendarIcon, Mail } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 
@@ -17,28 +17,40 @@ export default function Directory() {
   // Nuevo Usuario (Manual)
   const [newUser, setNewUser] = useState({ displayName: '', role: 'miembro', area: 'ninguna', phone: '' });
 
-  // Configuración de Cloudinary
   const CLOUD_NAME = "djmkggzjp"; 
   const UPLOAD_PRESET = "ml_default"; 
 
-  // 1. Cargar Usuarios
+  // 1. Cargar Usuarios (MODIFICADO PARA LEER TODO)
   useEffect(() => {
-    // A. Escuchar la lista de usuarios
-    const q = query(collection(db, 'users'), orderBy('displayName'));
+    // Quitamos 'orderBy' por ahora para evitar que oculte usuarios sin el campo exacto
+    const q = query(collection(db, 'users'));
+    
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const usersData = snapshot.docs.map(doc => {
+        const data = doc.data();
+        // 🔥 TRUCO: Normalizamos el nombre aquí mismo
+        return { 
+          id: doc.id, 
+          ...data,
+          // Si tiene displayName usalo, si no usa name, si no "Sin Nombre"
+          finalName: data.displayName || data.name || 'Sin Nombre' 
+        };
+      });
+
+      // Ordenamos manualmente aquí (es más seguro cuando los campos son mezclados)
+      usersData.sort((a, b) => a.finalName.localeCompare(b.finalName));
+
       setUsers(usersData);
       setLoading(false);
     });
 
-    // B. Verificación de seguridad: Asegurar que YO (el pastor) estoy en la lista
+    // Verificación de seguridad (Autocrecación)
     const checkMyself = async () => {
       const currentUser = auth.currentUser;
       if (currentUser) {
         const myRef = doc(db, 'users', currentUser.uid);
         const mySnap = await getDoc(myRef);
         if (!mySnap.exists()) {
-          // Si no existo, me creo ahora mismo
           await setDoc(myRef, {
             displayName: currentUser.displayName,
             email: currentUser.email,
@@ -55,18 +67,18 @@ export default function Directory() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Guardar TODOS los datos (Rol, Área, Teléfono, Dirección, Cumple)
+  // 2. Guardar
   const handleSaveUser = async () => {
     if (!editingUser) return;
     try {
       const userRef = doc(db, 'users', editingUser.id);
       await updateDoc(userRef, {
-        displayName: editingUser.displayName,
+        displayName: editingUser.finalName, // Guardamos siempre como displayName para estandarizar
         role: editingUser.role,
         area: editingUser.area,
         phone: editingUser.phone || '',
         address: editingUser.address || '',
-        birthday: editingUser.birthday || '', // Formato YYYY-MM-DD
+        birthday: editingUser.birthday || '',
       });
       setEditingUser(null);
       alert("✅ Datos actualizados correctamente");
@@ -76,12 +88,12 @@ export default function Directory() {
     }
   };
 
-  // 3. Crear Usuario Manualmente
+  // 3. Crear Usuario Manual
   const handleCreateUser = async () => {
     if (!newUser.displayName.trim()) return alert("El nombre es obligatorio");
     try {
       await addDoc(collection(db, 'users'), {
-        ...newUser,
+        ...newUser, // Esto usa displayName
         email: 'registrado_manualmente', 
         photoURL: null,
         createdAt: serverTimestamp()
@@ -122,8 +134,9 @@ export default function Directory() {
     }
   };
 
+  // Filtrado usando el nombre normalizado
   const filteredUsers = users.filter(u => 
-    u.displayName?.toLowerCase().includes(search.toLowerCase())
+    u.finalName.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -155,22 +168,22 @@ export default function Directory() {
             className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm flex items-center gap-3 cursor-pointer hover:bg-slate-50 transition-colors active:scale-95"
           >
             <img 
-              src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}&background=random`} 
+              src={user.photoURL || `https://ui-avatars.com/api/?name=${user.finalName}&background=random`} 
               className="w-12 h-12 rounded-full object-cover border border-slate-100"
-              alt={user.displayName}
+              alt={user.finalName}
             />
             <div className="flex-1">
-              <h3 className="font-bold text-slate-800 text-sm">{user.displayName}</h3>
+              {/* Aquí usamos finalName que sirve para ambos casos */}
+              <h3 className="font-bold text-slate-800 text-sm">{user.finalName}</h3>
               <div className="flex items-center gap-2 mt-1">
-                <span className="text-[10px] bg-brand-50 text-brand-700 px-2 py-0.5 rounded-md font-bold uppercase">{user.role}</span>
-                {user.area !== 'ninguna' && user.area && <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-medium capitalize">{user.area}</span>}
+                <span className="text-[10px] bg-brand-50 text-brand-700 px-2 py-0.5 rounded-md font-bold uppercase">{user.role || 'miembro'}</span>
+                {user.area && user.area !== 'ninguna' && <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-medium capitalize">{user.area}</span>}
               </div>
             </div>
           </div>
         ))}
       </div>
 
-      {/* BOTÓN FLOTANTE: AGREGAR */}
       <button 
         onClick={() => setIsCreating(true)}
         className="fixed bottom-24 right-4 w-14 h-14 bg-brand-600 hover:bg-brand-700 text-white rounded-full shadow-lg shadow-brand-500/40 flex items-center justify-center transition-transform hover:scale-105 active:scale-95 z-40"
@@ -178,17 +191,16 @@ export default function Directory() {
         <UserPlus size={28} />
       </button>
 
-      {/* --- MODAL DE FICHA COMPLETA (EDICIÓN) --- */}
+      {/* --- MODAL EDITAR --- */}
       {editingUser && (
         <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white w-full max-w-sm rounded-2xl animate-slide-up relative flex flex-col max-h-[90vh] shadow-2xl overflow-hidden">
             
-            {/* Cabecera del Modal con Foto */}
             <div className="relative h-32 bg-gradient-to-r from-brand-600 to-purple-600 rounded-t-2xl flex-shrink-0">
                <button onClick={() => setEditingUser(null)} className="absolute top-3 right-3 p-2 bg-black/20 text-white hover:bg-black/40 rounded-full backdrop-blur-sm z-10"><X size={20}/></button>
                <div className="absolute -bottom-10 left-0 right-0 flex justify-center">
                   <div className="relative group">
-                    <img src={editingUser.photoURL || `https://ui-avatars.com/api/?name=${editingUser.displayName}&background=random`} className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-lg bg-white" />
+                    <img src={editingUser.photoURL || `https://ui-avatars.com/api/?name=${editingUser.finalName}&background=random`} className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-lg bg-white" />
                     <label className="absolute bottom-0 right-0 bg-brand-600 text-white p-2 rounded-full cursor-pointer hover:bg-brand-700 shadow-sm active:scale-95 border-2 border-white">
                       {uploading ? <Loader2 size={14} className="animate-spin"/> : <Camera size={14}/>}
                       <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={uploading}/>
@@ -197,15 +209,13 @@ export default function Directory() {
                </div>
             </div>
 
-            {/* Cuerpo del Modal (Scrollable) */}
             <div className="pt-12 px-5 pb-5 overflow-y-auto">
               
-              {/* Nombre Editable */}
               <div className="text-center mb-6">
                 <input 
                   type="text" 
-                  value={editingUser.displayName}
-                  onChange={(e) => setEditingUser({...editingUser, displayName: e.target.value})}
+                  value={editingUser.finalName} // Usamos finalName
+                  onChange={(e) => setEditingUser({...editingUser, finalName: e.target.value})}
                   className="text-xl font-black text-slate-800 text-center w-full bg-transparent border-b border-transparent focus:border-brand-500 outline-none pb-1"
                 />
                 <p className="text-xs text-slate-400 mt-1 flex items-center justify-center gap-1"><Mail size={10}/> {editingUser.email}</p>
@@ -213,7 +223,6 @@ export default function Directory() {
 
               <div className="space-y-4">
                 
-                {/* 1. Rol y Área (Fila) */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Rol</label>
@@ -253,7 +262,6 @@ export default function Directory() {
                   </div>
                 </div>
 
-                {/* 2. Teléfono */}
                 <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Teléfono / WhatsApp</label>
                   <div className="relative">
@@ -268,7 +276,6 @@ export default function Directory() {
                   </div>
                 </div>
 
-                {/* 3. Dirección */}
                 <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Dirección</label>
                   <div className="relative">
@@ -283,7 +290,6 @@ export default function Directory() {
                   </div>
                 </div>
 
-                {/* 4. Fecha de Cumpleaños */}
                 <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Fecha de Nacimiento</label>
                   <div className="relative">
@@ -310,7 +316,7 @@ export default function Directory() {
         </div>
       )}
 
-      {/* --- MODAL 2: CREAR NUEVO (MANUAL) --- */}
+      {/* --- MODAL CREAR --- */}
       {isCreating && (
         <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white w-full max-w-sm rounded-2xl p-5 animate-slide-up relative shadow-2xl">
@@ -328,18 +334,10 @@ export default function Directory() {
               />
               
               <div className="grid grid-cols-2 gap-3">
-                <select 
-                  className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none"
-                  value={newUser.role}
-                  onChange={(e) => setNewUser({...newUser, role: e.target.value})}
-                >
+                <select className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none" value={newUser.role} onChange={(e) => setNewUser({...newUser, role: e.target.value})}>
                   <option value="miembro">Miembro</option><option value="servidor">Servidor</option><option value="lider">Líder</option><option value="pastor">Pastor</option>
                 </select>
-                <select 
-                  className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none"
-                  value={newUser.area}
-                  onChange={(e) => setNewUser({...newUser, area: e.target.value})}
-                >
+                <select className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none" value={newUser.area} onChange={(e) => setNewUser({...newUser, area: e.target.value})}>
                   <option value="ninguna">Sin Área</option><option value="multimedia">Multimedia</option><option value="alabanza">Alabanza</option><option value="recepcion">Recepción</option><option value="niños">Niños</option>
                 </select>
               </div>
