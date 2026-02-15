@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase';
 import { doc, getDoc, updateDoc, collection, getDocs, arrayUnion, arrayRemove } from 'firebase/firestore';
-import { ArrowLeft, Calendar, Clock, MapPin, User, Music, Video, Shield, Save, CheckCircle, Trash2, Users } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, MapPin, Save, Trash2, Plus, X, AlertCircle } from 'lucide-react';
 import { EVENT_TYPES } from '../utils/eventTypes';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -11,26 +11,23 @@ export default function EventDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [event, setEvent] = useState(null);
-  const [users, setUsers] = useState([]); // Para los selectores de asignar
+  const [users, setUsers] = useState([]); 
   const [loading, setLoading] = useState(true);
   
-  // Estado local para editar asignaciones
+  // assignments ahora guardará ARRAYS de nombres: { voces: ['Juan', 'Pedro'], predicador: ['Pastor'] }
   const [assignments, setAssignments] = useState({});
 
-  // Cargar Evento y Usuarios (Directorio)
+  // 1. CARGAR DATOS
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // 1. Cargar Evento
         const eventRef = doc(db, 'events', id);
         const eventSnap = await getDoc(eventRef);
         
-        // 2. Cargar Usuarios (Para poder asignar)
         const usersCol = collection(db, 'users');
         const usersSnap = await getDocs(usersCol);
         const usersList = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         
-        // Ordenar usuarios por nombre (usando la lógica que arreglamos antes)
         usersList.sort((a, b) => {
             const nameA = a.displayName || a.name || 'Sin Nombre';
             const nameB = b.displayName || b.name || 'Sin Nombre';
@@ -40,7 +37,16 @@ export default function EventDetails() {
         if (eventSnap.exists()) {
           const data = eventSnap.data();
           setEvent({ id: eventSnap.id, ...data });
-          setAssignments(data.assignments || {}); // Cargar asignaciones previas si existen
+          
+          // Compatibilidad: Si venía del sistema viejo (string), lo convertimos a array
+          const rawAssignments = data.assignments || {};
+          const normalizedAssignments = {};
+          Object.keys(rawAssignments).forEach(key => {
+            const val = rawAssignments[key];
+            normalizedAssignments[key] = Array.isArray(val) ? val : [val]; // Forzar Array
+          });
+          setAssignments(normalizedAssignments);
+
         } else {
           alert("Evento no encontrado");
           navigate('/calendario');
@@ -55,29 +61,42 @@ export default function EventDetails() {
     fetchData();
   }, [id, navigate]);
 
-  // Guardar Asignaciones (Solo Pastores/Líderes)
+  // 2. LOGICA DE ASIGNACIÓN (Multi y Single)
+  const handleAddPerson = (roleKey, personName) => {
+    if (!personName) return;
+    const currentList = assignments[roleKey] || [];
+    
+    // Evitar duplicados
+    if (!currentList.includes(personName)) {
+      setAssignments({ ...assignments, [roleKey]: [...currentList, personName] });
+    }
+  };
+
+  const handleRemovePerson = (roleKey, personName) => {
+    const currentList = assignments[roleKey] || [];
+    setAssignments({ 
+      ...assignments, 
+      [roleKey]: currentList.filter(p => p !== personName) 
+    });
+  };
+
   const handleSaveAssignments = async () => {
     try {
       const eventRef = doc(db, 'events', id);
-      await updateDoc(eventRef, {
-        assignments: assignments
-      });
-      alert("✅ Equipo asignado correctamente");
+      await updateDoc(eventRef, { assignments });
+      alert("✅ Equipo guardado exitosamente");
     } catch (error) {
       console.error(error);
       alert("Error al guardar");
     }
   };
 
-  // Función para anotarse uno mismo (Para Ayunos o Voluntariado)
+  // Lógica Ayuno (Simplificada para esta fase)
   const handleJoinEvent = async () => {
     const currentUser = auth.currentUser;
     if (!currentUser) return;
-
     const eventRef = doc(db, 'events', id);
-    // Si ya estoy anotado, me salgo. Si no, entro.
     const isParticipant = event.participants?.includes(currentUser.uid);
-
     try {
       if (isParticipant) {
         await updateDoc(eventRef, { participants: arrayRemove(currentUser.uid) });
@@ -86,66 +105,42 @@ export default function EventDetails() {
         await updateDoc(eventRef, { participants: arrayUnion(currentUser.uid) });
         setEvent(prev => ({ ...prev, participants: [...(prev.participants || []), currentUser.uid] }));
       }
-    } catch (error) {
-      console.error(error);
-    }
+    } catch (error) { console.error(error); }
   };
 
-  // Borrar Evento
   const handleDelete = async () => {
-    if(!window.confirm("¿Seguro que quieres eliminar este evento permanentemente?")) return;
+    if(!window.confirm("¿Seguro que quieres eliminar este evento?")) return;
     try {
-        // Asumimos que deleteDoc ya está importado arriba (lo agregué en imports)
-        // Pero necesito importarlo explícitamente si voy a usarlo aquí abajo,
-        // Firebase modular a veces requiere importar deleteDoc desde firestore.
-        // (Nota: En los imports arriba no puse deleteDoc, lo agrego ahora en la mente del código)
         const { deleteDoc } = await import('firebase/firestore'); 
         await deleteDoc(doc(db, 'events', id));
         navigate('/calendario');
-    } catch (error) {
-        console.error(error);
-        alert("Error al borrar");
-    }
+    } catch (error) { console.error(error); }
+  };
+
+  // --- AYUDANTE PARA RESOLVER ESTRUCTURA (Herencia) ---
+  const getStructure = (type) => {
+    const config = EVENT_TYPES[type] || EVENT_TYPES.culto;
+    if (config.structure === 'same_as_culto') return EVENT_TYPES.culto.structure;
+    if (config.structure === 'same_as_limpieza') return EVENT_TYPES.limpieza.structure;
+    return config.structure || []; // Si es array directo o vacío (ayuno)
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-brand-600 border-t-transparent rounded-full animate-spin"></div></div>;
   if (!event) return null;
 
   const TypeConfig = EVENT_TYPES[event.type] || EVENT_TYPES.culto;
+  const structure = getStructure(event.type);
   const isAyuno = event.type === 'ayuno';
   const myUid = auth.currentUser?.uid;
 
-  // Renderizar Selector de Usuario
-  const UserSelect = ({ label, icon: Icon, fieldKey }) => (
-    <div className="mb-4">
-      <label className="text-xs font-bold text-slate-400 uppercase mb-1 flex items-center gap-1">
-        <Icon size={12} /> {label}
-      </label>
-      <select 
-        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm font-medium text-slate-700 focus:border-brand-500 transition-colors"
-        value={assignments[fieldKey] || ''}
-        onChange={(e) => setAssignments({ ...assignments, [fieldKey]: e.target.value })}
-      >
-        <option value="">-- Sin asignar --</option>
-        {users.map(u => (
-          <option key={u.id} value={u.displayName || u.name}>
-            {u.displayName || u.name || 'Sin Nombre'}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-
   return (
-    <div className="pb-24 bg-white min-h-screen animate-fade-in relative">
+    <div className="pb-32 bg-slate-50 min-h-screen animate-fade-in relative">
       
-      {/* HEADER CON COLOR DINÁMICO */}
+      {/* HEADER */}
       <div className={`relative px-4 pt-12 pb-8 ${TypeConfig.color.replace('text-', 'bg-').replace('100', '50')} border-b border-slate-100`}>
         <button onClick={() => navigate('/calendario')} className="absolute top-4 left-4 p-2 bg-white/50 backdrop-blur-md rounded-full hover:bg-white transition-colors shadow-sm">
           <ArrowLeft size={20} className="text-slate-700"/>
         </button>
-        
-        {/* Botón Borrar (Solo Pastor) */}
         <button onClick={handleDelete} className="absolute top-4 right-4 p-2 text-red-400 hover:bg-red-50 rounded-full transition-colors">
           <Trash2 size={20}/>
         </button>
@@ -174,9 +169,9 @@ export default function EventDetails() {
 
       <div className="p-4 max-w-lg mx-auto space-y-6">
 
-        {/* 1. SECCIÓN DESCRIPCIÓN */}
+        {/* 1. DESCRIPCIÓN */}
         {event.description && (
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+            <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
                 <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2 text-sm">
                     <MapPin size={16} className="text-brand-500"/> Detalles
                 </h3>
@@ -184,66 +179,94 @@ export default function EventDetails() {
             </div>
         )}
 
-        {/* 2. SECCIÓN GESTIÓN DE EQUIPO (SOLO SI NO ES AYUNO) */}
-        {!isAyuno && (
-            <div className="border border-slate-100 rounded-2xl p-5 shadow-sm bg-white">
-                <h3 className="font-black text-slate-800 mb-4 flex items-center gap-2 text-lg">
-                    <Shield size={20} className="text-brand-600"/> Equipo de Servicio
-                </h3>
-                
-                {/* Aquí están los roles que pediste */}
-                <UserSelect label="Predicador / Orador" icon={User} fieldKey="predicador" />
-                <UserSelect label="Dirección Alabanza" icon={Music} fieldKey="direccion_alabanza" />
-                <UserSelect label="Líder Multimedia" icon={Video} fieldKey="multimedia" />
-                <UserSelect label="Responsable Ujieres" icon={Shield} fieldKey="ujieres" />
+        {/* 2. GESTOR DE EQUIPOS DINÁMICO (CULTOS, ENSAYOS, ETC) */}
+        {!isAyuno && structure.length > 0 && (
+          <div className="space-y-6">
+            {structure.map((section, idx) => (
+              <div key={idx} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                {/* Título de Sección (Ej: Alabanza) */}
+                <div className="bg-slate-50/50 px-4 py-3 border-b border-slate-100 flex items-center gap-2">
+                   <div className="w-1 h-4 bg-brand-500 rounded-full"></div>
+                   <h3 className="font-black text-slate-700 text-sm uppercase tracking-wide">{section.section}</h3>
+                </div>
 
-                <button 
-                    onClick={handleSaveAssignments}
-                    className="w-full mt-2 bg-slate-900 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-slate-200 active:scale-95 transition-all hover:bg-black"
-                >
-                    <Save size={18}/> Guardar Equipo
-                </button>
-            </div>
+                <div className="p-4 space-y-5">
+                  {section.roles.map(role => {
+                    const RoleIcon = role.icon;
+                    const assignedPeople = assignments[role.key] || []; // Array de nombres
+
+                    return (
+                      <div key={role.key}>
+                        <label className="text-[11px] font-bold text-slate-400 uppercase mb-2 flex items-center gap-1.5">
+                          <RoleIcon size={12} /> {role.label}
+                        </label>
+
+                        {/* LISTA DE PERSONAS YA ASIGNADAS (CHIPS) */}
+                        {assignedPeople.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mb-2">
+                            {assignedPeople.map((person, i) => (
+                              <span key={i} className="inline-flex items-center gap-1 px-3 py-1 bg-brand-50 text-brand-700 rounded-lg text-xs font-bold border border-brand-100 animate-fade-in">
+                                {person}
+                                <button 
+                                  onClick={() => handleRemovePerson(role.key, person)}
+                                  className="p-0.5 hover:bg-brand-200 rounded-full transition-colors"
+                                >
+                                  <X size={12}/>
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* SELECTOR PARA AGREGAR (Si es 'single' y ya hay uno, se oculta el selector a menos que lo borres, o se muestra para reemplazar) */}
+                        {(role.type === 'multi' || assignedPeople.length === 0) && (
+                          <div className="relative">
+                            <select 
+                              className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm text-slate-600 focus:border-brand-500 transition-colors appearance-none"
+                              value=""
+                              onChange={(e) => {
+                                handleAddPerson(role.key, e.target.value);
+                                e.target.value = ""; // Resetear selector
+                              }}
+                            >
+                              <option value="">
+                                {role.type === 'multi' ? '+ Agregar persona...' : 'Seleccionar responsable...'}
+                              </option>
+                              {users.map(u => (
+                                <option key={u.id} value={u.displayName || u.name}>
+                                  {u.displayName || u.name || 'Sin Nombre'}
+                                </option>
+                              ))}
+                            </select>
+                            <Plus size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none"/>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            <button 
+                onClick={handleSaveAssignments}
+                className="w-full bg-slate-900 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 shadow-xl shadow-slate-200 active:scale-95 transition-all sticky bottom-4 z-20"
+            >
+                <Save size={18}/> Guardar Cambios
+            </button>
+          </div>
         )}
 
-        {/* 3. SECCIÓN PARTICIPANTES (PARA AYUNOS O EVENTOS ABIERTOS) */}
+        {/* 3. VISTA PROVISORIA AYUNO (FASE 3 PRÓXIMAMENTE) */}
         {isAyuno && (
-            <div className="border border-rose-100 bg-rose-50/30 rounded-2xl p-5">
-                 <h3 className="font-black text-rose-800 mb-2 flex items-center gap-2 text-lg">
-                    <Users size={20}/> Lista de Ayuno
-                </h3>
-                <p className="text-xs text-rose-600 mb-4 font-medium">Confirma tu compromiso tocando el botón.</p>
-                
-                <button 
-                    onClick={handleJoinEvent}
-                    className={`w-full py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-sm ${
-                        event.participants?.includes(myUid)
-                        ? 'bg-white text-rose-600 border-2 border-rose-200'
-                        : 'bg-rose-600 text-white shadow-rose-200 hover:bg-rose-700'
-                    }`}
-                >
-                    {event.participants?.includes(myUid) 
-                        ? <><CheckCircle size={18}/> Ya estoy anotado (Salir)</> 
-                        : "Me anoto para ayunar"}
-                </button>
-
-                <div className="mt-4 pt-4 border-t border-rose-100">
-                    <p className="text-xs font-bold text-rose-400 uppercase mb-2">
-                        Hermanos comprometidos ({event.participants?.length || 0})
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                        {/* Mapeamos los UIDs a nombres (buscando en el array de users cargado) */}
-                        {event.participants?.map(uid => {
-                            const user = users.find(u => u.id === uid);
-                            return (
-                                <span key={uid} className="text-[10px] bg-white border border-rose-100 text-rose-600 px-2 py-1 rounded-md font-bold shadow-sm">
-                                    {user?.displayName || user?.name || 'Hermano'}
-                                </span>
-                            );
-                        })}
-                    </div>
-                </div>
-            </div>
+             <div className="border border-rose-100 bg-rose-50/30 rounded-2xl p-6 text-center">
+                 <AlertCircle size={32} className="mx-auto text-rose-400 mb-2"/>
+                 <h3 className="font-bold text-rose-800">Sistema de Ayuno por Días</h3>
+                 <p className="text-xs text-rose-600 mt-1">
+                   Estamos actualizando este módulo para permitir inscripción por fechas específicas. 
+                   Disponible en la próxima actualización.
+                 </p>
+             </div>
         )}
 
       </div>
