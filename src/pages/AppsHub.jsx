@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 export default function AppsHub() {
   
   const handleRefresh = () => {
-    // Esta pequeña línea hace la magia: recarga la página ignorando el caché
+    // Esta pequeña líneaaaaa hace la magia: recarga la página ignorando el caché
     window.location.reload();
   };
 
@@ -94,6 +94,4 @@ export default function AppsHub() {
 
     </div>
   );
-}git add .
-git commit -m "Agregado vercel.json para corregir 404"
-git push origin main
+}
