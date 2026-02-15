@@ -32,12 +32,11 @@ export default function MainLayout() {
       */}
 
       <main className="max-w-md mx-auto animate-fade-in relative bg-slate-50">
-        {/* Pasamos los datos del usuario a todas las pantallas hijas */}
         <Outlet context={{ dbUser }} /> 
       </main>
 
-      {/* Navegación Inferior Modularizada */}
-      <BottomNavigation />
+      {/* ✅ CAMBIO: Pasamos el usuario a la navegación */}
+      <BottomNavigation dbUser={dbUser} />
       
     </div>
   );

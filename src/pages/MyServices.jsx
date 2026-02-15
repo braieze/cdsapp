@@ -15,9 +15,12 @@ export default function MyServices() {
   const [myEvents, setMyEvents] = useState([]);
   const [teamEvents, setTeamEvents] = useState([]);
   
+  // ✅ NUEVO ESTADO: Alertas para los globitos
+  const [alerts, setAlerts] = useState({ me: 0, team: 0 });
+
   // Usuario
   const currentUser = auth.currentUser;
-  const [userRole, setUserRole] = useState(null); // Guardamos solo el rol para simplificar
+  const [userRole, setUserRole] = useState(null); 
   const [stats, setStats] = useState({ monthCount: 0, lastServiceDate: null, nextServiceDays: null });
 
   // 1. CARGAR USUARIO Y EVENTOS
@@ -33,7 +36,7 @@ export default function MyServices() {
             if (userSnap.exists()) {
                 role = userSnap.data().role;
                 setUserRole(role);
-                console.log("Rol detectado:", role); // DEBUG
+                console.log("Rol detectado:", role); 
             }
 
             // B. Cargar Eventos
@@ -52,12 +55,30 @@ export default function MyServices() {
                 calculateStats(myAssignments, currentUser.displayName);
 
                 // FILTRO 2: MI EQUIPO (Liderazgo)
-                // Si es Pastor o Lider, cargamos eventos futuros para monitorear
+                let futureEvents = []; // Declaramos fuera para usar en alertas
                 if (role === 'pastor' || role === 'lider') {
-                    const futureEvents = eventsData.filter(event => isFuture(new Date(event.date + 'T00:00:00')));
+                    futureEvents = eventsData.filter(event => isFuture(new Date(event.date + 'T00:00:00')));
                     setTeamEvents(futureEvents);
                 }
 
+                // ✅ CÁLCULO DE ALERTAS (GLOBITOS INTERNOS)
+                
+                // 1. Alerta Personal: Eventos futuros donde NO he respondido
+                const myPendingCount = myAssignments.filter(e => 
+                    !isPast(new Date(e.date + 'T00:00:00')) && 
+                    (!e.confirmations || !e.confirmations[currentUser.displayName])
+                ).length;
+
+                // 2. Alerta Equipo: Suma de todos los "declined" en eventos futuros
+                let teamIssuesCount = 0;
+                if (role === 'pastor' || role === 'lider') {
+                    teamIssuesCount = futureEvents.reduce((total, event) => {
+                        const declinedInEvent = event.confirmations ? Object.values(event.confirmations).filter(status => status === 'declined').length : 0;
+                        return total + declinedInEvent;
+                    }, 0);
+                }
+
+                setAlerts({ me: myPendingCount, team: teamIssuesCount });
                 setLoading(false);
             });
             return () => unsubscribe();
@@ -93,7 +114,7 @@ export default function MyServices() {
   };
 
   const handleResponse = async (eventId, status) => {
-    if(!window.confirm(status === 'declined' ? "¿Seguro que no puedes asistir? Esto notificará a tu líder." : "¿Confirmar asistencia?")) return;
+    if(!window.confirm(status === 'declined' ? "¿Seguro que no puedes asistir?" : "¿Confirmar asistencia?")) return;
     try {
         const eventRef = doc(db, 'events', eventId);
         await updateDoc(eventRef, { [`confirmations.${currentUser.displayName}`]: status });
@@ -143,18 +164,30 @@ export default function MyServices() {
         <h1 className="text-2xl font-black text-slate-800 mb-1">Hola, {currentUser?.displayName?.split(' ')[0]} 👋</h1>
         
         {isLeader ? (
-            <div className="flex p-1 bg-white border border-slate-200 rounded-xl mt-4 shadow-sm">
+            <div className="flex p-1 bg-white border border-slate-200 rounded-xl mt-4 shadow-sm relative">
                 <button 
                     onClick={() => setActiveTab('me')} 
-                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'me' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all relative ${activeTab === 'me' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                 >
                     Mis Turnos
+                    {/* 🔴 Globito Mis Turnos */}
+                    {alerts.me > 0 && (
+                        <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white flex items-center justify-center rounded-full text-[9px] border-2 border-white shadow-sm animate-pulse">
+                            {alerts.me}
+                        </span>
+                    )}
                 </button>
                 <button 
                     onClick={() => setActiveTab('team')} 
-                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${activeTab === 'team' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 relative ${activeTab === 'team' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                 >
                     <Users size={14}/> Mi Equipo
+                    {/* 🟠 Globito Mi Equipo */}
+                    {alerts.team > 0 && (
+                        <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 text-white flex items-center justify-center rounded-full text-[9px] border-2 border-white shadow-sm">
+                            {alerts.team}
+                        </span>
+                    )}
                 </button>
             </div>
         ) : (
