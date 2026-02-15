@@ -10,6 +10,7 @@ import MainLayout from './layouts/MainLayout';
 import Home from './pages/Home';
 import Calendar from './pages/Calendar';
 import MyServices from './pages/MyServices';
+import HistoryPage from './pages/History'; // 👈 IMPORTANTE: Agrega esto
 import AppsHub from './pages/AppsHub';
 import Login from './pages/Login';
 import Profile from './pages/Profile';
@@ -71,6 +72,8 @@ function App() {
           <Route path="/calendario/:id" element={<EventDetails />} /> {/* ✅ NUEVA RUTA (Hija de calendario) */}
           
           <Route path="/servicios" element={<MyServices />} />
+          {/* 👇 AGREGA ESTA LÍNEA */}
+          <Route path="/historial" element={<HistoryPage />} />
           <Route path="/apps" element={<AppsHub />} />
           <Route path="/perfil" element={<Profile />} /> 
           <Route path="/directorio" element={<Directory />} />

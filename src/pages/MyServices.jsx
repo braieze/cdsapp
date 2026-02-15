@@ -93,7 +93,7 @@ export default function MyServices() {
   };
 
   const handleResponse = async (eventId, status) => {
-    if(!window.confirm(status === 'declined' ? "¿Seguro que no puedes asistir?" : "¿Confirmar asistencia?")) return;
+    if(!window.confirm(status === 'declined' ? "¿Seguro que no puedes asistir? Esto notificará a tu líder." : "¿Confirmar asistencia?")) return;
     try {
         const eventRef = doc(db, 'events', eventId);
         await updateDoc(eventRef, { [`confirmations.${currentUser.displayName}`]: status });
@@ -290,6 +290,13 @@ export default function MyServices() {
           </div>
       )}
 
+      {/* ✅ BOTÓN DE HISTORIAL FUNCIONAL */}
+      <button 
+        onClick={() => navigate('/historial')} 
+        className="w-full py-4 text-center text-xs font-bold text-slate-400 hover:text-brand-600 flex items-center justify-center gap-1"
+      >
+          <History size={14}/> Ver historial completo
+      </button>
     </div>
   );
 }
