@@ -9,16 +9,15 @@ import { es } from 'date-fns/locale';
 export default function MyServices() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('me'); // 'me' (Mis Turnos) | 'team' (Mi Equipo)
+  const [activeTab, setActiveTab] = useState('me'); // 'me' | 'team'
   
   // Datos
-  const [allEvents, setAllEvents] = useState([]);
   const [myEvents, setMyEvents] = useState([]);
   const [teamEvents, setTeamEvents] = useState([]);
   
   // Usuario
   const currentUser = auth.currentUser;
-  const [userData, setUserData] = useState(null);
+  const [userRole, setUserRole] = useState(null); // Guardamos solo el rol para simplificar
   const [stats, setStats] = useState({ monthCount: 0, lastServiceDate: null, nextServiceDays: null });
 
   // 1. CARGAR USUARIO Y EVENTOS
@@ -26,44 +25,46 @@ export default function MyServices() {
     const fetchData = async () => {
         if (!currentUser) return;
 
-        // A. Cargar Datos del Usuario (Rol y Área)
-        const userRef = doc(db, 'users', currentUser.uid);
-        const userSnap = await getDoc(userRef);
-        const uData = userSnap.exists() ? userSnap.data() : null;
-        setUserData(uData);
-
-        // B. Cargar Eventos
-        const q = query(collection(db, 'events'), orderBy('date', 'asc'));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const eventsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setAllEvents(eventsData);
-            
-            // FILTRO 1: MIS SERVICIOS (Personal)
-            const myAssignments = eventsData.filter(event => {
-                if (!event.assignments) return false;
-                return Object.values(event.assignments).some(peopleArray => 
-                    Array.isArray(peopleArray) && peopleArray.includes(currentUser.displayName)
-                );
-            });
-            setMyEvents(myAssignments);
-            calculateStats(myAssignments, currentUser.displayName);
-
-            // FILTRO 2: MI EQUIPO (Liderazgo)
-            if (uData && (uData.role === 'pastor' || uData.role === 'lider')) {
-                const team assignments = eventsData.filter(event => {
-                    // Si soy PASTOR, veo TODO lo futuro
-                    if (uData.role === 'pastor') return isFuture(new Date(event.date + 'T00:00:00'));
-                    
-                    // Si soy LÍDER, veo solo eventos que tengan gente de MI ÁREA asignada (Lógica simplificada: eventos futuros)
-                    // Podríamos refinar esto si los eventos tuvieran "area" explícita, pero por ahora mostramos futuros.
-                    return isFuture(new Date(event.date + 'T00:00:00'));
-                });
-                setTeamEvents(team assignments);
+        try {
+            // A. Cargar Rol del Usuario
+            const userRef = doc(db, 'users', currentUser.uid);
+            const userSnap = await getDoc(userRef);
+            let role = 'miembro';
+            if (userSnap.exists()) {
+                role = userSnap.data().role;
+                setUserRole(role);
+                console.log("Rol detectado:", role); // DEBUG
             }
 
+            // B. Cargar Eventos
+            const q = query(collection(db, 'events'), orderBy('date', 'asc'));
+            const unsubscribe = onSnapshot(q, (snapshot) => {
+                const eventsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                
+                // FILTRO 1: MIS SERVICIOS (Personal)
+                const myAssignments = eventsData.filter(event => {
+                    if (!event.assignments) return false;
+                    return Object.values(event.assignments).some(peopleArray => 
+                        Array.isArray(peopleArray) && peopleArray.includes(currentUser.displayName)
+                    );
+                });
+                setMyEvents(myAssignments);
+                calculateStats(myAssignments, currentUser.displayName);
+
+                // FILTRO 2: MI EQUIPO (Liderazgo)
+                // Si es Pastor o Lider, cargamos eventos futuros para monitorear
+                if (role === 'pastor' || role === 'lider') {
+                    const futureEvents = eventsData.filter(event => isFuture(new Date(event.date + 'T00:00:00')));
+                    setTeamEvents(futureEvents);
+                }
+
+                setLoading(false);
+            });
+            return () => unsubscribe();
+        } catch (error) {
+            console.error("Error cargando datos:", error);
             setLoading(false);
-        });
-        return () => unsubscribe();
+        }
     };
     fetchData();
   }, [currentUser]);
@@ -114,12 +115,11 @@ export default function MyServices() {
   };
 
   const getTeamStatus = (event) => {
-      // Calcula resumen para el líder: "¿Hay problemas en este evento?"
       let totalAssigned = 0;
       let totalDeclined = 0;
       let totalConfirmed = 0;
 
-      if (!event.assignments) return null;
+      if (!event.assignments) return { total: 0, confirmed: 0, declined: 0 };
 
       Object.values(event.assignments).flat().forEach(personName => {
           totalAssigned++;
@@ -133,7 +133,7 @@ export default function MyServices() {
 
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-brand-600"/></div>;
 
-  const isLeader = userData?.role === 'pastor' || userData?.role === 'lider';
+  const isLeader = userRole === 'pastor' || userRole === 'lider';
 
   return (
     <div className="pb-24 pt-6 px-4 bg-slate-50 min-h-screen animate-fade-in">
@@ -186,7 +186,7 @@ export default function MyServices() {
               {/* Pendientes */}
               {myEvents.filter(e => !isPast(new Date(e.date)) && (!e.confirmations || !e.confirmations[currentUser.displayName])).length > 0 && (
                   <div className="mb-8">
-                      <h2 className="text-sm font-black text-slate-800 uppercase tracking-wide mb-3 flex items-center gap-2"><AlertCircle size={16} className="text-amber-500"/> Pendientes</h2>
+                      <h2 className="text-sm font-black text-slate-800 uppercase tracking-wide mb-3 flex items-center gap-2"><AlertCircle size={16} className="text-amber-500"/> Requiere tu atención</h2>
                       <div className="space-y-3">
                           {myEvents.filter(e => !isPast(new Date(e.date)) && (!e.confirmations || !e.confirmations[currentUser.displayName])).map(event => (
                               <div key={event.id} className="bg-slate-900 rounded-2xl p-5 text-white shadow-xl shadow-slate-900/20 relative overflow-hidden">
@@ -261,10 +261,10 @@ export default function MyServices() {
               <div className="space-y-4">
                   {teamEvents.length === 0 ? <p className="text-center text-slate-400 text-sm">No hay eventos futuros programados.</p> : teamEvents.map(event => {
                       const status = getTeamStatus(event);
-                      if (!status || status.total === 0) return null; // No mostrar si no hay nadie asignado
+                      if (!status || status.total === 0) return null; 
 
                       const hasIssues = status.declined > 0;
-                      const progress = Math.round(((status.confirmed + status.declined) / status.total) * 100);
+                      const progress = status.total > 0 ? Math.round(((status.confirmed + status.declined) / status.total) * 100) : 0;
 
                       return (
                           <div key={event.id} onClick={() => navigate(`/calendario/${event.id}`)} className={`bg-white p-4 rounded-2xl border shadow-sm cursor-pointer transition-all hover:shadow-md ${hasIssues ? 'border-red-200 bg-red-50/30' : 'border-slate-100'}`}>
@@ -276,7 +276,6 @@ export default function MyServices() {
                                   {hasIssues && <div className="bg-red-100 text-red-600 px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1"><ShieldAlert size={12}/> {status.declined} Baja(s)</div>}
                               </div>
 
-                              {/* Barra de Progreso */}
                               <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mb-2">
                                   <div className={`h-full rounded-full transition-all duration-500 ${hasIssues ? 'bg-amber-400' : 'bg-brand-500'}`} style={{ width: `${progress}%` }}></div>
                               </div>
