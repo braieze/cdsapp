@@ -17,7 +17,7 @@ export default function TopBar({ title, subtitle }) {
   
   const currentUser = auth.currentUser;
 
-  // 1. Obtener Datos y LEÍDOS desde FIREBASE (Sincronización Real)
+  // 1. Obtener Datos y LEÍDOS desde FIREBASE
   useEffect(() => {
     if (!currentUser) return;
     
@@ -26,14 +26,13 @@ export default function TopBar({ title, subtitle }) {
         if (docSnap.exists()) {
             const data = docSnap.data();
             setUserRole(data.role || 'miembro');
-            // ✅ Aquí traemos lo que ya viste desde la nube
             setReadIds(data.readNotifications || []); 
         }
     });
     return () => unsubscribe();
   }, [currentUser]);
 
-  // 2. Generar Notificaciones (Igual que antes pero con fuentes)
+  // 2. Generar Notificaciones
   useEffect(() => {
     if (!currentUser) return;
 
@@ -128,19 +127,25 @@ export default function TopBar({ title, subtitle }) {
     return () => unsubscribes.forEach(u => u());
   }, [currentUser, userRole]);
 
-  // Contar no leídos usando el array de Firebase
+  // 3. CALCULAR NO LEÍDOS Y ACTUALIZAR INSIGNIA DEL CELULAR (APP BADGE) 🔴
   useEffect(() => {
       const unread = notifications.filter(n => !readIds.includes(n.id)).length;
       setUnreadCount(unread);
+
+      // 🔥 LÓGICA DE BADGING API 🔥
+      if ('setAppBadge' in navigator) {
+          if (unread > 0) {
+              navigator.setAppBadge(unread).catch((e) => console.log("Error poniendo badge:", e));
+          } else {
+              navigator.clearAppBadge().catch((e) => console.log("Error limpiando badge:", e));
+          }
+      }
   }, [notifications, readIds]);
 
-  // ✅ MARCAR COMO LEÍDO EN LA NUBE
+  // MARCAR COMO LEÍDO
   const handleNotifClick = async (notif) => {
     if (!readIds.includes(notif.id)) {
-        // Actualizamos UI inmediatamente (Optimistic)
         setReadIds(prev => [...prev, notif.id]);
-        
-        // Guardamos en Firebase
         const userRef = doc(db, 'users', currentUser.uid);
         try {
             await updateDoc(userRef, {
