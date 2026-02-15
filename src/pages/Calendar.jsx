@@ -14,6 +14,10 @@ export default function CalendarPage() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // MODAL PARA VER EVENTOS DE UN DÍA ESPECÍFICO (VISTA CALENDARIO)
+  const [selectedDayEvents, setSelectedDayEvents] = useState(null); 
+
   const [currentDate, setCurrentDate] = useState(new Date());
   const [userRole, setUserRole] = useState(null);
 
@@ -53,7 +57,6 @@ export default function CalendarPage() {
   const prevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const isCurrentMonth = isSameMonth(new Date(), currentDate);
   
-  // Filtro de eventos para la lista (solo mes actual)
   const filteredEvents = events.filter(event => {
     const eventDate = new Date(event.date + 'T00:00:00'); 
     return isSameMonth(eventDate, currentDate);
@@ -134,7 +137,6 @@ export default function CalendarPage() {
     if(window.confirm("¿Borrar evento?")) await deleteDoc(doc(db, 'events', id));
   }
 
-  // --- VISTA LISTA ---
   const renderListView = () => {
     if (filteredEvents.length === 0) {
       return (
@@ -177,27 +179,22 @@ export default function CalendarPage() {
     );
   };
 
-  // --- VISTA MENSUAL (REAL) ---
+  // --- VISTA MENSUAL MEJORADA (CON MODAL DE DÍA) ---
   const renderMonthView = () => {
-    // Calculamos inicio y fin del mes, y luego inicio y fin de la semana para completar la grilla
-    const start = startOfWeek(startOfMonth(currentDate), { weekStartsOn: 0 }); // 0 = Domingo
+    const start = startOfWeek(startOfMonth(currentDate), { weekStartsOn: 0 });
     const end = endOfWeek(endOfMonth(currentDate), { weekStartsOn: 0 });
     const days = eachDayOfInterval({ start, end });
-
     const weekDays = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
     return (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 animate-fade-in">
-            {/* Cabecera Dias */}
             <div className="grid grid-cols-7 mb-2 border-b border-slate-50 pb-2">
                 {weekDays.map(day => <div key={day} className="text-center text-[10px] font-bold text-slate-400 uppercase">{day}</div>)}
             </div>
-            {/* Grilla */}
             <div className="grid grid-cols-7 gap-1">
                 {days.map(day => {
                     const isToday = isSameDay(day, new Date());
                     const isCurrentMonthDay = isSameMonth(day, currentDate);
-                    // Buscamos eventos que caigan en este día
                     const dayEvents = events.filter(e => isSameDay(new Date(e.date + 'T00:00:00'), day));
                     const hasEvents = dayEvents.length > 0;
 
@@ -206,18 +203,20 @@ export default function CalendarPage() {
                             key={day.toString()} 
                             className={`aspect-square rounded-xl flex flex-col items-center justify-center relative cursor-pointer transition-all border border-transparent
                                 ${!isCurrentMonthDay ? 'text-slate-200' : 'text-slate-700'}
-                                ${isToday ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/20' : 'hover:bg-slate-50'}
+                                ${isToday ? 'bg-slate-900 text-white shadow-lg' : 'hover:bg-slate-50'}
                                 ${hasEvents && !isToday && isCurrentMonthDay ? 'bg-brand-50 font-bold text-brand-700' : ''}
                             `}
                             onClick={() => {
-                                if (hasEvents) navigate(`/calendario/${dayEvents[0].id}`); // Navega al primer evento si hay
+                                if (hasEvents) {
+                                    // Si hay más de 1 evento, o solo 1 pero queremos consistencia, abrimos el modal
+                                    setSelectedDayEvents({ date: day, events: dayEvents });
+                                }
                             }}
                         >
                             <span className="text-xs font-medium">{format(day, 'd')}</span>
-                            
-                            {/* Puntitos indicadores de eventos */}
+                            {/* Puntitos de eventos */}
                             <div className="flex gap-0.5 mt-1 h-1.5">
-                                {dayEvents.slice(0, 3).map((ev, i) => { // Max 3 puntitos
+                                {dayEvents.slice(0, 3).map((ev, i) => {
                                     const TypeConfig = EVENT_TYPES[ev.type] || EVENT_TYPES.culto;
                                     return <div key={i} className={`w-1 h-1 rounded-full ${TypeConfig.dot.replace('bg-', 'bg-')}`}></div>
                                 })}
@@ -257,7 +256,33 @@ export default function CalendarPage() {
         </button>
       )}
 
-      {/* MODAL CORREGIDO: CENTRADO Y SCROLL */}
+      {/* MODAL DEL DÍA (CUANDO HACES CLIC EN UN DÍA DEL CALENDARIO) */}
+      {selectedDayEvents && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedDayEvents(null)}>
+            <div className="bg-white w-full max-w-sm rounded-2xl p-5 animate-slide-up relative shadow-2xl" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-bold text-lg text-slate-800 capitalize">{format(selectedDayEvents.date, 'EEEE d MMMM', {locale: es})}</h3>
+                    <button onClick={() => setSelectedDayEvents(null)} className="p-2 hover:bg-slate-100 rounded-full"><X size={20}/></button>
+                </div>
+                <div className="space-y-3 max-h-[60vh] overflow-y-auto">
+                    {selectedDayEvents.events.map(event => {
+                        const TypeConfig = EVENT_TYPES[event.type] || EVENT_TYPES.culto;
+                        return (
+                            <div key={event.id} onClick={() => navigate(`/calendario/${event.id}`)} className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-center gap-3 cursor-pointer hover:bg-slate-100">
+                                <div className={`p-2 rounded-lg ${TypeConfig.color} bg-opacity-20`}><TypeConfig.icon size={20}/></div>
+                                <div>
+                                    <h4 className="font-bold text-sm text-slate-800">{event.title}</h4>
+                                    <p className="text-xs text-slate-500">{event.time} hs</p>
+                                </div>
+                            </div>
+                        )
+                    })}
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* MODAL NUEVO EVENTO (CENTRADO) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
             <div className="bg-white w-full max-w-sm rounded-2xl p-5 animate-slide-up relative shadow-2xl max-h-[90vh] overflow-y-auto flex flex-col">
