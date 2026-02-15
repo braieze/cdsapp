@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
-import { auth, db } from '../firebase'; // <-- ¡Añadimos db aquí!
+import { useNavigate } from 'react-router-dom'; // <--- Importante para redirigir
+import { auth, db } from '../firebase';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'; // <-- Herramientas de base de datos
-import { Calendar, MessageSquare, Briefcase, ChevronRight, Flame } from 'lucide-react';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { Calendar, MessageSquare, Briefcase, ChevronRight, Flame, Loader2 } from 'lucide-react';
 
 export default function Login() {
+  const navigate = useNavigate(); // Hook de navegación
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [loading, setLoading] = useState(false); // Estado de carga
 
   const features = [
     {
@@ -41,34 +44,43 @@ export default function Login() {
     return () => clearInterval(timer);
   }, [features.length]);
 
-  // 🔥 LA MAGIA OCURRE AQUÍ 🔥
+  // 🔥 LA LÓGICA DE REGISTRO BLINDADA 🔥
   const handleGoogleLogin = async () => {
+    setLoading(true); // Bloqueamos botón
     const provider = new GoogleAuthProvider();
+    
     try {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
 
-      // 1. Buscamos si este usuario ya tiene una "ficha" en la colección 'users'
+      // 1. Buscamos si existe
       const userRef = doc(db, 'users', user.uid);
       const userSnap = await getDoc(userRef);
 
-      // 2. Si no existe (es su primera vez entrando a la app)
+      // 2. Si NO existe, creamos la ficha COMPLETA (necesaria para el Directorio)
       if (!userSnap.exists()) {
         await setDoc(userRef, {
-          uid: user.uid,
-          name: user.displayName,
+          displayName: user.displayName, // Usamos displayName estándar
           email: user.email,
           photoURL: user.photoURL,
-          role: 'miembro', // <-- El rol por defecto para todos
-          createdAt: serverTimestamp() // Guarda la fecha y hora exacta
+          role: 'miembro',
+          area: 'ninguna',
+          phone: '',      // Campo vacío para evitar error en Directorio
+          address: '',    // Campo vacío para evitar error en Directorio
+          birthday: '',   // Campo vacío para evitar error en Directorio
+          createdAt: serverTimestamp()
         });
-        console.log("¡Ficha de usuario creada en Firestore!");
-      } else {
-        console.log("El usuario ya existe. Bienvenido de vuelta.");
+        console.log("¡Usuario nuevo registrado correctamente!");
       }
+
+      // 3. Redirigimos al Home
+      navigate('/'); 
 
     } catch (error) {
       console.error("Error al iniciar sesión:", error);
+      alert("Hubo un error al intentar ingresar.");
+    } finally {
+      setLoading(false); // Desbloqueamos botón
     }
   };
 
@@ -130,7 +142,7 @@ export default function Login() {
           </div>
 
           <h1 className="text-3xl font-extrabold text-white mb-2 tracking-tight">
-            Ministerio CDS
+            Servidores CDS
           </h1>
           <p className="text-[14px] font-medium text-slate-300 mb-8 max-w-[260px] leading-relaxed">
             La unción de esta casa te da la bienvenida
@@ -138,13 +150,21 @@ export default function Login() {
 
           <button 
             onClick={handleGoogleLogin}
-            className="w-full bg-white text-[#0a0f0d] font-bold py-4 px-6 rounded-full flex items-center justify-between active:scale-95 transition-all shadow-[0_0_40px_-15px_rgba(255,255,255,0.3)] hover:bg-slate-50 group"
+            disabled={loading}
+            className="w-full bg-white text-[#0a0f0d] font-bold py-4 px-6 rounded-full flex items-center justify-center gap-3 active:scale-95 transition-all shadow-[0_0_40px_-15px_rgba(255,255,255,0.3)] hover:bg-slate-50 disabled:opacity-80 disabled:scale-100 group"
           >
-            <div className="flex items-center gap-3">
-              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
-              <span className="text-[15px]">Continuar con Google</span>
-            </div>
-            <ChevronRight size={18} className="text-slate-400 group-hover:text-[#0a0f0d] transition-colors" />
+            {loading ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin text-[#0a0f0d]" />
+                <span className="text-[15px]">Ingresando...</span>
+              </>
+            ) : (
+              <>
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
+                <span className="text-[15px]">Continuar con Google</span>
+                <ChevronRight size={18} className="text-slate-400 group-hover:text-[#0a0f0d] transition-colors absolute right-6" />
+              </>
+            )}
           </button>
         </div>
 
