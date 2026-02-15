@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom'; 
-import { Cake, BookOpen, Pin, Link as LinkIcon, ExternalLink, MessageCircle, MoreVertical, X, Edit3, Trash2, PlusCircle, AlertTriangle, Calendar, Heart } from 'lucide-react';
+// ✅ CORRECCIÓN: Agregué 'Send' a los imports
+import { Cake, BookOpen, Pin, Link as LinkIcon, ExternalLink, MessageCircle, MoreVertical, X, Edit3, Trash2, PlusCircle, AlertTriangle, Calendar, Heart, Send } from 'lucide-react';
 import CreatePostModal from '../components/CreatePostModal';
 import TopBar from '../components/TopBar'; 
 import BirthdayModal from '../components/BirthdayModal';
 import { db, auth } from '../firebase';
 import { collection, query, orderBy, onSnapshot, deleteDoc, doc, updateDoc, limit, addDoc, serverTimestamp } from 'firebase/firestore';
 
-// --- SKELETON LOADER (Carga Suave) ---
+// --- SKELETON LOADER ---
 const PostSkeleton = () => (
   <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm animate-pulse mb-4">
     <div className="flex gap-3 mb-4">
@@ -25,7 +26,7 @@ const PostSkeleton = () => (
   </div>
 );
 
-// --- EMPTY STATE (Sin Datos) ---
+// --- EMPTY STATE ---
 const EmptyState = () => (
   <div className="text-center py-16 px-6 flex flex-col items-center opacity-60">
     <div className="bg-slate-100 p-6 rounded-full mb-4">
@@ -204,7 +205,6 @@ export default function Home() {
       {/* FEED */}
       <div className="space-y-6 px-0 sm:px-4 mt-2">
         {loading ? (
-            // Skeleton Loading State
             <div className="px-4">
                 <PostSkeleton />
                 <PostSkeleton />
@@ -371,7 +371,7 @@ export default function Home() {
         </button>
       )}
 
-      {/* MODALES - TODOS CON z-50 y CENTRADO CORRECTO */}
+      {/* MODALES */}
       <CreatePostModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} postToEdit={editingPost} />
       {fullImage && <ImageModal src={fullImage} onClose={() => setFullImage(null)} />}
       
@@ -416,7 +416,7 @@ function CommentPreview({ postId, onClick }) {
   const [previewComments, setPreviewComments] = useState([]);
   
   useEffect(() => {
-    if (!postId) return; // 🛡️ PROTECCIÓN CONTRA BUG
+    if (!postId) return; 
     
     const q = query(collection(db, `posts/${postId}/comments`), orderBy('createdAt', 'desc'), limit(2));
     const unsubscribe = onSnapshot(q, (snap) => setPreviewComments(snap.docs.map(d => d.data())));
@@ -461,7 +461,7 @@ function PostDetailModal({ post, currentUser, onClose }) {
   const [comments, setComments] = useState([]);
   
   useEffect(() => { 
-      if (!post?.id) return; // 🛡️ PROTECCIÓN CRÍTICA
+      if (!post?.id) return;
       
       const q = query(collection(db, `posts/${post.id}/comments`), orderBy('createdAt', 'desc')); 
       return onSnapshot(q, (snap) => setComments(snap.docs.map(d => ({ id: d.id, ...d.data() })))); 
@@ -470,7 +470,7 @@ function PostDetailModal({ post, currentUser, onClose }) {
   const sendComment = async () => { if(!commentText.trim()) return; await addDoc(collection(db, `posts/${post.id}/comments`), { text: commentText, uid: currentUser.uid, name: currentUser.displayName, photo: currentUser.photoURL, createdAt: serverTimestamp() }); setCommentText(''); };
   const deleteComment = async (id) => { if(confirm('Borrar comentario?')) await deleteDoc(doc(db, `posts/${post.id}/comments`, id)); };
   
-  if (!post) return null; // 🛡️ PROTECCIÓN
+  if (!post) return null;
 
   return (
     <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center animate-fade-in" onClick={onClose}>
