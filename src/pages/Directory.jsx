@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { db, auth } from '../firebase';
-import { collection, query, onSnapshot, doc, updateDoc, addDoc, serverTimestamp, getDoc, setDoc } from 'firebase/firestore';
-import { Search, Shield, Briefcase, Camera, Loader2, Save, X, Phone, UserPlus, MapPin, Calendar as CalendarIcon, Mail } from 'lucide-react';
+import { collection, query, onSnapshot, doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { Search, Shield, Briefcase, Camera, Loader2, Save, X, Phone, UserPlus, MapPin, Calendar as CalendarIcon, Mail, CheckCircle, AlertCircle } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 
 export default function Directory() {
@@ -9,42 +9,44 @@ export default function Directory() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   
-  // Estado para el modal de edición/visualización
+  // Estados para edición/visualización
   const [editingUser, setEditingUser] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
   const [uploading, setUploading] = useState(false);
+  
+  // Estados de Feedback (Para no usar alerts feos)
+  const [saveStatus, setSaveStatus] = useState('idle'); // 'idle' | 'saving' | 'success' | 'error'
+  const [errorMessage, setErrorMessage] = useState('');
 
-  // Nuevo Usuario (Manual)
+  // Nuevo Usuario
   const [newUser, setNewUser] = useState({ displayName: '', role: 'miembro', area: 'ninguna', phone: '' });
 
   const CLOUD_NAME = "djmkggzjp"; 
   const UPLOAD_PRESET = "ml_default"; 
 
-  // 1. Cargar Usuarios (MODIFICADO PARA LEER TODO)
+  // 1. Cargar Usuarios
   useEffect(() => {
-    // Quitamos 'orderBy' por ahora para evitar que oculte usuarios sin el campo exacto
     const q = query(collection(db, 'users'));
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const usersData = snapshot.docs.map(doc => {
         const data = doc.data();
-        // 🔥 TRUCO: Normalizamos el nombre aquí mismo
         return { 
           id: doc.id, 
           ...data,
-          // Si tiene displayName usalo, si no usa name, si no "Sin Nombre"
+          // Normalizamos el nombre para evitar fallos
           finalName: data.displayName || data.name || 'Sin Nombre' 
         };
       });
 
-      // Ordenamos manualmente aquí (es más seguro cuando los campos son mezclados)
+      // Ordenar alfabéticamente
       usersData.sort((a, b) => a.finalName.localeCompare(b.finalName));
 
       setUsers(usersData);
       setLoading(false);
     });
 
-    // Verificación de seguridad (Autocrecación)
+    // Verificación de seguridad (Autocreación del Pastor si no existe)
     const checkMyself = async () => {
       const currentUser = auth.currentUser;
       if (currentUser) {
@@ -67,24 +69,37 @@ export default function Directory() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Guardar
+  // 2. Guardar TODOS los datos (BLINDADO)
   const handleSaveUser = async () => {
     if (!editingUser) return;
+    setSaveStatus('saving'); // Mostramos "Guardando..."
+
     try {
       const userRef = doc(db, 'users', editingUser.id);
-      await updateDoc(userRef, {
-        displayName: editingUser.finalName, // Guardamos siempre como displayName para estandarizar
-        role: editingUser.role,
-        area: editingUser.area,
+      
+      // Usamos setDoc con merge: true (Es más seguro que updateDoc)
+      await setDoc(userRef, {
+        displayName: editingUser.finalName, // Estandarizamos a displayName
+        name: editingUser.finalName,        // Mantenemos name por compatibilidad
+        role: editingUser.role || 'miembro',
+        area: editingUser.area || 'ninguna',
         phone: editingUser.phone || '',
         address: editingUser.address || '',
         birthday: editingUser.birthday || '',
-      });
-      setEditingUser(null);
-      alert("✅ Datos actualizados correctamente");
+      }, { merge: true });
+
+      setSaveStatus('success'); // Mostramos tick verde
+      
+      // Cerramos el modal después de 1.5 segundos
+      setTimeout(() => {
+        setEditingUser(null);
+        setSaveStatus('idle');
+      }, 1500);
+
     } catch (error) {
       console.error(error);
-      alert("Error al actualizar");
+      setSaveStatus('error');
+      setErrorMessage(error.message); // Mostramos el error real en consola/UI
     }
   };
 
@@ -92,17 +107,21 @@ export default function Directory() {
   const handleCreateUser = async () => {
     if (!newUser.displayName.trim()) return alert("El nombre es obligatorio");
     try {
-      await addDoc(collection(db, 'users'), {
-        ...newUser, // Esto usa displayName
+      // Creamos referencia con ID automático
+      const newRef = doc(collection(db, 'users'));
+      await setDoc(newRef, {
+        ...newUser,
+        displayName: newUser.displayName,
+        name: newUser.displayName,
         email: 'registrado_manualmente', 
         photoURL: null,
         createdAt: serverTimestamp()
       });
       setIsCreating(false);
       setNewUser({ displayName: '', role: 'miembro', area: 'ninguna', phone: '' });
-      alert("Miembro agregado");
     } catch (error) {
       console.error(error);
+      alert("Error al crear: " + error.message);
     }
   };
 
@@ -123,7 +142,7 @@ export default function Directory() {
 
       if (data.secure_url) {
         const userRef = doc(db, 'users', editingUser.id);
-        await updateDoc(userRef, { photoURL: data.secure_url });
+        await setDoc(userRef, { photoURL: data.secure_url }, { merge: true });
         setEditingUser({ ...editingUser, photoURL: data.secure_url });
       }
     } catch (error) {
@@ -134,7 +153,6 @@ export default function Directory() {
     }
   };
 
-  // Filtrado usando el nombre normalizado
   const filteredUsers = users.filter(u => 
     u.finalName.toLowerCase().includes(search.toLowerCase())
   );
@@ -164,7 +182,7 @@ export default function Directory() {
         {filteredUsers.map(user => (
           <div 
             key={user.id} 
-            onClick={() => setEditingUser(user)}
+            onClick={() => { setEditingUser(user); setSaveStatus('idle'); }}
             className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm flex items-center gap-3 cursor-pointer hover:bg-slate-50 transition-colors active:scale-95"
           >
             <img 
@@ -173,7 +191,6 @@ export default function Directory() {
               alt={user.finalName}
             />
             <div className="flex-1">
-              {/* Aquí usamos finalName que sirve para ambos casos */}
               <h3 className="font-bold text-slate-800 text-sm">{user.finalName}</h3>
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-[10px] bg-brand-50 text-brand-700 px-2 py-0.5 rounded-md font-bold uppercase">{user.role || 'miembro'}</span>
@@ -196,6 +213,7 @@ export default function Directory() {
         <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white w-full max-w-sm rounded-2xl animate-slide-up relative flex flex-col max-h-[90vh] shadow-2xl overflow-hidden">
             
+            {/* Cabecera */}
             <div className="relative h-32 bg-gradient-to-r from-brand-600 to-purple-600 rounded-t-2xl flex-shrink-0">
                <button onClick={() => setEditingUser(null)} className="absolute top-3 right-3 p-2 bg-black/20 text-white hover:bg-black/40 rounded-full backdrop-blur-sm z-10"><X size={20}/></button>
                <div className="absolute -bottom-10 left-0 right-0 flex justify-center">
@@ -209,12 +227,13 @@ export default function Directory() {
                </div>
             </div>
 
+            {/* Cuerpo */}
             <div className="pt-12 px-5 pb-5 overflow-y-auto">
               
               <div className="text-center mb-6">
                 <input 
                   type="text" 
-                  value={editingUser.finalName} // Usamos finalName
+                  value={editingUser.finalName} 
                   onChange={(e) => setEditingUser({...editingUser, finalName: e.target.value})}
                   className="text-xl font-black text-slate-800 text-center w-full bg-transparent border-b border-transparent focus:border-brand-500 outline-none pb-1"
                 />
@@ -303,12 +322,26 @@ export default function Directory() {
                   </div>
                 </div>
 
+                {/* BOTÓN DE GUARDADO INTELIGENTE */}
                 <button 
                   onClick={handleSaveUser}
-                  className="w-full bg-brand-600 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 mt-6 shadow-md shadow-brand-200 hover:bg-brand-700 active:scale-95 transition-all"
+                  disabled={saveStatus !== 'idle' && saveStatus !== 'error'}
+                  className={`w-full font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 mt-6 shadow-md transition-all duration-300
+                    ${saveStatus === 'success' ? 'bg-green-500 text-white' : ''}
+                    ${saveStatus === 'error' ? 'bg-red-500 text-white' : ''}
+                    ${saveStatus === 'idle' ? 'bg-brand-600 text-white hover:bg-brand-700 active:scale-95 shadow-brand-200' : ''}
+                  `}
                 >
-                  <Save size={18}/> Guardar Ficha
+                  {saveStatus === 'idle' && <><Save size={18}/> Guardar Ficha</>}
+                  {saveStatus === 'saving' && <><Loader2 size={18} className="animate-spin"/> Guardando...</>}
+                  {saveStatus === 'success' && <><CheckCircle size={18}/> ¡Guardado!</>}
+                  {saveStatus === 'error' && <><AlertCircle size={18}/> Error (Reintentar)</>}
                 </button>
+                
+                {/* Mensaje de error detallado (solo si falla) */}
+                {saveStatus === 'error' && (
+                   <p className="text-xs text-red-500 text-center font-bold">{errorMessage}</p>
+                )}
               </div>
 
             </div>
