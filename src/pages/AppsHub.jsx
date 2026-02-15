@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 export default function AppsHub() {
   
   const handleRefresh = () => {
-    // Esta pequeña líneaaaaa hace la magia: recarga la página ignorando el caché
+    // Esta pequeña línea hace la magia: recarga la página ignorando el caché
     window.location.reload();
   };
 
@@ -12,9 +12,14 @@ export default function AppsHub() {
     // ✅ FUNCIONALES
     { id: 'directorio', name: 'Directorio', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50', path: '/directorio' },
     { id: 'calendario', name: 'Calendario', icon: Calendar, color: 'text-orange-600', bg: 'bg-orange-50', path: '/calendario' },
-    { id: 'servicios', name: 'Mis Servicios', icon: Briefcase, color: 'text-purple-600', bg: 'bg-purple-50', path: '/servicios' },
     
-    // 🔄 BOTÓN DE ACTUALIZAR (Nuevo)
+    // 💼 GESTIÓN DIARIA
+    { id: 'servicios', name: 'Mis Servicios', icon: Briefcase, color: 'text-purple-600', bg: 'bg-purple-50', path: '/mis-servicios' },
+    
+    // 📜 HISTORIAL (Nuevo acceso directo)
+    { id: 'historial', name: 'Historial', icon: History, color: 'text-indigo-600', bg: 'bg-indigo-50', path: '/historial' },
+    
+    // 🔄 BOTÓN DE ACTUALIZAR
     { id: 'refresh', name: 'Actualizar App', icon: RefreshCw, color: 'text-slate-600', bg: 'bg-slate-100', isAction: true },
 
     // 🚧 FUTURAS
@@ -34,7 +39,7 @@ export default function AppsHub() {
           <p className="text-sm text-slate-500 mt-1 font-medium">Todas las herramientas</p>
         </div>
         {/* Un pequeño indicador de versión opcional */}
-        <span className="text-[10px] text-slate-300 font-bold uppercase tracking-widest">v1.0</span>
+        <span className="text-[10px] text-slate-300 font-bold uppercase tracking-widest">v1.1</span>
       </div>
 
       {/* 📱 Cuadrícula de Apps */}
