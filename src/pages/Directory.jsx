@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { db } from '../firebase';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
-import { Search, Shield, Briefcase, Camera, Loader2, Save, X, Phone, UserPlus, Trash2 } from 'lucide-react';
+import { db, auth } from '../firebase';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, serverTimestamp, getDoc, setDoc } from 'firebase/firestore';
+import { Search, Shield, Briefcase, Camera, Loader2, Save, X, Phone, UserPlus, MapPin, Calendar as CalendarIcon, Mail } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 
 export default function Directory() {
@@ -9,50 +9,76 @@ export default function Directory() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   
-  // Estado para editar o crear
+  // Estado para el modal de edición/visualización
   const [editingUser, setEditingUser] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  // Estados para nuevo usuario
+  // Nuevo Usuario (Manual)
   const [newUser, setNewUser] = useState({ displayName: '', role: 'miembro', area: 'ninguna', phone: '' });
 
+  // Configuración de Cloudinary
   const CLOUD_NAME = "djmkggzjp"; 
   const UPLOAD_PRESET = "ml_default"; 
 
   // 1. Cargar Usuarios
   useEffect(() => {
+    // A. Escuchar la lista de usuarios
     const q = query(collection(db, 'users'), orderBy('displayName'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setUsers(usersData);
       setLoading(false);
     });
+
+    // B. Verificación de seguridad: Asegurar que YO (el pastor) estoy en la lista
+    const checkMyself = async () => {
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        const myRef = doc(db, 'users', currentUser.uid);
+        const mySnap = await getDoc(myRef);
+        if (!mySnap.exists()) {
+          // Si no existo, me creo ahora mismo
+          await setDoc(myRef, {
+            displayName: currentUser.displayName,
+            email: currentUser.email,
+            photoURL: currentUser.photoURL,
+            role: 'pastor', 
+            area: 'ninguna',
+            createdAt: serverTimestamp()
+          });
+        }
+      }
+    };
+    checkMyself();
+
     return () => unsubscribe();
   }, []);
 
-  // 2. Guardar CAMBIOS (Edición)
+  // 2. Guardar TODOS los datos (Rol, Área, Teléfono, Dirección, Cumple)
   const handleSaveUser = async () => {
     if (!editingUser) return;
     try {
       const userRef = doc(db, 'users', editingUser.id);
       await updateDoc(userRef, {
+        displayName: editingUser.displayName,
         role: editingUser.role,
         area: editingUser.area,
-        phone: editingUser.phone || ''
+        phone: editingUser.phone || '',
+        address: editingUser.address || '',
+        birthday: editingUser.birthday || '', // Formato YYYY-MM-DD
       });
       setEditingUser(null);
-      alert("Datos actualizados");
+      alert("✅ Datos actualizados correctamente");
     } catch (error) {
       console.error(error);
       alert("Error al actualizar");
     }
   };
 
-  // 3. Crear NUEVO Miembro
+  // 3. Crear Usuario Manualmente
   const handleCreateUser = async () => {
     if (!newUser.displayName.trim()) return alert("El nombre es obligatorio");
-    
     try {
       await addDoc(collection(db, 'users'), {
         ...newUser,
@@ -62,10 +88,9 @@ export default function Directory() {
       });
       setIsCreating(false);
       setNewUser({ displayName: '', role: 'miembro', area: 'ninguna', phone: '' });
-      alert("¡Miembro agregado con éxito!");
+      alert("Miembro agregado");
     } catch (error) {
       console.error(error);
-      alert("Error al crear miembro");
     }
   };
 
@@ -74,11 +99,9 @@ export default function Directory() {
     const file = e.target.files[0];
     if (!file) return;
     setUploading(true);
-
     try {
       const options = { maxSizeMB: 0.5, maxWidthOrHeight: 800, useWebWorker: true };
       const compressedFile = await imageCompression(file, options);
-
       const formData = new FormData();
       formData.append("file", compressedFile);
       formData.append("upload_preset", UPLOAD_PRESET);
@@ -129,7 +152,7 @@ export default function Directory() {
           <div 
             key={user.id} 
             onClick={() => setEditingUser(user)}
-            className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm flex items-center gap-3 cursor-pointer hover:bg-slate-50 transition-colors"
+            className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm flex items-center gap-3 cursor-pointer hover:bg-slate-50 transition-colors active:scale-95"
           >
             <img 
               src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}&background=random`} 
@@ -140,14 +163,14 @@ export default function Directory() {
               <h3 className="font-bold text-slate-800 text-sm">{user.displayName}</h3>
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-[10px] bg-brand-50 text-brand-700 px-2 py-0.5 rounded-md font-bold uppercase">{user.role}</span>
-                {user.area !== 'ninguna' && <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-medium capitalize">{user.area}</span>}
+                {user.area !== 'ninguna' && user.area && <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-medium capitalize">{user.area}</span>}
               </div>
             </div>
           </div>
         ))}
       </div>
 
-      {/* BOTÓN FLOTANTE: AGREGAR MIEMBRO */}
+      {/* BOTÓN FLOTANTE: AGREGAR */}
       <button 
         onClick={() => setIsCreating(true)}
         className="fixed bottom-24 right-4 w-14 h-14 bg-brand-600 hover:bg-brand-700 text-white rounded-full shadow-lg shadow-brand-500/40 flex items-center justify-center transition-transform hover:scale-105 active:scale-95 z-40"
@@ -155,61 +178,144 @@ export default function Directory() {
         <UserPlus size={28} />
       </button>
 
-      {/* --- MODAL 1: EDICIÓN DE MIEMBRO (CENTRADO Y Z-60) --- */}
+      {/* --- MODAL DE FICHA COMPLETA (EDICIÓN) --- */}
       {editingUser && (
         <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white w-full max-w-sm rounded-2xl p-5 animate-slide-up relative max-h-[85vh] overflow-y-auto shadow-2xl">
-            <button onClick={() => setEditingUser(null)} className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-full"><X size={20}/></button>
+          <div className="bg-white w-full max-w-sm rounded-2xl animate-slide-up relative flex flex-col max-h-[90vh] shadow-2xl overflow-hidden">
             
-            <div className="flex flex-col items-center mb-6">
-              <div className="relative mb-3 group">
-                <img src={editingUser.photoURL || `https://ui-avatars.com/api/?name=${editingUser.displayName}&background=random`} className="w-24 h-24 rounded-full object-cover border-4 border-slate-50 shadow-md" />
-                <label className="absolute bottom-0 right-0 bg-brand-600 text-white p-2 rounded-full cursor-pointer hover:bg-brand-700 shadow-sm active:scale-95">
-                  {uploading ? <Loader2 size={16} className="animate-spin"/> : <Camera size={16}/>}
-                  <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={uploading}/>
-                </label>
-              </div>
-              <h2 className="text-xl font-bold text-slate-800 text-center">{editingUser.displayName}</h2>
-              
-              <div className="flex items-center gap-2 mt-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100 w-full">
-                <Phone size={14} className="text-slate-400"/>
-                <input 
-                  type="text" 
-                  value={editingUser.phone || ''}
-                  onChange={(e) => setEditingUser({...editingUser, phone: e.target.value})}
-                  placeholder="Teléfono"
-                  className="bg-transparent text-sm w-full outline-none"
-                />
-              </div>
+            {/* Cabecera del Modal con Foto */}
+            <div className="relative h-32 bg-gradient-to-r from-brand-600 to-purple-600 rounded-t-2xl flex-shrink-0">
+               <button onClick={() => setEditingUser(null)} className="absolute top-3 right-3 p-2 bg-black/20 text-white hover:bg-black/40 rounded-full backdrop-blur-sm z-10"><X size={20}/></button>
+               <div className="absolute -bottom-10 left-0 right-0 flex justify-center">
+                  <div className="relative group">
+                    <img src={editingUser.photoURL || `https://ui-avatars.com/api/?name=${editingUser.displayName}&background=random`} className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-lg bg-white" />
+                    <label className="absolute bottom-0 right-0 bg-brand-600 text-white p-2 rounded-full cursor-pointer hover:bg-brand-700 shadow-sm active:scale-95 border-2 border-white">
+                      {uploading ? <Loader2 size={14} className="animate-spin"/> : <Camera size={14}/>}
+                      <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={uploading}/>
+                    </label>
+                  </div>
+               </div>
             </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-bold text-slate-400 uppercase mb-1 flex items-center gap-1"><Shield size={12}/> Rol</label>
-                <select value={editingUser.role || 'miembro'} onChange={(e) => setEditingUser({...editingUser, role: e.target.value})} className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none">
-                  <option value="pastor">Pastor</option><option value="lider">Líder</option><option value="servidor">Servidor</option><option value="miembro">Miembro</option>
-                </select>
+            {/* Cuerpo del Modal (Scrollable) */}
+            <div className="pt-12 px-5 pb-5 overflow-y-auto">
+              
+              {/* Nombre Editable */}
+              <div className="text-center mb-6">
+                <input 
+                  type="text" 
+                  value={editingUser.displayName}
+                  onChange={(e) => setEditingUser({...editingUser, displayName: e.target.value})}
+                  className="text-xl font-black text-slate-800 text-center w-full bg-transparent border-b border-transparent focus:border-brand-500 outline-none pb-1"
+                />
+                <p className="text-xs text-slate-400 mt-1 flex items-center justify-center gap-1"><Mail size={10}/> {editingUser.email}</p>
               </div>
-              <div>
-                <label className="text-xs font-bold text-slate-400 uppercase mb-1 flex items-center gap-1"><Briefcase size={12}/> Área</label>
-                <select value={editingUser.area || 'ninguna'} onChange={(e) => setEditingUser({...editingUser, area: e.target.value})} className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none">
-                  <option value="ninguna">Ninguna</option><option value="multimedia">Multimedia</option><option value="alabanza">Alabanza</option><option value="recepcion">Recepción</option><option value="niños">Niños</option>
-                </select>
+
+              <div className="space-y-4">
+                
+                {/* 1. Rol y Área (Fila) */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Rol</label>
+                    <div className="relative">
+                      <Shield size={14} className="absolute left-2.5 top-2.5 text-slate-400"/>
+                      <select 
+                        value={editingUser.role || 'miembro'} 
+                        onChange={(e) => setEditingUser({...editingUser, role: e.target.value})} 
+                        className="w-full pl-8 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-brand-500"
+                      >
+                        <option value="pastor">Pastor</option>
+                        <option value="lider">Líder</option>
+                        <option value="servidor">Servidor</option>
+                        <option value="miembro">Miembro</option>
+                        <option value="visita">Visita</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Área</label>
+                    <div className="relative">
+                      <Briefcase size={14} className="absolute left-2.5 top-2.5 text-slate-400"/>
+                      <select 
+                        value={editingUser.area || 'ninguna'} 
+                        onChange={(e) => setEditingUser({...editingUser, area: e.target.value})} 
+                        className="w-full pl-8 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-brand-500"
+                      >
+                        <option value="ninguna">Ninguna</option>
+                        <option value="multimedia">Multimedia</option>
+                        <option value="alabanza">Alabanza</option>
+                        <option value="recepcion">Recepción</option>
+                        <option value="niños">Niños</option>
+                        <option value="limpieza">Limpieza</option>
+                        <option value="intercesion">Intercesión</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Teléfono */}
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Teléfono / WhatsApp</label>
+                  <div className="relative">
+                    <Phone size={16} className="absolute left-3 top-3 text-slate-400"/>
+                    <input 
+                      type="text" 
+                      placeholder="Ej: 11 1234 5678"
+                      value={editingUser.phone || ''}
+                      onChange={(e) => setEditingUser({...editingUser, phone: e.target.value})}
+                      className="w-full pl-10 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-brand-500 font-medium"
+                    />
+                  </div>
+                </div>
+
+                {/* 3. Dirección */}
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Dirección</label>
+                  <div className="relative">
+                    <MapPin size={16} className="absolute left-3 top-3 text-slate-400"/>
+                    <input 
+                      type="text" 
+                      placeholder="Ej: Calle 123, Berazategui"
+                      value={editingUser.address || ''}
+                      onChange={(e) => setEditingUser({...editingUser, address: e.target.value})}
+                      className="w-full pl-10 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-brand-500 font-medium"
+                    />
+                  </div>
+                </div>
+
+                {/* 4. Fecha de Cumpleaños */}
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Fecha de Nacimiento</label>
+                  <div className="relative">
+                    <CalendarIcon size={16} className="absolute left-3 top-3 text-slate-400"/>
+                    <input 
+                      type="date" 
+                      value={editingUser.birthday || ''}
+                      onChange={(e) => setEditingUser({...editingUser, birthday: e.target.value})}
+                      className="w-full pl-10 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-brand-500 font-medium text-slate-600"
+                    />
+                  </div>
+                </div>
+
+                <button 
+                  onClick={handleSaveUser}
+                  className="w-full bg-brand-600 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 mt-6 shadow-md shadow-brand-200 hover:bg-brand-700 active:scale-95 transition-all"
+                >
+                  <Save size={18}/> Guardar Ficha
+                </button>
               </div>
-              <button onClick={handleSaveUser} className="w-full bg-brand-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 mt-4 shadow-md hover:bg-brand-700">
-                <Save size={18}/> Guardar Cambios
-              </button>
+
             </div>
           </div>
         </div>
       )}
 
-      {/* --- MODAL 2: CREAR NUEVO MIEMBRO (CENTRADO Y Z-60) --- */}
+      {/* --- MODAL 2: CREAR NUEVO (MANUAL) --- */}
       {isCreating && (
         <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white w-full max-w-sm rounded-2xl p-5 animate-slide-up relative shadow-2xl">
             <button onClick={() => setIsCreating(false)} className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-full"><X size={20}/></button>
-            <h2 className="text-lg font-black text-slate-800 mb-4">Nuevo Miembro</h2>
+            <h2 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2"><UserPlus size={20} className="text-brand-600"/> Nuevo Miembro</h2>
             
             <div className="space-y-3">
               <input 
