@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #f3f4f6; /* Fondo gris claro tipo App moderna */
+  font-family: system-ui, -apple-system, sans-serif;
+  -webkit-tap-highlight-color: transparent; /* Quita el destello azul al tocar botones en el celu */
+}
