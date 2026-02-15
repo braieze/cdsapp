@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase';
-import { doc, getDoc, updateDoc, collection, getDocs, deleteDoc } from 'firebase/firestore'; // Importamos deleteDoc
-import { ArrowLeft, Calendar, Clock, MapPin, Save, Trash2, Plus, X, ChevronDown, Users, CheckCircle, Edit3, MoreVertical, LogOut } from 'lucide-react';
+import { doc, getDoc, updateDoc, collection, getDocs, deleteDoc } from 'firebase/firestore'; 
+import { ArrowLeft, Calendar, Clock, MapPin, Save, Trash2, Plus, X, ChevronDown, Users, CheckCircle, Edit3, CheckSquare, Square } from 'lucide-react';
 import { EVENT_TYPES } from '../utils/eventTypes';
 import { format, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -15,8 +15,8 @@ export default function EventDetails() {
   const [loading, setLoading] = useState(true);
   
   // Estado de permisos y edición
-  const [userRole, setUserRole] = useState(null); // 'pastor', 'lider', 'miembro'
-  const [isEditing, setIsEditing] = useState(false); // Controla Modo Lectura vs Edición
+  const [userRole, setUserRole] = useState(null); 
+  const [isEditing, setIsEditing] = useState(false); 
   
   const [assignments, setAssignments] = useState({});
   const [expandedDay, setExpandedDay] = useState(null);
@@ -28,18 +28,16 @@ export default function EventDetails() {
         const currentUser = auth.currentUser;
         if (!currentUser) return;
 
-        // A. Cargar Rol del Usuario Actual
+        // A. Rol del Usuario
         const userRef = doc(db, 'users', currentUser.uid);
         const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-           setUserRole(userSnap.data().role);
-        }
+        if (userSnap.exists()) setUserRole(userSnap.data().role);
 
-        // B. Cargar Evento
+        // B. Evento
         const eventRef = doc(db, 'events', id);
         const eventSnap = await getDoc(eventRef);
         
-        // C. Cargar Usuarios para selectores
+        // C. Usuarios
         const usersCol = collection(db, 'users');
         const usersSnap = await getDocs(usersCol);
         const usersList = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -69,17 +67,12 @@ export default function EventDetails() {
 
   // --- FILTRO INTELIGENTE DE USUARIOS ---
   const getFilteredUsers = (roleConfig) => {
-    // Si no hay configuración de restricción, devolvemos todos
     if (!roleConfig.allowedAreas && !roleConfig.allowedRoles) return users;
-
     return users.filter(user => {
-        // 1. Filtro por Área (Si el rol requiere área 'alabanza', el usuario debe tenerla)
-        if (roleConfig.allowedAreas && roleConfig.allowedAreas.length > 0) {
+        if (roleConfig.allowedAreas?.length > 0) {
             if (!user.area || !roleConfig.allowedAreas.includes(user.area)) return false;
         }
-        // 2. Filtro por Rol (Si requiere ser 'pastor', el usuario debe serlo)
-        if (roleConfig.allowedRoles && roleConfig.allowedRoles.length > 0) {
-             // Normalizamos roles (algunos usuarios pueden no tener rol definido)
+        if (roleConfig.allowedRoles?.length > 0) {
              const uRole = user.role || 'miembro'; 
              if (!roleConfig.allowedRoles.includes(uRole)) return false;
         }
@@ -87,7 +80,7 @@ export default function EventDetails() {
     });
   };
 
-  // --- LÓGICA CULTOS ---
+  // --- LÓGICA CULTOS (ROLES) ---
   const handleAddPersonRole = (roleKey, personName) => {
     if (!personName) return;
     const currentList = assignments[roleKey] || [];
@@ -99,6 +92,30 @@ export default function EventDetails() {
   const handleRemovePersonRole = (roleKey, personName) => {
     const currentList = assignments[roleKey] || [];
     setAssignments({ ...assignments, [roleKey]: currentList.filter(p => p !== personName) });
+  };
+
+  // --- LÓGICA CHECKLIST (LIMPIEZA) ---
+  const handleToggleTask = async (taskIndex) => {
+    // Solo permitimos marcar si estamos viendo (no hace falta modo edición, es operativo)
+    // Opcional: restringir a userRole 'lider' o 'pastor' o quien esté asignado.
+    // Por ahora lo dejamos abierto para agilidad.
+    
+    const newTasks = [...(event.checklist || [])];
+    if (!newTasks[taskIndex]) return;
+
+    newTasks[taskIndex].completed = !newTasks[taskIndex].completed;
+    
+    if (newTasks[taskIndex].completed) {
+        newTasks[taskIndex].completedBy = auth.currentUser.displayName;
+    } else {
+        delete newTasks[taskIndex].completedBy;
+    }
+
+    try {
+        const eventRef = doc(db, 'events', id);
+        await updateDoc(eventRef, { checklist: newTasks });
+        setEvent(prev => ({ ...prev, checklist: newTasks }));
+    } catch (error) { console.error(error); }
   };
 
   // --- LÓGICA AYUNO ---
@@ -122,7 +139,7 @@ export default function EventDetails() {
     try {
       const eventRef = doc(db, 'events', id);
       await updateDoc(eventRef, { assignments });
-      setIsEditing(false); // Salir de modo edición al guardar
+      setIsEditing(false);
       alert("✅ Equipo guardado exitosamente");
     } catch (error) { alert("Error al guardar"); }
   };
@@ -155,7 +172,7 @@ export default function EventDetails() {
 
   const TypeConfig = EVENT_TYPES[event.type] || EVENT_TYPES.culto;
   const isAyuno = event.type === 'ayuno';
-  const myUid = auth.currentUser?.uid;
+  const hasChecklist = TypeConfig.hasChecklist; // Definido en eventTypes.js (limpieza/mantenimiento)
   const canEdit = ['pastor', 'lider'].includes(userRole);
 
   return (
@@ -167,8 +184,7 @@ export default function EventDetails() {
           <ArrowLeft size={20} className="text-slate-700"/>
         </button>
         
-        {/* Botón Editar/Cancelar (Solo si tiene permisos) */}
-        {canEdit && !isAyuno && (
+        {canEdit && !isAyuno && !hasChecklist && (
             <button 
                 onClick={() => setIsEditing(!isEditing)} 
                 className={`absolute top-4 right-4 p-2 rounded-full transition-colors flex items-center gap-2 px-3 text-xs font-bold ${isEditing ? 'bg-slate-800 text-white' : 'bg-white/50 text-slate-700 hover:bg-white'}`}
@@ -177,7 +193,13 @@ export default function EventDetails() {
             </button>
         )}
         
-        {/* Botón Borrar (Solo visible en modo edición) */}
+        {/* En Limpieza/Checklist permitimos borrar siempre si es admin */}
+        {hasChecklist && canEdit && (
+             <button onClick={handleDelete} className="absolute top-4 right-4 p-2 text-red-500 bg-white/50 hover:bg-red-50 rounded-full transition-colors">
+                 <Trash2 size={20}/>
+            </button>
+        )}
+
         {isEditing && (
             <button onClick={handleDelete} className="absolute top-4 right-28 p-2 text-red-500 bg-white/50 hover:bg-red-50 rounded-full transition-colors">
                  <Trash2 size={20}/>
@@ -214,6 +236,29 @@ export default function EventDetails() {
             <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
                 <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2 text-sm"><MapPin size={16} className="text-brand-500"/> Detalles</h3>
                 <p className="text-sm text-slate-600 leading-relaxed">{event.description}</p>
+            </div>
+        )}
+
+        {/* --- MÓDULO CHECKLIST (LIMPIEZA) --- */}
+        {hasChecklist && event.checklist && event.checklist.length > 0 && (
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden animate-fade-in">
+                <div className="bg-cyan-50/50 px-4 py-3 border-b border-cyan-100 flex items-center gap-2">
+                   <div className="w-1 h-4 bg-cyan-500 rounded-full"></div>
+                   <h3 className="font-black text-cyan-700 text-sm uppercase tracking-wide">Lista de Tareas</h3>
+                </div>
+                <div>
+                    {event.checklist.map((task, idx) => (
+                        <div key={idx} onClick={() => handleToggleTask(idx)} className="p-4 flex items-start gap-3 cursor-pointer hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 group">
+                            <div className={`mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${task.completed ? 'bg-cyan-500 border-cyan-500' : 'border-slate-300 group-hover:border-cyan-400'}`}>
+                                {task.completed ? <CheckSquare size={14} className="text-white" /> : null}
+                            </div>
+                            <div className="flex-1">
+                                <p className={`text-sm font-bold transition-all ${task.completed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{task.text}</p>
+                                {task.completed && task.completedBy && <p className="text-[10px] text-cyan-600 font-bold mt-1">Completado por {task.completedBy}</p>}
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
         )}
 
@@ -261,8 +306,8 @@ export default function EventDetails() {
             </div>
         )}
 
-        {/* --- MÓDULO CULTOS (Con Modo Lectura/Edición) --- */}
-        {!isAyuno && getStructure(event.type).map((section, idx) => (
+        {/* --- MÓDULO CULTOS (ROLES) --- */}
+        {!isAyuno && !hasChecklist && getStructure(event.type).map((section, idx) => (
              <div key={idx} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                 <div className="bg-slate-50/50 px-4 py-3 border-b border-slate-100 flex items-center gap-2">
                    <div className="w-1 h-4 bg-brand-500 rounded-full"></div>
@@ -272,8 +317,6 @@ export default function EventDetails() {
                   {section.roles.map(role => {
                     const RoleIcon = role.icon;
                     const assignedPeople = assignments[role.key] || [];
-                    
-                    // Filtrar usuarios disponibles para este rol específico
                     const availableUsers = getFilteredUsers(role);
 
                     return (
@@ -282,7 +325,6 @@ export default function EventDetails() {
                           <RoleIcon size={12} /> {role.label}
                         </label>
                         
-                        {/* MODO LECTURA: Solo lista limpia */}
                         {!isEditing && assignedPeople.length > 0 && (
                              <div className="flex flex-wrap gap-2">
                                 {assignedPeople.map((person, i) => (
@@ -292,11 +334,8 @@ export default function EventDetails() {
                                 ))}
                              </div>
                         )}
-                        {!isEditing && assignedPeople.length === 0 && (
-                            <p className="text-xs text-slate-300 italic">-- Sin asignar --</p>
-                        )}
+                        {!isEditing && assignedPeople.length === 0 && <p className="text-xs text-slate-300 italic">-- Sin asignar --</p>}
 
-                        {/* MODO EDICIÓN: Chips con X y Selectores */}
                         {isEditing && (
                             <>
                                 {assignedPeople.length > 0 && (
@@ -314,10 +353,7 @@ export default function EventDetails() {
                                     <select className="w-full p-2.5 bg-white border border-slate-200 rounded-xl outline-none text-sm text-slate-600 focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                                       value="" onChange={(e) => { handleAddPersonRole(role.key, e.target.value); e.target.value = ""; }}>
                                       <option value="">{role.type === 'multi' ? '+ Agregar...' : 'Seleccionar...'}</option>
-                                      
-                                      {/* Renderizamos solo usuarios filtrados */}
                                       {availableUsers.map(u => (<option key={u.id} value={u.displayName || u.name}>{u.displayName || u.name || 'Sin Nombre'}</option>))}
-                                    
                                     </select>
                                     <Plus size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none"/>
                                   </div>
@@ -331,8 +367,7 @@ export default function EventDetails() {
               </div>
         ))}
 
-        {/* Botón Guardar (Solo visible en Modo Edición) */}
-        {isEditing && !isAyuno && (
+        {isEditing && !isAyuno && !hasChecklist && (
             <button 
                 onClick={handleSaveAssignments}
                 className="w-full bg-slate-900 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 shadow-xl shadow-slate-200 active:scale-95 transition-all sticky bottom-4 z-20 animate-slide-up"
