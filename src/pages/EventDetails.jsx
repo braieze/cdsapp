@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase';
 import { doc, getDoc, updateDoc, collection, getDocs, deleteDoc } from 'firebase/firestore'; 
-import { ArrowLeft, Calendar, Clock, MapPin, Save, Trash2, Plus, X, ChevronDown, Users, CheckCircle, Edit3, CheckSquare, Search, Printer, User } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, MapPin, Save, Trash2, Plus, X, ChevronDown, Users, CheckCircle, Edit3, CheckSquare, Search, Printer, User, AlertCircle, HelpCircle } from 'lucide-react';
 import { EVENT_TYPES } from '../utils/eventTypes';
 import { format, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -23,11 +23,11 @@ export default function EventDetails() {
 
   // ESTADOS PARA EL MODAL DE SELECCIÓN DE PERSONAS
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
-  const [activeRoleKey, setActiveRoleKey] = useState(null); // Qué rol estamos editando (ej: 'bateria')
-  const [activeRoleConfig, setActiveRoleConfig] = useState(null); // Config del rol (para filtros)
-  const [personSearchTerm, setPersonSearchTerm] = useState(''); // Buscador del modal
+  const [activeRoleKey, setActiveRoleKey] = useState(null); 
+  const [activeRoleConfig, setActiveRoleConfig] = useState(null); 
+  const [personSearchTerm, setPersonSearchTerm] = useState('');
 
-  // ✅ CORRECCIÓN: Definimos el usuario AQUÍ ARRIBA
+  // ✅ USUARIO ACTUAL
   const currentUser = auth.currentUser;
   const myUid = currentUser?.uid;
 
@@ -75,16 +75,15 @@ export default function EventDetails() {
   const openPersonSelector = (roleKey, roleConfig) => {
       setActiveRoleKey(roleKey);
       setActiveRoleConfig(roleConfig);
-      setPersonSearchTerm(''); // Reiniciar búsqueda
+      setPersonSearchTerm(''); 
       setIsSelectorOpen(true);
   };
 
   const handleSelectPersonFromModal = (personName) => {
       if (!activeRoleKey || !personName) return;
-      
       const currentList = assignments[activeRoleKey] || [];
       
-      // Si es "single", reemplazamos. Si es "multi", agregamos.
+      // Al asignar a alguien nuevo, borramos cualquier confirmación previa de esa posición si la hubiera (opcional, pero limpio)
       if (activeRoleConfig.type === 'single') {
           setAssignments({ ...assignments, [activeRoleKey]: [personName] });
       } else {
@@ -92,7 +91,7 @@ export default function EventDetails() {
               setAssignments({ ...assignments, [activeRoleKey]: [...currentList, personName] });
           }
       }
-      setIsSelectorOpen(false); // Cerrar modal
+      setIsSelectorOpen(false); 
   };
 
   // --- FILTRO DE USUARIOS (MODAL) ---
@@ -103,23 +102,18 @@ export default function EventDetails() {
           const name = (user.displayName || user.name || '').toLowerCase();
           const search = personSearchTerm.toLowerCase();
           
-          // 1. Filtro de Texto (Buscador)
           if (!name.includes(search)) return false;
 
-          // 2. Filtro de Lógica de Negocio
-          // Si es un rol de LIDERAZGO (Pastor/Lider), filtramos estricto.
+          // Filtro Estricto para Liderazgo
           if (activeRoleConfig.allowedRoles && activeRoleConfig.allowedRoles.includes('pastor')) {
                const uRole = user.role || 'miembro';
                return activeRoleConfig.allowedRoles.includes(uRole);
           }
-
-          // Si es ALABANZA, filtramos por área (para que no salgan todos en Batería)
+          // Filtro para Alabanza
           if (activeRoleConfig.allowedAreas && activeRoleConfig.allowedAreas.includes('alabanza')) {
               return user.area === 'alabanza';
           }
-
-          // PARA TODO LO DEMÁS (Operativo, Multimedia, Ujieres): MOSTRAR TODOS
-          // Esto soluciona tu problema de que no podías asignar a nadie.
+          // Resto: Todos
           return true;
       });
   };
@@ -177,10 +171,7 @@ export default function EventDetails() {
     } catch (error) { console.error(error); }
   };
 
-  // Función PDF / Imprimir
-  const handlePrint = () => {
-      window.print(); // Abre el diálogo nativo del celular/PC para guardar como PDF
-  };
+  const handlePrint = () => { window.print(); };
 
   const getAyunoDays = () => {
     if (!event || !event.date) return [];
@@ -198,6 +189,17 @@ export default function EventDetails() {
     return config.structure || []; 
   };
 
+  // --- HELPER PARA MOSTRAR ESTADO ---
+  const getStatusIcon = (personName) => {
+      if (!event.confirmations) return <HelpCircle size={14} className="text-slate-300"/>; // Pendiente (Gris)
+      
+      const status = event.confirmations[personName];
+      if (status === 'confirmed') return <CheckCircle size={14} className="text-green-500"/>;
+      if (status === 'declined') return <X size={14} className="text-red-500"/>;
+      
+      return <HelpCircle size={14} className="text-slate-300"/>; // Pendiente por defecto
+  };
+
   if (loading || !event) return <div className="p-10 text-center">Cargando...</div>;
 
   const TypeConfig = EVENT_TYPES[event.type] || EVENT_TYPES.culto;
@@ -208,13 +210,12 @@ export default function EventDetails() {
   return (
     <div className="pb-32 bg-slate-50 min-h-screen animate-fade-in relative print:bg-white print:pb-0">
       
-      {/* HEADER (Oculto al imprimir) */}
+      {/* HEADER */}
       <div className={`relative px-4 pt-12 pb-8 ${TypeConfig.color.replace('text-', 'bg-').replace('100', '50')} border-b border-slate-100 print:hidden`}>
         <button onClick={() => navigate('/calendario')} className="absolute top-4 left-4 p-2 bg-white/50 backdrop-blur-md rounded-full hover:bg-white transition-colors shadow-sm">
           <ArrowLeft size={20} className="text-slate-700"/>
         </button>
         
-        {/* Botón PDF / Imprimir */}
         <button onClick={handlePrint} className="absolute top-4 right-16 p-2 bg-white/50 backdrop-blur-md rounded-full hover:bg-white transition-colors text-slate-700 shadow-sm">
             <Printer size={20}/>
         </button>
@@ -229,24 +230,16 @@ export default function EventDetails() {
         )}
         
         {hasChecklist && canEdit && (
-             <button onClick={handleDelete} className="absolute top-4 right-4 p-2 text-red-500 bg-white/50 hover:bg-red-50 rounded-full transition-colors">
-                 <Trash2 size={20}/>
-            </button>
+             <button onClick={handleDelete} className="absolute top-4 right-4 p-2 text-red-500 bg-white/50 hover:bg-red-50 rounded-full transition-colors"><Trash2 size={20}/></button>
         )}
 
         {isEditing && (
-            <button onClick={handleDelete} className="absolute top-4 right-28 p-2 text-red-500 bg-white/50 hover:bg-red-50 rounded-full transition-colors">
-                 <Trash2 size={20}/>
-            </button>
+            <button onClick={handleDelete} className="absolute top-4 right-28 p-2 text-red-500 bg-white/50 hover:bg-red-50 rounded-full transition-colors"><Trash2 size={20}/></button>
         )}
 
         <div className="flex flex-col items-center text-center mt-2">
-            <div className={`p-4 rounded-2xl mb-4 bg-white shadow-sm ${TypeConfig.color} ring-4 ring-white`}>
-                <TypeConfig.icon size={32} />
-            </div>
-            <span className={`text-[10px] font-black tracking-widest uppercase mb-2 px-3 py-1 rounded-full bg-white/60 ${TypeConfig.color.split(' ')[1]}`}>
-                {TypeConfig.label}
-            </span>
+            <div className={`p-4 rounded-2xl mb-4 bg-white shadow-sm ${TypeConfig.color} ring-4 ring-white`}><TypeConfig.icon size={32} /></div>
+            <span className={`text-[10px] font-black tracking-widest uppercase mb-2 px-3 py-1 rounded-full bg-white/60 ${TypeConfig.color.split(' ')[1]}`}>{TypeConfig.label}</span>
             <h1 className="text-2xl font-black text-slate-800 leading-tight px-4">{event.title}</h1>
             
             <div className="flex items-center gap-4 mt-4 text-sm font-medium text-slate-600">
@@ -257,9 +250,7 @@ export default function EventDetails() {
                         : format(new Date(event.date + 'T00:00:00'), 'EEEE d MMMM', { locale: es })
                     }
                 </div>
-                {!isAyuno && (
-                    <div className="flex items-center gap-1 bg-white px-3 py-1 rounded-lg shadow-sm"><Clock size={14} className="text-slate-400"/>{event.time} hs</div>
-                )}
+                {!isAyuno && <div className="flex items-center gap-1 bg-white px-3 py-1 rounded-lg shadow-sm"><Clock size={14} className="text-slate-400"/>{event.time} hs</div>}
             </div>
         </div>
       </div>
@@ -273,7 +264,6 @@ export default function EventDetails() {
             </div>
         )}
 
-        {/* --- CHECKLIST --- */}
         {hasChecklist && event.checklist && event.checklist.length > 0 && (
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden animate-fade-in print:border-slate-300">
                 <div className="bg-cyan-50/50 px-4 py-3 border-b border-cyan-100 flex items-center gap-2">
@@ -296,7 +286,6 @@ export default function EventDetails() {
             </div>
         )}
 
-        {/* --- AYUNO --- */}
         {isAyuno && (
             <div className="space-y-3">
                 <h3 className="font-black text-slate-800 text-lg flex items-center gap-2"><Calendar size={20} className="text-rose-500"/> Días de Ayuno</h3>
@@ -325,7 +314,6 @@ export default function EventDetails() {
                                     {isJoined ? <><CheckCircle size={12}/> Anotado</> : 'Sumarme'}
                                 </button>
                             </div>
-                            {/* En impresión mostramos siempre la lista */}
                             {(isExpanded || (window.matchMedia && window.matchMedia('print').matches)) && fastersUids.length > 0 && (
                                 <div className="bg-slate-50 px-4 py-3 border-t border-slate-100 print:bg-white">
                                     <div className="flex flex-wrap gap-2">
@@ -342,7 +330,6 @@ export default function EventDetails() {
             </div>
         )}
 
-        {/* --- CULTOS --- */}
         {!isAyuno && !hasChecklist && getStructure(event.type).map((section, idx) => (
              <div key={idx} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden print:shadow-none print:border-slate-300 print:break-inside-avoid print:mb-4">
                 <div className="bg-slate-50/50 px-4 py-3 border-b border-slate-100 flex items-center gap-2 print:bg-slate-100">
@@ -360,19 +347,27 @@ export default function EventDetails() {
                           <RoleIcon size={12} /> {role.label}
                         </label>
                         
-                        {/* LISTA DE PERSONAS */}
+                        {/* LISTA DE PERSONAS CON STATUS VISUAL */}
                         <div className="flex flex-wrap gap-2 mb-2">
-                            {assignedPeople.length > 0 ? assignedPeople.map((person, i) => (
-                                <span key={i} className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium border ${isEditing ? 'bg-brand-50 text-brand-700 border-brand-100' : 'bg-slate-50 text-slate-700 border-slate-200'} print:bg-white print:border-slate-300`}>
-                                    {person}
-                                    {isEditing && <button onClick={() => handleRemovePersonRole(role.key, person)} className="p-0.5 hover:bg-brand-200 rounded-full print:hidden"><X size={12}/></button>}
-                                </span>
-                            )) : (
+                            {assignedPeople.length > 0 ? assignedPeople.map((person, i) => {
+                                const statusIcon = getStatusIcon(person);
+                                const isDeclined = event.confirmations?.[person] === 'declined';
+
+                                return (
+                                    <span key={i} className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${isDeclined ? 'bg-red-50 border-red-100 text-red-400 line-through' : (isEditing ? 'bg-brand-50 text-brand-700 border-brand-100' : 'bg-slate-50 text-slate-700 border-slate-200')} print:bg-white print:border-slate-300`}>
+                                        {person}
+                                        {/* Ícono de estado (solo visible si NO estamos editando o si imprimimos) */}
+                                        {!isEditing && <span className="print:hidden">{statusIcon}</span>}
+                                        
+                                        {isEditing && <button onClick={() => handleRemovePersonRole(role.key, person)} className="p-0.5 hover:bg-brand-200 rounded-full print:hidden"><X size={12}/></button>}
+                                    </span>
+                                )
+                            }) : (
                                 <p className="text-xs text-slate-300 italic print:hidden">-- Sin asignar --</p>
                             )}
                         </div>
 
-                        {/* BOTÓN AGREGAR (REEMPLAZA AL SELECT) */}
+                        {/* BOTÓN AGREGAR */}
                         {isEditing && (role.type === 'multi' || assignedPeople.length === 0) && (
                             <button 
                                 onClick={() => openPersonSelector(role.key, role)}
@@ -399,8 +394,6 @@ export default function EventDetails() {
       {isSelectorOpen && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setIsSelectorOpen(false)}>
               <div className="bg-white w-full sm:max-w-sm h-[80vh] sm:h-auto sm:max-h-[80vh] rounded-t-2xl sm:rounded-2xl flex flex-col animate-slide-up shadow-2xl" onClick={e => e.stopPropagation()}>
-                  
-                  {/* Modal Header */}
                   <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white rounded-t-2xl">
                       <div>
                           <h3 className="font-bold text-slate-800">Seleccionar Persona</h3>
@@ -408,30 +401,15 @@ export default function EventDetails() {
                       </div>
                       <button onClick={() => setIsSelectorOpen(false)} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={18} className="text-slate-600"/></button>
                   </div>
-
-                  {/* Search Bar */}
                   <div className="p-3 bg-slate-50 border-b border-slate-100">
                       <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2.5">
                           <Search size={16} className="text-slate-400"/>
-                          <input 
-                              type="text" 
-                              placeholder="Buscar por nombre..." 
-                              className="w-full text-sm outline-none text-slate-700 placeholder:text-slate-400"
-                              autoFocus
-                              value={personSearchTerm}
-                              onChange={(e) => setPersonSearchTerm(e.target.value)}
-                          />
+                          <input type="text" placeholder="Buscar por nombre..." className="w-full text-sm outline-none text-slate-700 placeholder:text-slate-400" autoFocus value={personSearchTerm} onChange={(e) => setPersonSearchTerm(e.target.value)}/>
                       </div>
                   </div>
-
-                  {/* Users List */}
                   <div className="flex-1 overflow-y-auto p-2 space-y-1">
                       {getUsersForModal().map(u => (
-                          <button 
-                              key={u.id} 
-                              onClick={() => handleSelectPersonFromModal(u.displayName || u.name)}
-                              className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl transition-colors text-left group"
-                          >
+                          <button key={u.id} onClick={() => handleSelectPersonFromModal(u.displayName || u.name)} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl transition-colors text-left group">
                               <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold text-sm border-2 border-white shadow-sm group-hover:border-slate-200">
                                   {u.photoURL ? <img src={u.photoURL} className="w-full h-full rounded-full object-cover"/> : (u.displayName || u.name || '?')[0].toUpperCase()}
                               </div>
@@ -442,16 +420,11 @@ export default function EventDetails() {
                               <Plus size={16} className="text-brand-600 opacity-0 group-hover:opacity-100 transition-opacity"/>
                           </button>
                       ))}
-                      {getUsersForModal().length === 0 && (
-                          <div className="p-10 text-center text-slate-400 text-sm">
-                              No se encontraron personas.
-                          </div>
-                      )}
+                      {getUsersForModal().length === 0 && <div className="p-10 text-center text-slate-400 text-sm">No se encontraron personas.</div>}
                   </div>
               </div>
           </div>
       )}
-
     </div>
   );
 }
