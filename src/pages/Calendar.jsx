@@ -1,21 +1,18 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom'; // ✅ Importamos el hook de navegación
 import { db, auth } from '../firebase';
-import { collection, query, orderBy, onSnapshot, addDoc, Timestamp, deleteDoc, doc } from 'firebase/firestore'; // Importamos deleteDoc
-import { Plus, Calendar as CalIcon, List, Clock, MapPin, X, Trash2 } from 'lucide-react';
+import { collection, query, orderBy, onSnapshot, addDoc, Timestamp, deleteDoc, doc } from 'firebase/firestore';
+import { Plus, Calendar as CalIcon, List, Clock, Trash2, X } from 'lucide-react';
 import { EVENT_TYPES } from '../utils/eventTypes';
-import { format, isSameDay, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-// Instalar date-fns si no lo tienes: npm install date-fns
-
 export default function CalendarPage() {
+  const navigate = useNavigate(); // ✅ Inicializamos la navegación
   const [viewMode, setViewMode] = useState('list'); // 'list' | 'month'
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  
-  // Estado para el usuario actual (para permisos)
-  const [currentUserRole, setCurrentUserRole] = useState(null);
 
   // Formulario Nuevo Evento
   const [newEvent, setNewEvent] = useState({
@@ -26,21 +23,14 @@ export default function CalendarPage() {
     description: ''
   });
 
-  // 1. Cargar Eventos y Rol
+  // 1. Cargar Eventos
   useEffect(() => {
-    // A. Eventos
     const q = query(collection(db, 'events'), orderBy('date', 'asc'));
     const unsubscribeEvents = onSnapshot(q, (snapshot) => {
       const eventsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setEvents(eventsData);
       setLoading(false);
     });
-
-    // B. Rol del Usuario (leemos de localStorage o esperamos auth, simplificado aquí)
-    // En una app real, deberías usar un Context o leer de tu colección 'users'
-    // Por ahora asumimos que si puedes ver el botón flotante en Directorio, puedes aquí.
-    // (Implementación rápida: leeremos role de la base de datos si es necesario, 
-    // pero por ahora usaremos una validación simple en el render).
 
     return () => unsubscribeEvents();
   }, []);
@@ -53,8 +43,8 @@ export default function CalendarPage() {
       await addDoc(collection(db, 'events'), {
         ...newEvent,
         createdAt: Timestamp.now(),
-        participants: [], // Aquí irán los asignados luego
-        createdBy: auth.currentUser.uid
+        participants: [], 
+        createdBy: auth.currentUser?.uid
       });
       setIsModalOpen(false);
       setNewEvent({ title: '', type: 'culto', date: '', time: '19:30', description: '' });
@@ -65,9 +55,9 @@ export default function CalendarPage() {
     }
   };
 
-  // Función Borrar Evento (Solo para limpiar pruebas)
+  // Función Borrar Evento
   const handleDeleteEvent = async (id) => {
-    if(confirm("¿Borrar evento?")) {
+    if(window.confirm("¿Borrar evento?")) {
         await deleteDoc(doc(db, 'events', id));
     }
   }
@@ -76,8 +66,9 @@ export default function CalendarPage() {
   const renderListView = () => {
     // Agrupar eventos por "Mes Año"
     const grouped = events.reduce((acc, event) => {
+      // Corrección para evitar errores de fecha en Safari/iOS
       const dateObj = new Date(event.date + 'T00:00:00');
-      const monthKey = format(dateObj, 'MMMM yyyy', { locale: es }); // Ej: "febrero 2024"
+      const monthKey = format(dateObj, 'MMMM yyyy', { locale: es }); 
       if (!acc[monthKey]) acc[monthKey] = [];
       acc[monthKey].push(event);
       return acc;
@@ -89,10 +80,13 @@ export default function CalendarPage() {
         <div className="space-y-3">
           {monthEvents.map(event => {
             const TypeConfig = EVENT_TYPES[event.type] || EVENT_TYPES.culto;
-            const Icon = TypeConfig.icon;
             
             return (
-              <div key={event.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex gap-4 hover:shadow-md transition-shadow cursor-pointer relative group">
+              <div 
+                key={event.id} 
+                onClick={() => navigate(`/calendario/${event.id}`)} // ✅ AQUÍ ESTÁ LA MAGIA: Navegamos al detalle
+                className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex gap-4 hover:shadow-md transition-shadow cursor-pointer relative group"
+              >
                 {/* Columna Fecha */}
                 <div className="flex flex-col items-center justify-center bg-slate-50 px-3 rounded-xl border border-slate-200 min-w-[60px]">
                   <span className="text-xs font-bold text-slate-400 uppercase">{format(new Date(event.date + 'T00:00:00'), 'MMM', { locale: es })}</span>
@@ -105,8 +99,13 @@ export default function CalendarPage() {
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase mb-1 inline-block ${TypeConfig.color}`}>
                         {TypeConfig.label}
                     </span>
-                    {/* Botón borrar oculto (aparece al hover) - Solo para testear rápido */}
-                     <button onClick={(e) => {e.stopPropagation(); handleDeleteEvent(event.id)}} className="text-slate-300 hover:text-red-500"><Trash2 size={14}/></button>
+                    {/* Botón borrar (click.stopPropagation evita que entre al detalle al borrar) */}
+                     <button 
+                        onClick={(e) => {e.stopPropagation(); handleDeleteEvent(event.id)}} 
+                        className="text-slate-300 hover:text-red-500 p-1"
+                     >
+                        <Trash2 size={14}/>
+                     </button>
                   </div>
                   
                   <h4 className="font-bold text-slate-800 text-base leading-tight">{event.title}</h4>
@@ -115,7 +114,6 @@ export default function CalendarPage() {
                     <div className="flex items-center gap-1">
                         <Clock size={14} className="text-slate-400"/> {event.time} hs
                     </div>
-                    {/* Aquí pondremos "Faltan 3 servidores" más adelante */}
                   </div>
                 </div>
 
@@ -129,16 +127,12 @@ export default function CalendarPage() {
     ));
   };
 
-  // --- VISTA CALENDARIO (Simple) ---
+  // --- VISTA CALENDARIO (Placeholder) ---
   const renderMonthView = () => {
-    // Un calendario real es complejo de hacer a mano. 
-    // Por ahora, mostraremos una lista visualmente simplificada o "Próximamente"
-    // para no sobrecargar este paso. 
-    // (Opcional: Instalar 'react-calendar' después si te gusta la vista de grilla)
     return (
         <div className="text-center py-10 bg-white rounded-2xl border border-slate-100">
             <CalIcon size={48} className="mx-auto text-slate-200 mb-4"/>
-            <p className="text-slate-500 font-medium">La vista de grilla mensual estará lista en la próxima actualización.</p>
+            <p className="text-slate-500 font-medium">La vista mensual estará lista pronto.</p>
             <button onClick={() => setViewMode('list')} className="mt-4 text-brand-600 font-bold text-sm">Volver a la lista</button>
         </div>
     );
@@ -175,7 +169,7 @@ export default function CalendarPage() {
           viewMode === 'list' ? renderListView() : renderMonthView()
       )}
 
-      {/* Botón Crear (Solo pastores, por ahora lo dejamos abierto para que pruebes) */}
+      {/* Botón Crear */}
       <button 
         onClick={() => setIsModalOpen(true)}
         className="fixed bottom-24 right-4 w-14 h-14 bg-slate-900 text-white rounded-full shadow-lg shadow-slate-900/30 flex items-center justify-center transition-transform hover:scale-105 active:scale-95 z-40"

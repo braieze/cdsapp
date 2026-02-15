@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { auth, db } from './firebase'; // Importamos db también
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'; // Importamos funciones de base de datos
+import EventDetails from './pages/EventDetails'; // ✅ Importar la nueva página (Aún no existe, no te asustes si da error un segundo)
 
 // Layouts y Páginas
 import MainLayout from './layouts/MainLayout';
@@ -65,7 +66,10 @@ function App() {
         {/* Rutas protegidas */}
         <Route element={user ? <MainLayout /> : <Navigate to="/login" />}>
           <Route path="/" element={<Home />} />
+          
           <Route path="/calendario" element={<Calendar />} />
+          <Route path="/calendario/:id" element={<EventDetails />} /> {/* ✅ NUEVA RUTA (Hija de calendario) */}
+          
           <Route path="/servicios" element={<MyServices />} />
           <Route path="/apps" element={<AppsHub />} />
           <Route path="/perfil" element={<Profile />} /> 
