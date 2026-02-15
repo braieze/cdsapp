@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom'; 
-import { Cake, Megaphone, BookOpen, Send, PlusCircle, Trash2, Clock, Pin, Link as LinkIcon, ExternalLink, MessageCircle, MoreVertical, X, Edit3, AlertTriangle, Calendar } from 'lucide-react';
+import { Cake, BookOpen, Pin, Link as LinkIcon, ExternalLink, MessageCircle, MoreVertical, X, Edit3, Trash2, PlusCircle, AlertTriangle, Calendar } from 'lucide-react';
 import CreatePostModal from '../components/CreatePostModal';
-import TopBar from '../components/TopBar'; // ✅ IMPORTAMOS TOPBAR
+import TopBar from '../components/TopBar'; // ✅ USAMOS SOLO ESTE HEADER
 import { db, auth } from '../firebase';
 import { collection, query, orderBy, onSnapshot, deleteDoc, doc, updateDoc, limit, addDoc, serverTimestamp } from 'firebase/firestore';
 
@@ -72,17 +72,11 @@ export default function Home() {
     return () => window.removeEventListener('click', closeMenu);
   }, [menuOpenId]);
 
-  // ✅ FUNCIÓN DE NAVEGACIÓN INTELIGENTE
   const handleLinkClick = (e, url) => {
     e.preventDefault();
     e.stopPropagation(); 
     if (!url) return;
-
-    if (url.startsWith('/')) {
-        navigate(url);
-    } else {
-        window.open(url, '_blank', 'noopener,noreferrer');
-    }
+    if (url.startsWith('/')) { navigate(url); } else { window.open(url, '_blank', 'noopener,noreferrer'); }
   };
 
   const toggleExpand = (postId) => {
@@ -96,13 +90,8 @@ export default function Home() {
     const currentReactions = post.reactions || []; 
     const myIndex = currentReactions.findIndex(r => r.uid === currentUser.uid);
     let newReactions = [...currentReactions];
-
     if (myIndex >= 0) {
-      if (currentReactions[myIndex].emoji === emoji) {
-        newReactions.splice(myIndex, 1); 
-      } else {
-        newReactions[myIndex].emoji = emoji; 
-      }
+      if (currentReactions[myIndex].emoji === emoji) { newReactions.splice(myIndex, 1); } else { newReactions[myIndex].emoji = emoji; }
     } else {
       newReactions.push({ uid: currentUser.uid, name: currentUser.displayName, photo: currentUser.photoURL, emoji: emoji });
     }
@@ -111,22 +100,14 @@ export default function Home() {
   };
 
   const handleConfirmDelete = async () => {
-    if (postToDelete) {
-      await deleteDoc(doc(db, 'posts', postToDelete.id));
-      setPostToDelete(null); 
-    }
+    if (postToDelete) { await deleteDoc(doc(db, 'posts', postToDelete.id)); setPostToDelete(null); }
   };
 
   const handleTogglePin = async (post) => {
-    await updateDoc(doc(db, 'posts', post.id), { isPinned: !post.isPinned });
-    setMenuOpenId(null);
+    await updateDoc(doc(db, 'posts', post.id), { isPinned: !post.isPinned }); setMenuOpenId(null);
   };
 
-  const handleEdit = (post) => {
-    setEditingPost(post);
-    setIsModalOpen(true); 
-    setMenuOpenId(null);
-  };
+  const handleEdit = (post) => { setEditingPost(post); setIsModalOpen(true); setMenuOpenId(null); };
 
   const handleVote = async (post, optionIndex) => {
     if (post.poll.voters.includes(currentUser.uid)) return alert('Ya votaste.');
@@ -154,7 +135,7 @@ export default function Home() {
   return (
     <div className="pb-24 animate-fade-in relative min-h-screen bg-slate-50">
       
-      {/* ✅ HEADER NUEVO (TopBar) */}
+      {/* ✅ HEADER ÚNICO: Reemplaza todo lo anterior */}
       <TopBar />
 
       <div className="px-4 mt-2">
@@ -269,16 +250,10 @@ export default function Home() {
                       <span className="text-xs font-bold text-slate-700">{post.authorName}</span>
                       <span className="text-[10px] text-slate-400">• {new Date(post.createdAt?.toDate()).toLocaleDateString()}</span>
                     </div>
-                    
-                    {/* LINK INTELIGENTE PARA DEVOCIONALES/AYUNOS */}
                     {post.link && (
                         <div className="mt-4">
-                            <button 
-                                onClick={(e) => handleLinkClick(e, post.link)} 
-                                className="w-full bg-slate-900 text-white py-2 rounded-xl text-xs font-bold shadow-md hover:bg-black transition-colors flex items-center justify-center gap-2"
-                            >
-                                {post.link.startsWith('/') ? <Calendar size={14}/> : <ExternalLink size={14}/>}
-                                {post.linkText || 'Ver más'}
+                            <button onClick={(e) => handleLinkClick(e, post.link)} className="w-full bg-slate-900 text-white py-2 rounded-xl text-xs font-bold shadow-md hover:bg-black transition-colors flex items-center justify-center gap-2">
+                                {post.link.startsWith('/') ? <Calendar size={14}/> : <ExternalLink size={14}/>} {post.linkText || 'Ver más'}
                             </button>
                         </div>
                     )}
@@ -310,17 +285,10 @@ export default function Home() {
               </div>
               {post.image && <div className="w-full mb-3 bg-slate-100 cursor-zoom-in" onClick={() => setFullImage(post.image)}><img src={post.image} className="w-full h-auto max-h-[400px] object-cover" /></div>}
               
-              {/* LINK INTELIGENTE PARA POSTS NORMALES */}
               {post.link && (
                   <div className="px-4 mb-3">
-                      <button 
-                        onClick={(e) => handleLinkClick(e, post.link)} 
-                        className="flex items-center justify-between w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 p-3 rounded-xl transition-colors group"
-                      >
-                          <span className="text-sm font-bold text-brand-700 flex items-center gap-2">
-                              {post.link.startsWith('/') ? <LinkIcon size={16} /> : <ExternalLink size={16} />} 
-                              {post.linkText}
-                          </span>
+                      <button onClick={(e) => handleLinkClick(e, post.link)} className="flex items-center justify-between w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 p-3 rounded-xl transition-colors group">
+                          <span className="text-sm font-bold text-brand-700 flex items-center gap-2">{post.link.startsWith('/') ? <LinkIcon size={16} /> : <ExternalLink size={16} />} {post.linkText}</span>
                           <ExternalLink size={16} className="text-slate-400 group-hover:text-brand-500" />
                       </button>
                   </div>
@@ -381,7 +349,7 @@ export default function Home() {
   );
 }
 
-// ... SUBCOMPONENTES (Copiar tal cual del archivo anterior, no han cambiado) ...
+// ... SUBCOMPONENTES
 function CommentPreview({ postId, onClick }) {
   const [previewComments, setPreviewComments] = useState([]);
   useEffect(() => {
