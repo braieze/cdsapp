@@ -53,29 +53,33 @@ export default function Login() {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
 
-      // 1. Buscamos si existe
+      // 1. Referencia al usuario
       const userRef = doc(db, 'users', user.uid);
-      const userSnap = await getDoc(userRef);
 
-      // 2. Si NO existe, creamos la ficha COMPLETA (necesaria para el Directorio)
-      if (!userSnap.exists()) {
-        await setDoc(userRef, {
-          displayName: user.displayName, // Usamos displayName estándar
-          email: user.email,
-          photoURL: user.photoURL,
-          role: 'miembro',
-          area: 'ninguna',
-          phone: '',      // Campo vacío para evitar error en Directorio
-          address: '',    // Campo vacío para evitar error en Directorio
-          birthday: '',   // Campo vacío para evitar error en Directorio
-          createdAt: serverTimestamp()
-        });
-        console.log("¡Usuario nuevo registrado correctamente!");
-      }
+      // 🔥 CAMBIO CLAVE: Usamos setDoc con merge: true
+      // Esto fuerza a guardar/actualizar los datos SIEMPRE que entres.
+      // Si faltaba el nombre o la foto, esto lo arregla al instante.
+      await setDoc(userRef, {
+        displayName: user.displayName,
+        email: user.email,
+        photoURL: user.photoURL,
+        // Estos campos solo se ponen si no existen (para no borrar roles viejos)
+        createdAt: serverTimestamp(),
+        lastLogin: serverTimestamp() // Nuevo: para saber cuándo entró
+      }, { merge: true });
+
+      // Verificamos si tiene campos "vitales" para el directorio, si no, los rellenamos
+      const userSnap = await getDoc(userRef);
+      const userData = userSnap.data();
+      
+      if (!userData.role) await setDoc(userRef, { role: 'miembro' }, { merge: true });
+      if (!userData.area) await setDoc(userRef, { area: 'ninguna' }, { merge: true });
+
+      console.log("✅ Datos de usuario actualizados/verificados");
 
       // 3. Redirigimos al Home
-      navigate('/'); 
-
+      navigate('/');
+      
     } catch (error) {
       console.error("Error al iniciar sesión:", error);
       alert("Hubo un error al intentar ingresar.");
