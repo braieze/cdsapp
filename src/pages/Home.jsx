@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
-import { useOutletContext, useNavigate } from 'react-router-dom'; // ✅ Importamos useNavigate
+import { useOutletContext, useNavigate } from 'react-router-dom'; 
 import { Cake, Megaphone, BookOpen, Send, PlusCircle, Trash2, Clock, Pin, Link as LinkIcon, ExternalLink, MessageCircle, MoreVertical, X, Edit3, AlertTriangle, Calendar } from 'lucide-react';
 import CreatePostModal from '../components/CreatePostModal';
+import TopBar from '../components/TopBar'; // ✅ IMPORTAMOS TOPBAR
 import { db, auth } from '../firebase';
 import { collection, query, orderBy, onSnapshot, deleteDoc, doc, updateDoc, limit, addDoc, serverTimestamp } from 'firebase/firestore';
 
 export default function Home() {
-  const navigate = useNavigate(); // ✅ Hook para navegación interna
+  const navigate = useNavigate(); 
   const { dbUser } = useOutletContext();
   const currentUser = auth.currentUser;
   const canCreatePost = dbUser?.role === 'pastor' || dbUser?.area === 'recepcion';
@@ -74,14 +75,12 @@ export default function Home() {
   // ✅ FUNCIÓN DE NAVEGACIÓN INTELIGENTE
   const handleLinkClick = (e, url) => {
     e.preventDefault();
-    e.stopPropagation(); // Evitar que abra el detalle del post
+    e.stopPropagation(); 
     if (!url) return;
 
     if (url.startsWith('/')) {
-        // Es un link interno (ej: /calendario/...)
         navigate(url);
     } else {
-        // Es externo (ej: https://google.com)
         window.open(url, '_blank', 'noopener,noreferrer');
     }
   };
@@ -155,30 +154,35 @@ export default function Home() {
   return (
     <div className="pb-24 animate-fade-in relative min-h-screen bg-slate-50">
       
-      {/* Widget Cumpleaños */}
-      <div className="bg-white p-4 mb-2 border-b border-slate-100 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors">
-        <div className="flex items-center gap-3">
-          <div className={`p-2.5 rounded-full text-white shadow-sm ${birthdays.length > 0 ? 'bg-gradient-to-tr from-brand-500 to-brand-400 animate-pulse' : 'bg-slate-300'}`}>
-            <Cake size={22} />
-          </div>
-          <div>
-            <p className="text-sm font-extrabold text-slate-800">Cumpleaños de hoy</p>
-            <p className={`text-xs font-medium ${birthdays.length > 0 ? 'text-brand-600' : 'text-slate-400'}`}>
-              {getBirthdayText()}
-            </p>
-          </div>
-        </div>
-      </div>
+      {/* ✅ HEADER NUEVO (TopBar) */}
+      <TopBar />
 
-      {/* Filtros */}
-      <div className="flex gap-2 overflow-x-auto px-4 py-2 mb-2 hide-scrollbar">
-        {['Todo', 'Noticia', 'Devocional', 'Urgente'].map((cat) => (
-          <button key={cat} onClick={() => setFilter(cat)} className={`px-4 py-1.5 text-xs font-bold rounded-full transition-colors ${filter === cat ? 'bg-brand-900 text-white' : 'bg-white border border-slate-200 text-slate-600'}`}>{cat}</button>
-        ))}
+      <div className="px-4 mt-2">
+          {/* Widget Cumpleaños */}
+          <div className="bg-white p-4 mb-4 border border-slate-100 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className={`p-2.5 rounded-full text-white shadow-sm ${birthdays.length > 0 ? 'bg-gradient-to-tr from-brand-500 to-brand-400 animate-pulse' : 'bg-slate-300'}`}>
+                <Cake size={22} />
+              </div>
+              <div>
+                <p className="text-sm font-extrabold text-slate-800">Cumpleaños de hoy</p>
+                <p className={`text-xs font-medium ${birthdays.length > 0 ? 'text-brand-600' : 'text-slate-400'}`}>
+                  {getBirthdayText()}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Filtros */}
+          <div className="flex gap-2 overflow-x-auto py-2 mb-2 hide-scrollbar">
+            {['Todo', 'Noticia', 'Devocional', 'Urgente'].map((cat) => (
+              <button key={cat} onClick={() => setFilter(cat)} className={`px-4 py-1.5 text-xs font-bold rounded-full transition-colors ${filter === cat ? 'bg-slate-900 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600'}`}>{cat}</button>
+            ))}
+          </div>
       </div>
 
       {/* FEED */}
-      <div className="space-y-6 px-0 sm:px-4 mt-4">
+      <div className="space-y-6 px-0 sm:px-4 mt-2">
         {loading && <div className="text-center py-10">Cargando...</div>}
         
         {filteredPosts.map(post => {
