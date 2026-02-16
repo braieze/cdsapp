@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth, messaging } from '../firebase'; 
-import { collection, query, orderBy, limit, onSnapshot, getDoc, doc, updateDoc, arrayUnion, arrayRemove, where } from 'firebase/firestore'; // ✅ Agregamos arrayRemove
+import { collection, query, orderBy, limit, onSnapshot, getDoc, doc, updateDoc, arrayUnion, arrayRemove, where } from 'firebase/firestore';
 import { getToken } from 'firebase/messaging'; 
 import { Bell, BellOff, X, Calendar, MessageCircle, ChevronRight, Briefcase, ShieldAlert, Sparkles, Megaphone, BookOpen, Clock, Settings } from 'lucide-react';
 import { format, isToday, isYesterday } from 'date-fns';
@@ -19,12 +19,20 @@ export default function TopBar({ title, subtitle }) {
   const [displayLimit, setDisplayLimit] = useState(10);
   const [userRole, setUserRole] = useState('miembro');
   
-  // Estado visual del permiso (para el botón)
-  const [permissionState, setPermissionState] = useState(Notification.permission); 
+  // ✅ CAMBIO 1: Inicializamos seguro para que no rompa si 'Notification' no existe
+  const [permissionState, setPermissionState] = useState('default'); 
   
   const currentUser = auth.currentUser;
 
-  // 1. Obtener Datos y LEÍDOS
+  // ✅ CAMBIO 2: Leemos el permiso real una vez que el componente montó
+  useEffect(() => {
+    if ('Notification' in window) {
+        setPermissionState(Notification.permission);
+        console.log("Estado de permisos detectado:", Notification.permission);
+    }
+  }, [isOpen]); // Revisamos cada vez que se abre el modal
+
+  // 1. Obtener Datos
   useEffect(() => {
     if (!currentUser) return;
     const userRef = doc(db, 'users', currentUser.uid);
@@ -131,73 +139,58 @@ export default function TopBar({ title, subtitle }) {
     return () => unsubscribes.forEach(u => u());
   }, [currentUser, userRole]);
 
-  // 3. ACTUALIZACIÓN AUTOMÁTICA DEL BADGE
+  // 3. BADGE
   useEffect(() => {
       const unread = notifications.filter(n => !readIds.includes(n.id)).length;
       setUnreadCount(unread);
-      // Solo intentamos actualizar si el permiso ya está concedido
-      if ('setAppBadge' in navigator && Notification.permission === 'granted') {
+      if ('setAppBadge' in navigator && permissionState === 'granted') {
           if (unread > 0) navigator.setAppBadge(unread).catch(() => {});
           else navigator.clearAppBadge().catch(() => {});
       }
-  }, [notifications, readIds]);
+  }, [notifications, readIds, permissionState]);
 
-  // 🔥 4. ACTIVAR NOTIFICACIONES (Guardar Token + Poner Badge)
+  // 4. ACTIVAR (Guardar Token + Badge)
   const enableNotifications = async () => {
       if (!('Notification' in window)) return alert("Tu dispositivo no soporta notificaciones.");
       
       try {
           const result = await Notification.requestPermission();
-          setPermissionState(result); // Actualizamos estado visual
+          setPermissionState(result);
           
           if (result === 'granted') {
-              // A. Forzar Badge
-              if ('setAppBadge' in navigator && unreadCount > 0) {
-                  navigator.setAppBadge(unreadCount);
-              }
+              if ('setAppBadge' in navigator && unreadCount > 0) navigator.setAppBadge(unreadCount);
 
-              // B. Guardar Token en BD
               const token = await getToken(messaging, { vapidKey: VAPID_KEY });
               if (token) {
                   console.log("Token guardado:", token);
-                  await updateDoc(doc(db, 'users', currentUser.uid), {
-                      fcmTokens: arrayUnion(token)
-                  });
-                  alert("✅ Notificaciones activadas en este dispositivo.");
+                  await updateDoc(doc(db, 'users', currentUser.uid), { fcmTokens: arrayUnion(token) });
+                  alert("✅ Notificaciones activadas.");
               }
+          } else {
+              alert("Debes dar permiso en la configuración de tu celular.");
           }
       } catch (error) {
           console.error("Error al activar:", error);
-          alert("Error: Asegúrate de estar en HTTPS o tener internet.");
+          alert("Error de conexión o configuración.");
       }
   };
 
-  // ❄️ 5. DESACTIVAR NOTIFICACIONES (Borrar Token + Limpiar Badge)
+  // 5. DESACTIVAR
   const disableNotifications = async () => {
-      if (!window.confirm("¿Dejar de recibir notificaciones en este celular?")) return;
-
+      if (!window.confirm("¿Desactivar notificaciones en este dispositivo?")) return;
       try {
-          // A. Limpiar Badge
           if ('clearAppBadge' in navigator) navigator.clearAppBadge();
-
-          // B. Borrar Token de BD (Para que Firebase no envíe más aquí)
           const token = await getToken(messaging, { vapidKey: VAPID_KEY });
           if (token) {
-              await updateDoc(doc(db, 'users', currentUser.uid), {
-                  fcmTokens: arrayRemove(token)
-              });
-              console.log("Token eliminado:", token);
+              await updateDoc(doc(db, 'users', currentUser.uid), { fcmTokens: arrayRemove(token) });
           }
-          alert("🔕 Notificaciones desactivadas.");
-          
-          // Nota: No se puede cambiar Notification.permission a 'default' por código,
-          // pero al borrar el token, ya no llegarán las Push.
+          // Nota: No podemos cambiar el permiso del navegador por código, solo dejar de escuchar.
+          alert("🔕 Notificaciones silenciadas (el token fue borrado).");
       } catch (error) {
           console.error("Error al desactivar:", error);
       }
   };
 
-  // --- HANDLERS ---
   const handleNotifClick = async (notif) => {
     if (!readIds.includes(notif.id)) {
         setReadIds(prev => [...prev, notif.id]);
@@ -274,6 +267,8 @@ export default function TopBar({ title, subtitle }) {
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={() => setIsOpen(false)}>
             <div className="bg-white w-full h-[92vh] sm:h-auto sm:max-h-[85vh] sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden animate-slide-up flex flex-col" onClick={e => e.stopPropagation()}>
+                
+                {/* HEADER */}
                 <div className="px-5 py-5 border-b border-slate-50 flex justify-between items-center bg-white sticky top-0 z-10">
                     <h3 className="font-black text-xl text-slate-800 flex items-center gap-2">
                         Notificaciones {unreadCount > 0 && <span className="bg-red-100 text-red-600 text-xs px-2 py-1 rounded-full font-bold">{unreadCount} nuevas</span>}
@@ -281,32 +276,38 @@ export default function TopBar({ title, subtitle }) {
                     <button onClick={() => setIsOpen(false)} className="p-2 bg-slate-50 rounded-full hover:bg-slate-100"><X size={24} className="text-slate-500"/></button>
                 </div>
 
-                {/* 🔥 BOTÓN PERSISTENTE (SIEMPRE VISIBLE) */}
-                <div className="px-4 pt-4 pb-2">
+                {/* 🔥 ZONA DE CONTROL DE NOTIFICACIONES (SIEMPRE VISIBLE) */}
+                <div className="px-4 py-4 bg-slate-50 border-b border-slate-100">
                     {permissionState === 'granted' ? (
-                        <button 
-                            onClick={disableNotifications} 
-                            className="w-full bg-slate-100 text-slate-600 hover:bg-red-50 hover:text-red-600 py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all"
-                        >
-                            <BellOff size={18} />
-                            <span className="text-sm font-bold">Desactivar Notificaciones</span>
-                        </button>
+                        <div className="flex flex-col gap-2">
+                            <button 
+                                onClick={disableNotifications} 
+                                className="w-full bg-white border border-slate-200 text-slate-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all"
+                            >
+                                <BellOff size={18} />
+                                <span className="text-sm font-bold">Desactivar Notificaciones</span>
+                            </button>
+                            <p className="text-[10px] text-center text-green-600 font-bold flex items-center justify-center gap-1">
+                                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Activas en este dispositivo
+                            </p>
+                        </div>
                     ) : (
-                        <button 
-                            onClick={enableNotifications} 
-                            className="w-full bg-slate-900 text-white hover:bg-slate-800 py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"
-                        >
-                            <Bell size={18} className="fill-white animate-pulse"/>
-                            <span className="text-sm font-bold">ACTIVAR NOTIFICACIONES 🔴</span>
-                        </button>
+                        <div className="flex flex-col gap-2">
+                            <button 
+                                onClick={enableNotifications} 
+                                className="w-full bg-slate-900 text-white hover:bg-slate-800 py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"
+                            >
+                                <Bell size={18} className="fill-white animate-pulse"/>
+                                <span className="text-sm font-bold">ACTIVAR NOTIFICACIONES 🔴</span>
+                            </button>
+                            <p className="text-[10px] text-center text-slate-400">
+                                Necesario para ver el globo rojo en el icono.
+                            </p>
+                        </div>
                     )}
-                    <p className="text-[10px] text-center text-slate-400 mt-2 px-2">
-                        {permissionState === 'granted' 
-                            ? "Tienes las notificaciones activadas en este dispositivo."
-                            : "Necesario para ver el número rojo en el icono de la app."}
-                    </p>
                 </div>
 
+                {/* LISTA */}
                 <div className="overflow-y-auto p-4 flex-1 bg-slate-50/20">
                     {notifications.length === 0 ? (
                         <div className="py-20 text-center text-slate-400 flex flex-col items-center">
