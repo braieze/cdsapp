@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth, messaging } from '../firebase'; 
 import { collection, query, orderBy, limit, onSnapshot, getDoc, doc, updateDoc, arrayUnion, arrayRemove, where } from 'firebase/firestore'; 
-// ✅ AGREGAMOS deleteToken
 import { getToken, deleteToken } from 'firebase/messaging'; 
 import { Bell, BellOff, X, Calendar, MessageCircle, ChevronRight, Briefcase, ShieldAlert, Sparkles, Megaphone, BookOpen, Clock, Settings } from 'lucide-react';
 import { format, isToday, isYesterday } from 'date-fns';
@@ -20,22 +19,36 @@ export default function TopBar({ title, subtitle }) {
   const [displayLimit, setDisplayLimit] = useState(10);
   const [userRole, setUserRole] = useState('miembro');
   
-  // Estado visual del permiso
-  const [permissionState, setPermissionState] = useState('default'); 
+  // 🔥 NUEVO ESTADO: Controlamos la activación con una variable local + permiso real
+  const [isSubscribed, setIsSubscribed] = useState(false);
   const [isSupported, setIsSupported] = useState(true);
 
   const currentUser = auth.currentUser;
 
-  // 1. VERIFICAR SOPORTE Y PERMISO AL MONTAR
+  // 1. VERIFICAR ESTADO AL CARGAR
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-        setPermissionState(Notification.permission);
-    } else {
+    // Verificamos si el navegador soporta notificaciones
+    if (!('Notification' in window)) {
         setIsSupported(false);
+        return;
+    }
+
+    // LÓGICA CLAVE: Estamos suscritos SOLO SI:
+    // 1. El permiso del navegador es 'granted'
+    // 2. Y ADEMÁS tenemos nuestra "bandera" en localStorage (esto arregla el bug visual)
+    const localFlag = localStorage.getItem('fcm_active');
+    const browserPerm = Notification.permission;
+
+    if (browserPerm === 'granted' && localFlag === 'true') {
+        setIsSubscribed(true);
+    } else {
+        setIsSubscribed(false);
+        // Si el permiso está dado pero no tenemos la bandera, limpiamos por si acaso
+        if (browserPerm === 'granted') localStorage.removeItem('fcm_active');
     }
   }, [isOpen]); 
 
-  // 2. OBTENER DATOS
+  // 2. OBTENER DATOS (Igual que antes)
   useEffect(() => {
     if (!currentUser) return;
     const userRef = doc(db, 'users', currentUser.uid);
@@ -49,7 +62,7 @@ export default function TopBar({ title, subtitle }) {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // 3. GENERAR NOTIFICACIONES
+  // 3. GENERAR NOTIFICACIONES (Igual que antes)
   useEffect(() => {
     if (!currentUser) return;
     const unsubscribes = [];
@@ -61,7 +74,6 @@ export default function TopBar({ title, subtitle }) {
         setNotifications(combined);
     };
 
-    // A. POSTS
     const qPosts = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(20));
     unsubscribes.push(onSnapshot(qPosts, (snap) => {
         sources.posts = snap.docs.map(d => {
@@ -81,7 +93,6 @@ export default function TopBar({ title, subtitle }) {
         updateAll();
     }));
 
-    // B. EVENTOS
     const todayStr = new Date().toISOString().split('T')[0];
     const qEvents = query(collection(db, 'events'), where('date', '>=', todayStr), orderBy('date', 'asc')); 
     unsubscribes.push(onSnapshot(qEvents, (snap) => {
@@ -142,74 +153,79 @@ export default function TopBar({ title, subtitle }) {
     return () => unsubscribes.forEach(u => u());
   }, [currentUser, userRole]);
 
-  // 4. ACTUALIZAR BADGE AUTOMÁTICAMENTE
+  // 4. ACTUALIZAR BADGE
   useEffect(() => {
       const unread = notifications.filter(n => !readIds.includes(n.id)).length;
       setUnreadCount(unread);
-      if (typeof navigator !== 'undefined' && 'setAppBadge' in navigator && permissionState === 'granted') {
+      if (typeof navigator !== 'undefined' && 'setAppBadge' in navigator && isSubscribed) {
           if (unread > 0) navigator.setAppBadge(unread).catch(() => {});
           else navigator.clearAppBadge().catch(() => {});
       }
-  }, [notifications, readIds, permissionState]);
+  }, [notifications, readIds, isSubscribed]);
 
-  // 5. ACTIVAR NOTIFICACIONES
+  // 🔥 5. ACTIVAR (Guardar Token + Poner Bandera Local)
   const enableNotifications = async () => {
       if (!isSupported) return alert("Tu navegador no soporta notificaciones.");
       
       try {
           const result = await Notification.requestPermission();
-          setPermissionState(result);
           
           if (result === 'granted') {
-              if ('setAppBadge' in navigator && unreadCount > 0) navigator.setAppBadge(unreadCount);
-
               if (messaging) {
                   const token = await getToken(messaging, { vapidKey: VAPID_KEY });
                   if (token) {
                       console.log("Token guardado:", token);
+                      // Guardar en BD
                       await updateDoc(doc(db, 'users', currentUser.uid), { fcmTokens: arrayUnion(token) });
-                      alert("✅ Notificaciones activadas exitosamente.");
+                      
+                      // ✅ MARCAR COMO ACTIVO EN ESTE CELULAR
+                      localStorage.setItem('fcm_active', 'true');
+                      setIsSubscribed(true); // Actualizar UI
+                      
+                      if ('setAppBadge' in navigator && unreadCount > 0) navigator.setAppBadge(unreadCount);
+                      alert("✅ Notificaciones activadas.");
                   }
               }
           } else {
-              alert("Permiso denegado.");
+              alert("Permiso denegado por el navegador.");
           }
       } catch (error) {
           console.error("Error al activar:", error);
-          alert("Error: " + error.message);
+          alert("Error de conexión. Intenta recargar la página.");
       }
   };
 
-  // 🔥 6. DESACTIVAR (Corregido: A prueba de fallos)
+  // 🔥 6. DESACTIVAR (Borrar Token + Borrar Bandera Local + Ignorar Error de deleteToken)
   const disableNotifications = async () => {
-      if (!window.confirm("¿Desactivar notificaciones?")) return;
+      if (!window.confirm("¿Desactivar notificaciones en este dispositivo?")) return;
       
-      // Reseteamos visualmente INMEDIATAMENTE para que el usuario vea el cambio
-      setPermissionState('default');
-      alert("🔕 Notificaciones desactivadas.");
-
       try {
+          // 1. Limpiar Badge
           if ('clearAppBadge' in navigator) navigator.clearAppBadge();
-          
+
+          // 2. Intentar borrar de Firebase (si falla, no importa, actualizamos UI igual)
           if (messaging) {
-              // Intentamos obtener el token para borrarlo de la BD
               try {
                   const token = await getToken(messaging, { vapidKey: VAPID_KEY });
                   if (token) {
-                      // Borrar de Firestore
                       await updateDoc(doc(db, 'users', currentUser.uid), { fcmTokens: arrayRemove(token) });
-                      // Borrar la instancia local
-                      await deleteToken(messaging);
+                      await deleteToken(messaging).catch(e => console.log("Warning deleteToken:", e)); // Ignoramos error del SW
                   }
               } catch (innerError) {
-                  console.warn("No se pudo contactar al servidor push para borrar el token, pero se desactivó localmente.", innerError);
+                  console.log("No se pudo contactar al servidor push para borrar el token, pero se desactivó localmente.", innerError);
               }
           }
       } catch (error) {
-          console.error("Error general al desactivar:", error);
+          console.error("Error general:", error);
+      } finally {
+          // 3. ✅ ESTO SE EJECUTA SIEMPRE: FORZAMOS EL ESTADO VISUAL A "DESACTIVADO"
+          localStorage.removeItem('fcm_active');
+          setIsSubscribed(false); 
+          alert("🔕 Notificaciones desactivadas.");
       }
   };
 
+  // --- HANDLERS ---
   const handleNotifClick = async (notif) => {
     if (!readIds.includes(notif.id)) {
         setReadIds(prev => [...prev, notif.id]);
@@ -294,15 +310,18 @@ export default function TopBar({ title, subtitle }) {
                     <button onClick={() => setIsOpen(false)} className="p-2 bg-slate-50 rounded-full hover:bg-slate-100"><X size={24} className="text-slate-500"/></button>
                 </div>
 
-                {/* ZONA DE CONTROL (Siempre visible) */}
+                {/* 🔥 ZONA DE CONTROL (Basada en Bandera Local + Permiso) */}
                 <div className="px-4 py-4 bg-slate-50 border-b border-slate-100">
                     {!isSupported ? (
                         <div className="p-3 bg-amber-100 text-amber-700 rounded-xl text-xs text-center font-bold">
                             Tu navegador no soporta notificaciones.
                         </div>
-                    ) : permissionState === 'granted' ? (
+                    ) : isSubscribed ? (
                         <div className="flex flex-col gap-2">
-                            <button onClick={disableNotifications} className="w-full bg-white border border-slate-200 text-slate-600 hover:bg-red-50 hover:text-red-600 py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all">
+                            <button 
+                                onClick={disableNotifications} 
+                                className="w-full bg-white border border-slate-200 text-slate-600 hover:bg-red-50 hover:text-red-600 py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all"
+                            >
                                 <BellOff size={18} />
                                 <span className="text-sm font-bold">Desactivar Notificaciones</span>
                             </button>
@@ -312,11 +331,16 @@ export default function TopBar({ title, subtitle }) {
                         </div>
                     ) : (
                         <div className="flex flex-col gap-2">
-                            <button onClick={enableNotifications} className="w-full bg-slate-900 text-white hover:bg-slate-800 py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all">
+                            <button 
+                                onClick={enableNotifications} 
+                                className="w-full bg-slate-900 text-white hover:bg-slate-800 py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"
+                            >
                                 <Bell size={18} className="fill-white animate-pulse"/>
                                 <span className="text-sm font-bold">ACTIVAR NOTIFICACIONES 🔴</span>
                             </button>
-                            <p className="text-[10px] text-center text-slate-400">Toca para activar el globo rojo en el icono.</p>
+                            <p className="text-[10px] text-center text-slate-400">
+                                Toca para activar el globo rojo en el icono.
+                            </p>
                         </div>
                     )}
                 </div>
