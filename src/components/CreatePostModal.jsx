@@ -43,10 +43,10 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     setImage(null); setPreview(null); setShowPoll(false); setPollOptions(['', '']);
   };
 
-  // 🔥 FUNCIÓN ARREGLADA: Usa el puente de Vercel para evitar error CORS
+  // 🔥 FUNCIÓN ACTUALIZADA: Usa el backend robusto de Vercel
   const sendPushNotification = async (postTitle, postContent) => {
     try {
-      // 1. Obtener tokens de usuarios
+      // 1. Obtener tokens de usuarios de la base de datos
       const usersSnap = await getDocs(collection(db, "users"));
       let tokens = [];
 
@@ -64,11 +64,10 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         return;
       }
 
-      console.log(`Enviando a ${uniqueTokens.length} dispositivos vía Vercel API...`);
+      console.log(`Enviando notificación a ${uniqueTokens.length} dispositivos vía Backend Vercel...`);
 
-      // 2. LLAMAR A TU API INTERNA (El puente)
-      // Cuando te pases a Hostinger, cambiarás esto por: "https://tudominio.com/notificar.php"
-      await fetch("/api/send-notification", {
+      // 2. LLAMAR A TU API INTERNA (backend con Admin SDK)
+      const response = await fetch("/api/send-notification", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -80,10 +79,16 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         })
       });
 
-      console.log(`✅ Notificación enviada con éxito.`);
+      // Verificamos si el backend respondió bien
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error desconocido en el servidor');
+      }
+
+      console.log(`✅ ¡Notificación enviada con éxito!`);
 
     } catch (error) {
-      console.error("❌ Error enviando notificación:", error);
+      console.error("❌ Error enviando notificación:", error.message);
     }
   };
 
@@ -137,12 +142,15 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
       };
 
       if (postToEdit) {
+        // --- MODO EDICIÓN ---
         const postRef = doc(db, 'posts', postToEdit.id);
         await updateDoc(postRef, {
           ...commonData,
           updatedAt: serverTimestamp()
         });
+        // Nota: No enviamos notificación al editar
       } else {
+        // --- MODO CREACIÓN ---
         let finalPoll = null;
         if (showPoll) {
           const validOptions = pollOptions.filter(opt => opt.trim() !== '');
@@ -167,7 +175,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           commentsCount: 0
         });
 
-        // 🔥 ACTIVAR NOTIFICACIÓN
+        // 🔥 ACTIVAR NOTIFICACIÓN (Solo al crear)
         await sendPushNotification(
             title || `Nueva ${type}`, 
             text || "Hay nuevo contenido en la app."
@@ -189,6 +197,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
       <div className="bg-white w-full max-w-md rounded-2xl p-4 shadow-2xl animate-slide-up relative max-h-[85vh] overflow-y-auto flex flex-col">
         
+        {/* Header */}
         <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-3 flex-shrink-0">
           <h3 className="font-bold text-slate-800 text-lg">
             {postToEdit ? 'Editar Publicación' : 'Crear Publicación'}
@@ -198,7 +207,9 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           </button>
         </div>
 
+        {/* Scrollable Content */}
         <div className="overflow-y-auto flex-1 pr-1">
+          {/* Selector de Tipo */}
           <div className="flex gap-2 mb-4">
             {['Noticia', 'Devocional', 'Urgente'].map(t => (
               <button 
@@ -225,6 +236,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
             className="w-full h-24 p-3 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:border-brand-500 resize-none text-sm mb-3"
           />
 
+          {/* Sección Encuesta */}
           {!postToEdit && showPoll && (
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 mb-3 animate-fade-in">
               <div className="flex justify-between items-center mb-2">
@@ -245,6 +257,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
             </div>
           )}
 
+          {/* Links y Tags */}
           <div className="space-y-2 mb-3">
              <div className="flex gap-2">
                <div className="relative flex-1">
@@ -267,6 +280,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           )}
         </div>
 
+        {/* Footer Actions */}
         <div className="flex justify-between items-center pt-3 mt-auto border-t border-slate-100">
           <div className="flex gap-2">
             <label className="text-brand-600 p-2 hover:bg-brand-50 rounded-lg cursor-pointer"><ImageIcon size={20} /><input type="file" accept="image/*" className="hidden" onChange={handleImageChange} /></label>
