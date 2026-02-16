@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase';
 import { collection, query, orderBy, limit, onSnapshot, getDoc, doc, updateDoc, arrayUnion } from 'firebase/firestore';
-import { Bell, X, Calendar, MessageCircle, ChevronRight, Briefcase, ShieldAlert, Sparkles, Megaphone, BookOpen, Clock } from 'lucide-react';
+import { Bell, X, Calendar, MessageCircle, ChevronRight, Briefcase, ShieldAlert, Sparkles, Megaphone, BookOpen, Clock, Settings } from 'lucide-react';
 import { format, isToday, isYesterday } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -14,6 +14,9 @@ export default function TopBar({ title, subtitle }) {
   const [isOpen, setIsOpen] = useState(false);
   const [displayLimit, setDisplayLimit] = useState(10);
   const [userRole, setUserRole] = useState('miembro');
+  
+  // Estado para saber si tenemos permiso de notificaciones (iOS lo requiere para el Badge)
+  const [permission, setPermission] = useState(Notification.permission); 
   
   const currentUser = auth.currentUser;
 
@@ -127,20 +130,47 @@ export default function TopBar({ title, subtitle }) {
     return () => unsubscribes.forEach(u => u());
   }, [currentUser, userRole]);
 
-  // 3. CALCULAR NO LEÍDOS Y ACTUALIZAR INSIGNIA DEL CELULAR (APP BADGE) 🔴
+  // 3. ACTUALIZAR GLOBITO EN EL ICONO (APP BADGE)
   useEffect(() => {
       const unread = notifications.filter(n => !readIds.includes(n.id)).length;
       setUnreadCount(unread);
 
-      // 🔥 LÓGICA DE BADGING API 🔥
-      if ('setAppBadge' in navigator) {
-          if (unread > 0) {
-              navigator.setAppBadge(unread).catch((e) => console.log("Error poniendo badge:", e));
-          } else {
-              navigator.clearAppBadge().catch((e) => console.log("Error limpiando badge:", e));
+      const updateAppBadge = async () => {
+        // Solo intentamos poner el badge si el navegador lo soporta
+        if ('setAppBadge' in navigator) {
+            try {
+                // Si el permiso no es 'granted', setAppBadge fallará o no hará nada en iOS
+                if (permission === 'granted' && unread > 0) {
+                    await navigator.setAppBadge(unread);
+                } else {
+                    await navigator.clearAppBadge();
+                }
+            } catch (e) {
+                console.log("No se pudo actualizar el badge:", e);
+            }
+        }
+      };
+
+      updateAppBadge();
+  }, [notifications, readIds, permission]); // Se ejecuta cuando cambia el permiso también
+
+  // ✅ FUNCIÓN PARA PEDIR PERMISO (Botón nuevo)
+  const askForPermission = async () => {
+      if (!('Notification' in window)) {
+          alert("Tu dispositivo no soporta notificaciones.");
+          return;
+      }
+      
+      const result = await Notification.requestPermission();
+      setPermission(result);
+      
+      if (result === 'granted') {
+          // Intentar actualizar inmediatamente
+          if ('setAppBadge' in navigator && unreadCount > 0) {
+              navigator.setAppBadge(unreadCount);
           }
       }
-  }, [notifications, readIds]);
+  };
 
   // MARCAR COMO LEÍDO
   const handleNotifClick = async (notif) => {
@@ -163,6 +193,7 @@ export default function TopBar({ title, subtitle }) {
       setIsOpen(false);
       const userRef = doc(db, 'users', currentUser.uid);
       await updateDoc(userRef, { readNotifications: allIds });
+      if ('clearAppBadge' in navigator) navigator.clearAppBadge();
   };
 
   const formatNotifTime = (ts) => {
@@ -244,6 +275,7 @@ export default function TopBar({ title, subtitle }) {
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={() => setIsOpen(false)}>
             <div className="bg-white w-full h-[92vh] sm:h-auto sm:max-h-[85vh] sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden animate-slide-up flex flex-col" onClick={e => e.stopPropagation()}>
+                
                 <div className="px-5 py-5 border-b border-slate-50 flex justify-between items-center bg-white sticky top-0 z-10">
                     <h3 className="font-black text-xl text-slate-800 flex items-center gap-2">
                         Notificaciones 
@@ -251,6 +283,23 @@ export default function TopBar({ title, subtitle }) {
                     </h3>
                     <button onClick={() => setIsOpen(false)} className="p-2 bg-slate-50 rounded-full hover:bg-slate-100"><X size={24} className="text-slate-500"/></button>
                 </div>
+
+                {/* 🔥 BOTÓN DE ACTIVAR BADGE (SOLO SI NO HAY PERMISO) */}
+                {permission !== 'granted' && (
+                    <div className="px-4 pt-4 pb-2">
+                        <button 
+                            onClick={askForPermission} 
+                            className="w-full bg-slate-900 text-white py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"
+                        >
+                            <Bell size={18} className="fill-white animate-pulse"/>
+                            <span className="text-sm font-bold">Activar globo en icono 🔴</span>
+                        </button>
+                        <p className="text-[10px] text-center text-slate-400 mt-2 px-2">
+                            Necesario para ver el número rojo en el icono de la app en tu pantalla de inicio.
+                        </p>
+                    </div>
+                )}
+
                 <div className="overflow-y-auto p-4 flex-1 bg-slate-50/20">
                     {notifications.length === 0 ? (
                         <div className="py-20 text-center text-slate-400 flex flex-col items-center">
