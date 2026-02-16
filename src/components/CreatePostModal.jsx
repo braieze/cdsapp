@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { X, Image as ImageIcon, Send, Loader2, Link as LinkIcon, Tag, BarChart2, Plus, Trash2, Save } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { db, auth } from '../firebase'; 
-// ✅ AGREGADO: 'getDocs' para buscar los tokens de los usuarios
 import { collection, addDoc, serverTimestamp, doc, updateDoc, getDocs } from 'firebase/firestore';
 
 export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
@@ -24,7 +23,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
   const CLOUD_NAME = "djmkggzjp"; 
   const UPLOAD_PRESET = "ml_default"; 
 
-  // EFECTO: Si llega un post para editar, rellenamos los campos
   useEffect(() => {
     if (postToEdit) {
       setText(postToEdit.content || '');
@@ -45,7 +43,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     setImage(null); setPreview(null); setShowPoll(false); setPollOptions(['', '']);
   };
 
-  // 🔥 FUNCIÓN PARA ENVIAR NOTIFICACIONES (PLAN GRATIS)
+  // 🔥 FUNCIÓN ARREGLADA: Usa el puente de Vercel para evitar error CORS
   const sendPushNotification = async (postTitle, postContent) => {
     try {
       // 1. Obtener tokens de usuarios
@@ -66,29 +64,23 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         return;
       }
 
-      // ⚠️ PEGA AQUÍ TU CLAVE DEL SERVIDOR (La que copiaste de Firebase Console)
-      const SERVER_KEY = "AIzaSyDNyI4McGh4LZmpIFNElIG2999qkjyhbQk"; 
+      console.log(`Enviando a ${uniqueTokens.length} dispositivos vía Vercel API...`);
 
-      const message = {
-        registration_ids: uniqueTokens,
-        notification: {
-          title: postTitle || "Nueva Publicación",
-          body: postContent ? postContent.substring(0, 100) : "Toca para ver más.",
-          icon: "/logo192.png",
-          click_action: "/" 
-        }
-      };
-
-      await fetch("https://fcm.googleapis.com/fcm/send", {
+      // 2. LLAMAR A TU API INTERNA (El puente)
+      // Cuando te pases a Hostinger, cambiarás esto por: "https://tudominio.com/notificar.php"
+      await fetch("/api/send-notification", {
         method: "POST",
         headers: {
-          "Authorization": `key=${SERVER_KEY}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify(message)
+        body: JSON.stringify({
+          title: postTitle || "Nueva Publicación",
+          body: postContent ? postContent.substring(0, 100) : "Toca para ver más.",
+          tokens: uniqueTokens
+        })
       });
 
-      console.log(`✅ Notificación enviada a ${uniqueTokens.length} dispositivos.`);
+      console.log(`✅ Notificación enviada con éxito.`);
 
     } catch (error) {
       console.error("❌ Error enviando notificación:", error);
@@ -145,15 +137,12 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
       };
 
       if (postToEdit) {
-        // --- MODO EDICIÓN ---
         const postRef = doc(db, 'posts', postToEdit.id);
         await updateDoc(postRef, {
           ...commonData,
           updatedAt: serverTimestamp()
         });
-        // Nota: No enviamos notificación al editar para no hacer spam
       } else {
-        // --- MODO CREACIÓN ---
         let finalPoll = null;
         if (showPoll) {
           const validOptions = pollOptions.filter(opt => opt.trim() !== '');
@@ -178,8 +167,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           commentsCount: 0
         });
 
-        // 🔥 ACTIVAR NOTIFICACIÓN (Solo al crear)
-        // Usamos el título si existe, o un texto genérico, y el contenido
+        // 🔥 ACTIVAR NOTIFICACIÓN
         await sendPushNotification(
             title || `Nueva ${type}`, 
             text || "Hay nuevo contenido en la app."
@@ -201,7 +189,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
       <div className="bg-white w-full max-w-md rounded-2xl p-4 shadow-2xl animate-slide-up relative max-h-[85vh] overflow-y-auto flex flex-col">
         
-        {/* Header */}
         <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-3 flex-shrink-0">
           <h3 className="font-bold text-slate-800 text-lg">
             {postToEdit ? 'Editar Publicación' : 'Crear Publicación'}
@@ -211,9 +198,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           </button>
         </div>
 
-        {/* Scrollable Content */}
         <div className="overflow-y-auto flex-1 pr-1">
-          {/* Selector de Tipo */}
           <div className="flex gap-2 mb-4">
             {['Noticia', 'Devocional', 'Urgente'].map(t => (
               <button 
@@ -240,7 +225,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
             className="w-full h-24 p-3 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:border-brand-500 resize-none text-sm mb-3"
           />
 
-          {/* Sección Encuesta */}
           {!postToEdit && showPoll && (
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 mb-3 animate-fade-in">
               <div className="flex justify-between items-center mb-2">
@@ -261,7 +245,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
             </div>
           )}
 
-          {/* Links y Tags */}
           <div className="space-y-2 mb-3">
              <div className="flex gap-2">
                <div className="relative flex-1">
@@ -284,7 +267,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           )}
         </div>
 
-        {/* Footer Actions */}
         <div className="flex justify-between items-center pt-3 mt-auto border-t border-slate-100">
           <div className="flex gap-2">
             <label className="text-brand-600 p-2 hover:bg-brand-50 rounded-lg cursor-pointer"><ImageIcon size={20} /><input type="file" accept="image/*" className="hidden" onChange={handleImageChange} /></label>
