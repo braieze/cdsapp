@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { db, auth, messaging } from '../firebase'; // ✅ IMPORTANTE: Agregamos messaging
-import { collection, query, orderBy, limit, onSnapshot, getDoc, doc, updateDoc, arrayUnion, where } from 'firebase/firestore';
-import { getToken } from 'firebase/messaging'; // ✅ IMPORTANTE: Importamos getToken
-import { Bell, X, Calendar, MessageCircle, ChevronRight, Briefcase, ShieldAlert, Sparkles, Megaphone, BookOpen, Clock, Settings } from 'lucide-react';
+import { db, auth, messaging } from '../firebase'; 
+import { collection, query, orderBy, limit, onSnapshot, getDoc, doc, updateDoc, arrayUnion, arrayRemove, where } from 'firebase/firestore'; // ✅ Agregamos arrayRemove
+import { getToken } from 'firebase/messaging'; 
+import { Bell, BellOff, X, Calendar, MessageCircle, ChevronRight, Briefcase, ShieldAlert, Sparkles, Megaphone, BookOpen, Clock, Settings } from 'lucide-react';
 import { format, isToday, isYesterday } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-// ⚠️ TU CLAVE VAPID (La misma que pusiste en App.jsx)
+// ⚠️ TU CLAVE VAPID
 const VAPID_KEY = "BGMeg-zLHj3i9JZ09bYjrsV5P0eVEll09oaXMgHgs6ImBloOLHRFKKjELGxHrAEfd96ZnmlBf7XyoLKXiyIA3Wk";
 
 export default function TopBar({ title, subtitle }) {
@@ -18,7 +18,9 @@ export default function TopBar({ title, subtitle }) {
   const [isOpen, setIsOpen] = useState(false);
   const [displayLimit, setDisplayLimit] = useState(10);
   const [userRole, setUserRole] = useState('miembro');
-  const [permission, setPermission] = useState(Notification.permission); 
+  
+  // Estado visual del permiso (para el botón)
+  const [permissionState, setPermissionState] = useState(Notification.permission); 
   
   const currentUser = auth.currentUser;
 
@@ -129,57 +131,69 @@ export default function TopBar({ title, subtitle }) {
     return () => unsubscribes.forEach(u => u());
   }, [currentUser, userRole]);
 
-  // 3. BADGE DEL CELULAR
+  // 3. ACTUALIZACIÓN AUTOMÁTICA DEL BADGE
   useEffect(() => {
       const unread = notifications.filter(n => !readIds.includes(n.id)).length;
       setUnreadCount(unread);
-      if ('setAppBadge' in navigator && permission === 'granted') {
+      // Solo intentamos actualizar si el permiso ya está concedido
+      if ('setAppBadge' in navigator && Notification.permission === 'granted') {
           if (unread > 0) navigator.setAppBadge(unread).catch(() => {});
           else navigator.clearAppBadge().catch(() => {});
       }
-  }, [notifications, readIds, permission]);
+  }, [notifications, readIds]);
 
-  // 🔥 4. FUNCIÓN POTENTE: PIDE PERMISO + GUARDA TOKEN EN BD
-  const activateNotifications = async () => {
-      if (!('Notification' in window)) {
-          alert("Tu dispositivo no soporta notificaciones.");
-          return;
-      }
+  // 🔥 4. ACTIVAR NOTIFICACIONES (Guardar Token + Poner Badge)
+  const enableNotifications = async () => {
+      if (!('Notification' in window)) return alert("Tu dispositivo no soporta notificaciones.");
       
       try {
-          // A. Pedir Permiso al Sistema Operativo
           const result = await Notification.requestPermission();
-          setPermission(result);
+          setPermissionState(result); // Actualizamos estado visual
           
           if (result === 'granted') {
-              console.log("Permiso concedido. Generando token...");
-              
-              // B. Actualizar Badge visualmente
+              // A. Forzar Badge
               if ('setAppBadge' in navigator && unreadCount > 0) {
                   navigator.setAppBadge(unreadCount);
               }
 
-              // C. Generar Token de Firebase (El "número de teléfono" del celular)
+              // B. Guardar Token en BD
               const token = await getToken(messaging, { vapidKey: VAPID_KEY });
-              
               if (token) {
-                  console.log("Token generado:", token);
-                  // D. Guardar en la Base de Datos
-                  const userRef = doc(db, 'users', currentUser.uid);
-                  await updateDoc(userRef, {
+                  console.log("Token guardado:", token);
+                  await updateDoc(doc(db, 'users', currentUser.uid), {
                       fcmTokens: arrayUnion(token)
                   });
-                  alert("¡Listo! Notificaciones activadas y conectadas.");
-              } else {
-                  console.log("No se pudo generar el token.");
+                  alert("✅ Notificaciones activadas en este dispositivo.");
               }
           }
       } catch (error) {
-          console.error("Error activando notificaciones:", error);
-          // Si falla por falta de HTTPS o entorno local, avisar
-          if (window.location.hostname !== 'localhost' && window.location.protocol !== 'https:') {
-             alert("Las notificaciones requieren HTTPS.");
+          console.error("Error al activar:", error);
+          alert("Error: Asegúrate de estar en HTTPS o tener internet.");
+      }
+  };
+
+  // ❄️ 5. DESACTIVAR NOTIFICACIONES (Borrar Token + Limpiar Badge)
+  const disableNotifications = async () => {
+      if (!window.confirm("¿Dejar de recibir notificaciones en este celular?")) return;
+
+      try {
+          // A. Limpiar Badge
+          if ('clearAppBadge' in navigator) navigator.clearAppBadge();
+
+          // B. Borrar Token de BD (Para que Firebase no envíe más aquí)
+          const token = await getToken(messaging, { vapidKey: VAPID_KEY });
+          if (token) {
+              await updateDoc(doc(db, 'users', currentUser.uid), {
+                  fcmTokens: arrayRemove(token)
+              });
+              console.log("Token eliminado:", token);
           }
+          alert("🔕 Notificaciones desactivadas.");
+          
+          // Nota: No se puede cambiar Notification.permission a 'default' por código,
+          // pero al borrar el token, ya no llegarán las Push.
+      } catch (error) {
+          console.error("Error al desactivar:", error);
       }
   };
 
@@ -267,16 +281,31 @@ export default function TopBar({ title, subtitle }) {
                     <button onClick={() => setIsOpen(false)} className="p-2 bg-slate-50 rounded-full hover:bg-slate-100"><X size={24} className="text-slate-500"/></button>
                 </div>
 
-                {/* 🔥 BOTÓN DE ACTIVACIÓN MANUAL */}
-                {permission !== 'granted' && (
-                    <div className="px-4 pt-4 pb-2">
-                        <button onClick={activateNotifications} className="w-full bg-slate-900 text-white py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all">
-                            <Bell size={18} className="fill-white animate-pulse"/>
-                            <span className="text-sm font-bold">Activar globo en icono 🔴</span>
+                {/* 🔥 BOTÓN PERSISTENTE (SIEMPRE VISIBLE) */}
+                <div className="px-4 pt-4 pb-2">
+                    {permissionState === 'granted' ? (
+                        <button 
+                            onClick={disableNotifications} 
+                            className="w-full bg-slate-100 text-slate-600 hover:bg-red-50 hover:text-red-600 py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all"
+                        >
+                            <BellOff size={18} />
+                            <span className="text-sm font-bold">Desactivar Notificaciones</span>
                         </button>
-                        <p className="text-[10px] text-center text-slate-400 mt-2 px-2">Toca aquí y dale a "Permitir" para que funcione.</p>
-                    </div>
-                )}
+                    ) : (
+                        <button 
+                            onClick={enableNotifications} 
+                            className="w-full bg-slate-900 text-white hover:bg-slate-800 py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"
+                        >
+                            <Bell size={18} className="fill-white animate-pulse"/>
+                            <span className="text-sm font-bold">ACTIVAR NOTIFICACIONES 🔴</span>
+                        </button>
+                    )}
+                    <p className="text-[10px] text-center text-slate-400 mt-2 px-2">
+                        {permissionState === 'granted' 
+                            ? "Tienes las notificaciones activadas en este dispositivo."
+                            : "Necesario para ver el número rojo en el icono de la app."}
+                    </p>
+                </div>
 
                 <div className="overflow-y-auto p-4 flex-1 bg-slate-50/20">
                     {notifications.length === 0 ? (
