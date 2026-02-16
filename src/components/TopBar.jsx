@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth, messaging } from '../firebase'; 
-import { collection, query, orderBy, limit, onSnapshot, getDoc, doc, updateDoc, arrayUnion, arrayRemove, where } from 'firebase/firestore';
+import { collection, query, orderBy, limit, onSnapshot, getDoc, doc, updateDoc, arrayUnion, arrayRemove, where } from 'firebase/firestore'; 
 import { getToken } from 'firebase/messaging'; 
 import { Bell, BellOff, X, Calendar, MessageCircle, ChevronRight, Briefcase, ShieldAlert, Sparkles, Megaphone, BookOpen, Clock, Settings } from 'lucide-react';
 import { format, isToday, isYesterday } from 'date-fns';
@@ -19,18 +19,21 @@ export default function TopBar({ title, subtitle }) {
   const [displayLimit, setDisplayLimit] = useState(10);
   const [userRole, setUserRole] = useState('miembro');
   
-  // ✅ CAMBIO 1: Inicializamos seguro para que no rompa si 'Notification' no existe
+  // Estado del permiso (Inicializamos en 'default' para que SIEMPRE muestre el botón de activar al inicio)
   const [permissionState, setPermissionState] = useState('default'); 
-  
+  const [isSupported, setIsSupported] = useState(true);
+
   const currentUser = auth.currentUser;
 
-  // ✅ CAMBIO 2: Leemos el permiso real una vez que el componente montó
+  // VERIFICAR SOPORTE Y PERMISO AL MONTAR
   useEffect(() => {
-    if ('Notification' in window) {
+    if (!('Notification' in window)) {
+        setIsSupported(false);
+        setPermissionState('unsupported');
+    } else {
         setPermissionState(Notification.permission);
-        console.log("Estado de permisos detectado:", Notification.permission);
     }
-  }, [isOpen]); // Revisamos cada vez que se abre el modal
+  }, [isOpen]);
 
   // 1. Obtener Datos
   useEffect(() => {
@@ -149,9 +152,9 @@ export default function TopBar({ title, subtitle }) {
       }
   }, [notifications, readIds, permissionState]);
 
-  // 4. ACTIVAR (Guardar Token + Badge)
+  // 4. ACTIVAR
   const enableNotifications = async () => {
-      if (!('Notification' in window)) return alert("Tu dispositivo no soporta notificaciones.");
+      if (!isSupported) return alert("Tu navegador no soporta notificaciones push.");
       
       try {
           const result = await Notification.requestPermission();
@@ -164,30 +167,31 @@ export default function TopBar({ title, subtitle }) {
               if (token) {
                   console.log("Token guardado:", token);
                   await updateDoc(doc(db, 'users', currentUser.uid), { fcmTokens: arrayUnion(token) });
-                  alert("✅ Notificaciones activadas.");
+                  alert("✅ Activadas correctamente.");
               }
           } else {
-              alert("Debes dar permiso en la configuración de tu celular.");
+              alert("Permiso denegado. Ve a Configuración de tu celular > Notificaciones y activa esta app.");
           }
       } catch (error) {
           console.error("Error al activar:", error);
-          alert("Error de conexión o configuración.");
+          alert("Error: " + error.message);
       }
   };
 
   // 5. DESACTIVAR
   const disableNotifications = async () => {
-      if (!window.confirm("¿Desactivar notificaciones en este dispositivo?")) return;
+      if (!window.confirm("¿Desactivar? Dejarás de ver el globo rojo.")) return;
       try {
           if ('clearAppBadge' in navigator) navigator.clearAppBadge();
           const token = await getToken(messaging, { vapidKey: VAPID_KEY });
           if (token) {
               await updateDoc(doc(db, 'users', currentUser.uid), { fcmTokens: arrayRemove(token) });
           }
-          // Nota: No podemos cambiar el permiso del navegador por código, solo dejar de escuchar.
-          alert("🔕 Notificaciones silenciadas (el token fue borrado).");
+          alert("🔕 Desactivadas.");
+          // Forzamos visualmente aunque el permiso del navegador siga 'granted'
+          setPermissionState('default'); 
       } catch (error) {
-          console.error("Error al desactivar:", error);
+          console.error("Error:", error);
       }
   };
 
@@ -268,7 +272,6 @@ export default function TopBar({ title, subtitle }) {
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={() => setIsOpen(false)}>
             <div className="bg-white w-full h-[92vh] sm:h-auto sm:max-h-[85vh] sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden animate-slide-up flex flex-col" onClick={e => e.stopPropagation()}>
                 
-                {/* HEADER */}
                 <div className="px-5 py-5 border-b border-slate-50 flex justify-between items-center bg-white sticky top-0 z-10">
                     <h3 className="font-black text-xl text-slate-800 flex items-center gap-2">
                         Notificaciones {unreadCount > 0 && <span className="bg-red-100 text-red-600 text-xs px-2 py-1 rounded-full font-bold">{unreadCount} nuevas</span>}
@@ -276,13 +279,17 @@ export default function TopBar({ title, subtitle }) {
                     <button onClick={() => setIsOpen(false)} className="p-2 bg-slate-50 rounded-full hover:bg-slate-100"><X size={24} className="text-slate-500"/></button>
                 </div>
 
-                {/* 🔥 ZONA DE CONTROL DE NOTIFICACIONES (SIEMPRE VISIBLE) */}
+                {/* 🔥 ZONA DE CONTROL FORZADA (Sin condicionales externos que la oculten) */}
                 <div className="px-4 py-4 bg-slate-50 border-b border-slate-100">
-                    {permissionState === 'granted' ? (
+                    {!isSupported ? (
+                        <div className="p-3 bg-amber-100 text-amber-700 rounded-xl text-xs text-center font-bold">
+                            Tu navegador no soporta notificaciones.
+                        </div>
+                    ) : permissionState === 'granted' ? (
                         <div className="flex flex-col gap-2">
                             <button 
                                 onClick={disableNotifications} 
-                                className="w-full bg-white border border-slate-200 text-slate-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all"
+                                className="w-full bg-white border border-slate-200 text-slate-600 hover:bg-red-50 hover:text-red-600 py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all"
                             >
                                 <BellOff size={18} />
                                 <span className="text-sm font-bold">Desactivar Notificaciones</span>
@@ -301,13 +308,12 @@ export default function TopBar({ title, subtitle }) {
                                 <span className="text-sm font-bold">ACTIVAR NOTIFICACIONES 🔴</span>
                             </button>
                             <p className="text-[10px] text-center text-slate-400">
-                                Necesario para ver el globo rojo en el icono.
+                                Toca para activar el globo rojo en el icono.
                             </p>
                         </div>
                     )}
                 </div>
 
-                {/* LISTA */}
                 <div className="overflow-y-auto p-4 flex-1 bg-slate-50/20">
                     {notifications.length === 0 ? (
                         <div className="py-20 text-center text-slate-400 flex flex-col items-center">
