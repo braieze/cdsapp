@@ -19,23 +19,22 @@ export default function TopBar({ title, subtitle }) {
   const [displayLimit, setDisplayLimit] = useState(10);
   const [userRole, setUserRole] = useState('miembro');
   
-  // Estado del permiso (Inicializamos en 'default' para que SIEMPRE muestre el botón de activar al inicio)
+  // Estado visual del permiso (Inicializamos en 'default' para asegurar que se muestre el botón)
   const [permissionState, setPermissionState] = useState('default'); 
   const [isSupported, setIsSupported] = useState(true);
 
   const currentUser = auth.currentUser;
 
-  // VERIFICAR SOPORTE Y PERMISO AL MONTAR
+  // 1. VERIFICAR SOPORTE Y PERMISO AL MONTAR
   useEffect(() => {
-    if (!('Notification' in window)) {
-        setIsSupported(false);
-        setPermissionState('unsupported');
-    } else {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
         setPermissionState(Notification.permission);
+    } else {
+        setIsSupported(false);
     }
-  }, [isOpen]);
+  }, [isOpen]); // Revisamos cada vez que se abre el modal
 
-  // 1. Obtener Datos
+  // 2. OBTENER DATOS DEL USUARIO
   useEffect(() => {
     if (!currentUser) return;
     const userRef = doc(db, 'users', currentUser.uid);
@@ -49,7 +48,7 @@ export default function TopBar({ title, subtitle }) {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // 2. Generar Notificaciones
+  // 3. GENERAR NOTIFICACIONES
   useEffect(() => {
     if (!currentUser) return;
     const unsubscribes = [];
@@ -142,32 +141,40 @@ export default function TopBar({ title, subtitle }) {
     return () => unsubscribes.forEach(u => u());
   }, [currentUser, userRole]);
 
-  // 3. BADGE
+  // 4. ACTUALIZAR BADGE AUTOMÁTICAMENTE
   useEffect(() => {
       const unread = notifications.filter(n => !readIds.includes(n.id)).length;
       setUnreadCount(unread);
-      if ('setAppBadge' in navigator && permissionState === 'granted') {
+      // Solo intentamos actualizar si el permiso ya está concedido y estamos en navegador
+      if (typeof navigator !== 'undefined' && 'setAppBadge' in navigator && permissionState === 'granted') {
           if (unread > 0) navigator.setAppBadge(unread).catch(() => {});
           else navigator.clearAppBadge().catch(() => {});
       }
   }, [notifications, readIds, permissionState]);
 
-  // 4. ACTIVAR
+  // 🔥 5. ACTIVAR NOTIFICACIONES (Botón Verde)
   const enableNotifications = async () => {
-      if (!isSupported) return alert("Tu navegador no soporta notificaciones push.");
+      if (!isSupported) return alert("Tu navegador no soporta notificaciones.");
       
       try {
           const result = await Notification.requestPermission();
           setPermissionState(result);
           
           if (result === 'granted') {
+              // 1. Forzar Badge
               if ('setAppBadge' in navigator && unreadCount > 0) navigator.setAppBadge(unreadCount);
 
-              const token = await getToken(messaging, { vapidKey: VAPID_KEY });
-              if (token) {
-                  console.log("Token guardado:", token);
-                  await updateDoc(doc(db, 'users', currentUser.uid), { fcmTokens: arrayUnion(token) });
-                  alert("✅ Activadas correctamente.");
+              // 2. Guardar Token (Protegido por si messaging es null)
+              if (messaging) {
+                  const token = await getToken(messaging, { vapidKey: VAPID_KEY });
+                  if (token) {
+                      console.log("Token guardado:", token);
+                      await updateDoc(doc(db, 'users', currentUser.uid), { fcmTokens: arrayUnion(token) });
+                      alert("✅ Notificaciones activadas exitosamente.");
+                  }
+              } else {
+                  console.error("Messaging no inicializado");
+                  alert("Permiso concedido, pero hubo un error conectando con el servidor de mensajes.");
               }
           } else {
               alert("Permiso denegado. Ve a Configuración de tu celular > Notificaciones y activa esta app.");
@@ -178,23 +185,28 @@ export default function TopBar({ title, subtitle }) {
       }
   };
 
-  // 5. DESACTIVAR
+  // ❄️ 6. DESACTIVAR NOTIFICACIONES (Botón Rojo)
   const disableNotifications = async () => {
-      if (!window.confirm("¿Desactivar? Dejarás de ver el globo rojo.")) return;
+      if (!window.confirm("¿Desactivar notificaciones en este dispositivo?")) return;
       try {
           if ('clearAppBadge' in navigator) navigator.clearAppBadge();
-          const token = await getToken(messaging, { vapidKey: VAPID_KEY });
-          if (token) {
-              await updateDoc(doc(db, 'users', currentUser.uid), { fcmTokens: arrayRemove(token) });
+          
+          if (messaging) {
+              const token = await getToken(messaging, { vapidKey: VAPID_KEY });
+              if (token) {
+                  await updateDoc(doc(db, 'users', currentUser.uid), { fcmTokens: arrayRemove(token) });
+              }
           }
-          alert("🔕 Desactivadas.");
-          // Forzamos visualmente aunque el permiso del navegador siga 'granted'
+          // Nota: No podemos cambiar el permiso del navegador por código, solo dejamos de escuchar y borramos el token.
+          alert("🔕 Notificaciones silenciadas (Token eliminado).");
+          // Forzamos el estado visual a 'default' para que reaparezca el botón de activar
           setPermissionState('default'); 
       } catch (error) {
-          console.error("Error:", error);
+          console.error("Error al desactivar:", error);
       }
   };
 
+  // --- HANDLERS ---
   const handleNotifClick = async (notif) => {
     if (!readIds.includes(notif.id)) {
         setReadIds(prev => [...prev, notif.id]);
@@ -209,7 +221,7 @@ export default function TopBar({ title, subtitle }) {
       setReadIds(allIds);
       setIsOpen(false);
       await updateDoc(doc(db, 'users', currentUser.uid), { readNotifications: allIds });
-      if ('clearAppBadge' in navigator) navigator.clearAppBadge();
+      if (typeof navigator !== 'undefined' && 'clearAppBadge' in navigator) navigator.clearAppBadge();
   };
 
   const formatNotifTime = (ts) => {
@@ -279,7 +291,7 @@ export default function TopBar({ title, subtitle }) {
                     <button onClick={() => setIsOpen(false)} className="p-2 bg-slate-50 rounded-full hover:bg-slate-100"><X size={24} className="text-slate-500"/></button>
                 </div>
 
-                {/* 🔥 ZONA DE CONTROL FORZADA (Sin condicionales externos que la oculten) */}
+                {/* 🔥 ZONA DE CONTROL (Sin condiciones ocultas) */}
                 <div className="px-4 py-4 bg-slate-50 border-b border-slate-100">
                     {!isSupported ? (
                         <div className="p-3 bg-amber-100 text-amber-700 rounded-xl text-xs text-center font-bold">
