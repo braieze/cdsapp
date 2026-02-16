@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { X, Image as ImageIcon, Send, Loader2, Link as LinkIcon, Tag, BarChart2, Plus, Trash2, Save } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { db, auth } from '../firebase'; 
-import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
+// ✅ AGREGADO: 'getDocs' para buscar los tokens de los usuarios
+import { collection, addDoc, serverTimestamp, doc, updateDoc, getDocs } from 'firebase/firestore';
 
 export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
   const [text, setText] = useState('');
@@ -33,10 +34,8 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
       setTagInput(postToEdit.tags ? postToEdit.tags.join(', ') : '');
       setType(postToEdit.type || 'Noticia');
       setPreview(postToEdit.image || null);
-      // Nota: Las encuestas no las editamos para no romper los votos ya hechos, así que ocultamos el panel
       setShowPoll(false);
     } else {
-      // Si es nuevo, limpiar todo
       resetForm();
     }
   }, [postToEdit, isOpen]);
@@ -44,6 +43,56 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
   const resetForm = () => {
     setText(''); setTitle(''); setLink(''); setLinkText(''); setTagInput('');
     setImage(null); setPreview(null); setShowPoll(false); setPollOptions(['', '']);
+  };
+
+  // 🔥 FUNCIÓN PARA ENVIAR NOTIFICACIONES (PLAN GRATIS)
+  const sendPushNotification = async (postTitle, postContent) => {
+    try {
+      // 1. Obtener tokens de usuarios
+      const usersSnap = await getDocs(collection(db, "users"));
+      let tokens = [];
+
+      usersSnap.forEach((doc) => {
+        const data = doc.data();
+        if (data.fcmTokens && Array.isArray(data.fcmTokens)) {
+          tokens.push(...data.fcmTokens);
+        }
+      });
+
+      const uniqueTokens = [...new Set(tokens)];
+
+      if (uniqueTokens.length === 0) {
+        console.log("No hay usuarios para notificar.");
+        return;
+      }
+
+      // ⚠️ PEGA AQUÍ TU CLAVE DEL SERVIDOR (La que copiaste de Firebase Console)
+      const SERVER_KEY = "AIzaSyDNyI4McGh4LZmpIFNElIG2999qkjyhbQk"; 
+
+      const message = {
+        registration_ids: uniqueTokens,
+        notification: {
+          title: postTitle || "Nueva Publicación",
+          body: postContent ? postContent.substring(0, 100) : "Toca para ver más.",
+          icon: "/logo192.png",
+          click_action: "/" 
+        }
+      };
+
+      await fetch("https://fcm.googleapis.com/fcm/send", {
+        method: "POST",
+        headers: {
+          "Authorization": `key=${SERVER_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(message)
+      });
+
+      console.log(`✅ Notificación enviada a ${uniqueTokens.length} dispositivos.`);
+
+    } catch (error) {
+      console.error("❌ Error enviando notificación:", error);
+    }
   };
 
   if (!isOpen) return null;
@@ -70,14 +119,12 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
   };
 
   const handleSubmit = async () => {
-    // Validación básica: que haya algo escrito o una imagen
     if (!text.trim() && !image && !preview && !title.trim()) return;
     setLoading(true);
 
     try {
-      let imageUrl = postToEdit ? postToEdit.image : null; // Mantener imagen anterior si no se cambia
+      let imageUrl = postToEdit ? postToEdit.image : null;
 
-      // Si hay NUEVA imagen seleccionada, subirla a Cloudinary
       if (image) {
         const formData = new FormData();
         formData.append("file", image);
@@ -87,7 +134,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         if (data.secure_url) imageUrl = data.secure_url; 
       }
 
-      // Datos comunes para crear o editar
       const commonData = {
         content: text,
         title: title, 
@@ -103,8 +149,9 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         const postRef = doc(db, 'posts', postToEdit.id);
         await updateDoc(postRef, {
           ...commonData,
-          updatedAt: serverTimestamp() // Marca de edición
+          updatedAt: serverTimestamp()
         });
+        // Nota: No enviamos notificación al editar para no hacer spam
       } else {
         // --- MODO CREACIÓN ---
         let finalPoll = null;
@@ -125,14 +172,20 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           authorPhoto: auth.currentUser.photoURL,
           role: 'Pastor / Equipo', 
           poll: finalPoll,
-          isPinned: false, // Por defecto no fijado al crear
+          isPinned: false,
           createdAt: serverTimestamp(),
           likes: [],
           commentsCount: 0
         });
+
+        // 🔥 ACTIVAR NOTIFICACIÓN (Solo al crear)
+        // Usamos el título si existe, o un texto genérico, y el contenido
+        await sendPushNotification(
+            title || `Nueva ${type}`, 
+            text || "Hay nuevo contenido en la app."
+        );
       }
 
-      // Finalizar
       resetForm();
       setLoading(false);
       onClose();
@@ -145,7 +198,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
   };
 
   return (
-    // Z-INDEX 60 para estar ENCIMA del menú inferior.
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
       <div className="bg-white w-full max-w-md rounded-2xl p-4 shadow-2xl animate-slide-up relative max-h-[85vh] overflow-y-auto flex flex-col">
         
@@ -188,7 +240,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
             className="w-full h-24 p-3 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:border-brand-500 resize-none text-sm mb-3"
           />
 
-          {/* Sección Encuesta (Solo visible al crear, no editar) */}
+          {/* Sección Encuesta */}
           {!postToEdit && showPoll && (
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 mb-3 animate-fade-in">
               <div className="flex justify-between items-center mb-2">
@@ -236,7 +288,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         <div className="flex justify-between items-center pt-3 mt-auto border-t border-slate-100">
           <div className="flex gap-2">
             <label className="text-brand-600 p-2 hover:bg-brand-50 rounded-lg cursor-pointer"><ImageIcon size={20} /><input type="file" accept="image/*" className="hidden" onChange={handleImageChange} /></label>
-            {/* Solo mostramos botón de encuesta si NO estamos editando */}
             {!postToEdit && (
               <button onClick={() => setShowPoll(!showPoll)} className={`p-2 rounded-lg ${showPoll ? 'text-brand-600 bg-brand-50' : 'text-slate-400 hover:bg-slate-50'}`}><BarChart2 size={20} /></button>
             )}
