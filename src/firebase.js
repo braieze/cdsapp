@@ -5,7 +5,6 @@ import { getStorage } from "firebase/storage";
 import { getMessaging } from "firebase/messaging"; 
 
 const firebaseConfig = {
-  // ... TUS CREDENCIALES (NO LAS BORRES) ...
   apiKey: "AIzaSyCqz0ya0Y4DcJ10r6vdT7a1kcY09lCbWbo",
   authDomain: "conquistadores-app.firebaseapp.com",
   projectId: "conquistadores-app",
@@ -21,13 +20,15 @@ const db = getFirestore(app);
 const storage = getStorage(app);
 
 // 🔥 CORRECCIÓN PARA VERCEL:
-// Solo inicializamos messaging si estamos en el navegador (window existe)
+// Inicializamos messaging como null por defecto.
 let messaging = null;
+
+// Solo si estamos en el navegador (cliente), intentamos activar messaging
 if (typeof window !== "undefined") {
   try {
     messaging = getMessaging(app);
   } catch (err) {
-    console.error("Error iniciando messaging:", err);
+    console.error("Firebase Messaging no soportado en este entorno:", err);
   }
 }
 
