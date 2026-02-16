@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase';
-import { collection, query, orderBy, limit, onSnapshot, getDoc, doc, updateDoc, arrayUnion } from 'firebase/firestore';
-import { Bell, X, Calendar, MessageCircle, ChevronRight, Briefcase, ShieldAlert, Sparkles, Megaphone, BookOpen, Clock, Settings } from 'lucide-react';
+import { collection, query, orderBy, limit, onSnapshot, getDoc, doc, updateDoc, arrayUnion, where } from 'firebase/firestore';
+import { Bell, X, Calendar, MessageCircle, ChevronRight, Briefcase, ShieldAlert, Sparkles, Megaphone, BookOpen, Clock } from 'lucide-react';
 import { format, isToday, isYesterday } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -14,13 +14,11 @@ export default function TopBar({ title, subtitle }) {
   const [isOpen, setIsOpen] = useState(false);
   const [displayLimit, setDisplayLimit] = useState(10);
   const [userRole, setUserRole] = useState('miembro');
-  
-  // Estado para saber si tenemos permiso de notificaciones (iOS lo requiere para el Badge)
-  const [permission, setPermission] = useState(Notification.permission); 
+  const [permission, setPermission] = useState(Notification.permission);
   
   const currentUser = auth.currentUser;
 
-  // 1. Obtener Datos y LEÍDOS desde FIREBASE
+  // 1. Obtener Datos del Usuario y Notificaciones Leídas (Sincronizado)
   useEffect(() => {
     if (!currentUser) return;
     
@@ -35,7 +33,7 @@ export default function TopBar({ title, subtitle }) {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // 2. Generar Notificaciones
+  // 2. Generar Notificaciones (Posts + Eventos + Asignaciones)
   useEffect(() => {
     if (!currentUser) return;
 
@@ -43,13 +41,14 @@ export default function TopBar({ title, subtitle }) {
     const sources = { posts: [], events: [], assignments: [] };
 
     const updateAll = () => {
+        // Combinar todo y ordenar por fecha (más reciente/urgente arriba)
         const combined = [...sources.posts, ...sources.events, ...sources.assignments]
             .sort((a, b) => b.timestamp - a.timestamp);
         setNotifications(combined);
     };
 
-    // Posts
-    const qPosts = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(20));
+    // --- A. ESCUCHAR POSTS (Noticias) ---
+    const qPosts = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(15));
     unsubscribes.push(onSnapshot(qPosts, (snap) => {
         sources.posts = snap.docs.map(d => {
             const data = d.data();
@@ -68,51 +67,68 @@ export default function TopBar({ title, subtitle }) {
         updateAll();
     }));
 
-    // Eventos
-    const qEvents = query(collection(db, 'events'), orderBy('date', 'desc'), limit(20));
+    // --- B. ESCUCHAR EVENTOS Y ASIGNACIONES ---
+    // 🔥 CAMBIO CLAVE: 'asc' para ver los eventos PRÓXIMOS (mañana, pasado), no los de 2030.
+    const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const qEvents = query(
+        collection(db, 'events'), 
+        where('date', '>=', todayStr), // Solo eventos futuros o de hoy
+        orderBy('date', 'asc') // Los más cercanos primero
+    );
+
     unsubscribes.push(onSnapshot(qEvents, (snap) => {
         const evs = [];
         const asgs = [];
+        
         snap.docs.forEach(d => {
             const data = d.data();
+            // Usamos la fecha del evento como timestamp para ordenar
             const eventTs = new Date(data.date + 'T00:00:00').getTime();
 
-            // Asignación
+            // 1. DETECTOR DE ASIGNACIONES (Esto incrementa el globito)
             const isMyTask = data.assignments && Object.values(data.assignments).some(arr => Array.isArray(arr) && arr.includes(currentUser.displayName));
+            
+            // Si estoy asignado Y (no hay confirmación O no la he respondido yo)
             if (isMyTask && (!data.confirmations || !data.confirmations[currentUser.displayName])) {
                 asgs.push({
-                    id: `asg-${d.id}`,
+                    id: `asg-${d.id}`, // ID único basado en el evento
                     type: 'assignment',
-                    title: 'Servicio Pendiente',
-                    subtitle: `${data.title} - Confirmar`,
-                    timestamp: eventTs,
+                    title: '¡Te han asignado!',
+                    subtitle: `${data.title} - Toca para confirmar`,
+                    timestamp: eventTs, // Aparece con la fecha del evento
                     link: `/calendario/${d.id}`,
                     icon: Briefcase,
                     color: 'bg-amber-100 text-amber-600',
-                    isUrgent: true
+                    isUrgent: true // Esto lo pone rojito/destacado
                 });
             }
-            // Evento
-            evs.push({
-                id: `ev-${d.id}`,
-                type: 'event',
-                title: 'Nuevo Evento',
-                subtitle: data.title,
-                timestamp: eventTs,
-                link: `/calendario/${d.id}`,
-                icon: Calendar,
-                color: 'bg-purple-100 text-purple-600'
-            });
-            // Alertas
+
+            // 2. Notificación General de Evento (Para todos)
+            // Solo mostramos como "Nuevo Evento" si no estoy asignado (para no duplicar)
+            if (!isMyTask) {
+                evs.push({
+                    id: `ev-${d.id}`,
+                    type: 'event',
+                    title: 'Evento Próximo',
+                    subtitle: data.title,
+                    timestamp: eventTs,
+                    link: `/calendario/${d.id}`,
+                    icon: Calendar,
+                    color: 'bg-purple-100 text-purple-600',
+                    isUrgent: false
+                });
+            }
+
+            // 3. Alertas para Líderes (Si alguien rechazó)
             if (['pastor', 'lider'].includes(userRole) && data.confirmations) {
                 Object.entries(data.confirmations).forEach(([name, status]) => {
                     if (status === 'declined') {
                         asgs.push({
                             id: `dec-${d.id}-${name}`,
                             type: 'alert',
-                            title: 'Baja de Equipo',
-                            subtitle: `${name} no asiste a ${data.title}`,
-                            timestamp: Date.now(),
+                            title: 'Baja en el equipo',
+                            subtitle: `${name} no asistirá a ${data.title}`,
+                            timestamp: Date.now(), // Alerta inmediata
                             link: `/calendario/${d.id}`,
                             icon: ShieldAlert,
                             color: 'bg-red-50 text-red-500',
@@ -130,52 +146,45 @@ export default function TopBar({ title, subtitle }) {
     return () => unsubscribes.forEach(u => u());
   }, [currentUser, userRole]);
 
-  // 3. ACTUALIZAR GLOBITO EN EL ICONO (APP BADGE)
+  // 3. ACTUALIZAR GLOBITO EN EL ICONO (APP BADGE) Y CONTADOR
   useEffect(() => {
+      // Filtramos las que NO están en la lista de leídos del usuario
       const unread = notifications.filter(n => !readIds.includes(n.id)).length;
       setUnreadCount(unread);
 
+      // Actualizar Badge del celular
       const updateAppBadge = async () => {
-        // Solo intentamos poner el badge si el navegador lo soporta
         if ('setAppBadge' in navigator) {
             try {
-                // Si el permiso no es 'granted', setAppBadge fallará o no hará nada en iOS
                 if (permission === 'granted' && unread > 0) {
                     await navigator.setAppBadge(unread);
                 } else {
                     await navigator.clearAppBadge();
                 }
-            } catch (e) {
-                console.log("No se pudo actualizar el badge:", e);
-            }
+            } catch (e) { console.log(e); }
         }
       };
-
       updateAppBadge();
-  }, [notifications, readIds, permission]); // Se ejecuta cuando cambia el permiso también
+  }, [notifications, readIds, permission]);
 
-  // ✅ FUNCIÓN PARA PEDIR PERMISO (Botón nuevo)
+  // SOLICITAR PERMISO (iOS/Android)
   const askForPermission = async () => {
-      if (!('Notification' in window)) {
-          alert("Tu dispositivo no soporta notificaciones.");
-          return;
-      }
-      
+      if (!('Notification' in window)) return alert("Tu dispositivo no soporta notificaciones.");
       const result = await Notification.requestPermission();
       setPermission(result);
-      
-      if (result === 'granted') {
-          // Intentar actualizar inmediatamente
-          if ('setAppBadge' in navigator && unreadCount > 0) {
-              navigator.setAppBadge(unreadCount);
-          }
+      if (result === 'granted' && 'setAppBadge' in navigator && unreadCount > 0) {
+          navigator.setAppBadge(unreadCount);
       }
   };
 
-  // MARCAR COMO LEÍDO
+  // MARCAR COMO LEÍDO (Sync con Firebase)
   const handleNotifClick = async (notif) => {
+    // Solo marcamos si no estaba leída
     if (!readIds.includes(notif.id)) {
+        // 1. UI instantánea
         setReadIds(prev => [...prev, notif.id]);
+        
+        // 2. Persistencia en Nube
         const userRef = doc(db, 'users', currentUser.uid);
         try {
             await updateDoc(userRef, {
@@ -198,8 +207,8 @@ export default function TopBar({ title, subtitle }) {
 
   const formatNotifTime = (ts) => {
     const date = new Date(ts);
-    if (isToday(date)) return `Hoy a las ${format(date, 'HH:mm')}`;
-    if (isYesterday(date)) return `Ayer a las ${format(date, 'HH:mm')}`;
+    if (isToday(date)) return `Hoy, ${format(date, 'HH:mm')}`;
+    if (isYesterday(date)) return `Ayer, ${format(date, 'HH:mm')}`;
     return format(date, "d MMM, HH:mm", { locale: es });
   };
 
@@ -284,19 +293,13 @@ export default function TopBar({ title, subtitle }) {
                     <button onClick={() => setIsOpen(false)} className="p-2 bg-slate-50 rounded-full hover:bg-slate-100"><X size={24} className="text-slate-500"/></button>
                 </div>
 
-                {/* 🔥 BOTÓN DE ACTIVAR BADGE (SOLO SI NO HAY PERMISO) */}
                 {permission !== 'granted' && (
                     <div className="px-4 pt-4 pb-2">
-                        <button 
-                            onClick={askForPermission} 
-                            className="w-full bg-slate-900 text-white py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"
-                        >
+                        <button onClick={askForPermission} className="w-full bg-slate-900 text-white py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all">
                             <Bell size={18} className="fill-white animate-pulse"/>
                             <span className="text-sm font-bold">Activar globo en icono 🔴</span>
                         </button>
-                        <p className="text-[10px] text-center text-slate-400 mt-2 px-2">
-                            Necesario para ver el número rojo en el icono de la app en tu pantalla de inicio.
-                        </p>
+                        <p className="text-[10px] text-center text-slate-400 mt-2 px-2">Necesario para ver el número rojo en el icono de la app.</p>
                     </div>
                 )}
 
