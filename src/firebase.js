@@ -1,6 +1,8 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
+import { getMessaging } from "firebase/messaging"; // 1. IMPORTAR
 
 // ⚠️ PEGA AQUÍ EL CÓDIGO QUE GUARDAS EN TU BLOC DE NOTAS
 const firebaseConfig = {
@@ -19,3 +21,8 @@ const app = initializeApp(firebaseConfig);
 // Exportamos Auth y Base de datos para usarlos en toda la app
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+const storage = getStorage(app);
+const messaging = getMessaging(app); // 2. INICIALIZAR
+
+export { auth, db, storage, messaging }; // 3. EXPORTAR

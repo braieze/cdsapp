@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { auth, db } from './firebase'; // Importamos db también
+import { auth, db, messaging } from './firebase'; // ✅ Importamos messaging
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'; // Importamos funciones de base de datos
-import EventDetails from './pages/EventDetails'; // ✅ Importar la nueva página (Aún no existe, no te asustes si da error un segundo)
+import { doc, getDoc, setDoc, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore'; // ✅ Importamos updateDoc y arrayUnion
+import { getToken } from 'firebase/messaging'; // ✅ Importamos getToken
+
+import EventDetails from './pages/EventDetails';
 
 // Layouts y Páginas
 import MainLayout from './layouts/MainLayout';
 import Home from './pages/Home';
 import Calendar from './pages/Calendar';
 import MyServices from './pages/MyServices';
-import HistoryPage from './pages/History'; // 👈 IMPORTANTE: Agrega esto
+import HistoryPage from './pages/History';
 import AppsHub from './pages/AppsHub';
 import Login from './pages/Login';
 import Profile from './pages/Profile';
@@ -23,26 +25,51 @@ function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        // 1. Si el usuario está logueado, verificamos si existe en la Base de Datos
+        // 1. Referencia al usuario en la BD
         const userRef = doc(db, 'users', currentUser.uid);
         const userSnap = await getDoc(userRef);
 
+        // 2. Si no existe, lo creamos (Rol por defecto: miembro)
         if (!userSnap.exists()) {
-          // 2. Si NO existe (es nuevo o no se guardó), lo creamos ahora mismo
           await setDoc(userRef, {
             displayName: currentUser.displayName,
             email: currentUser.email,
             photoURL: currentUser.photoURL,
-            role: 'miembro',      // Rol por defecto
-            area: 'ninguna',      // Área por defecto
+            role: 'miembro',
+            area: 'ninguna',
             createdAt: serverTimestamp(),
             phone: ''
           });
           console.log("Usuario creado en el Directorio automáticamente.");
         }
+
+        // 3. 🔥 LÓGICA DE NOTIFICACIONES PUSH (NUEVO) 🔥
+        try {
+          // Pedimos permiso al navegador
+          const permission = await Notification.requestPermission();
+          
+          if (permission === 'granted') {
+            // Generamos el Token único del dispositivo
+            const token = await getToken(messaging, {
+              vapidKey: "BGMeg-zLHj3i9JZ09bYjrsV5P0eVEll09oaXMgHgs6ImBloOLHRFKKjELGxHrAEfd96ZnmlBf7XyoLKXiyIA3Wk"
+            });
+
+            if (token) {
+              console.log("Token FCM generado:", token);
+              
+              // Guardamos el token en Firestore sin borrar los anteriores (arrayUnion)
+              await updateDoc(userRef, {
+                fcmTokens: arrayUnion(token)
+              });
+            }
+          }
+        } catch (error) {
+          console.log("No se pudo configurar las notificaciones Push:", error);
+          // No bloqueamos la app si esto falla, solo lo logueamos
+        }
       }
       
-      // 3. Guardamos el usuario en el estado y terminamos la carga
+      // 4. Guardamos usuario y terminamos carga
       setUser(currentUser);
       setLoading(false);
     });
@@ -69,10 +96,9 @@ function App() {
           <Route path="/" element={<Home />} />
           
           <Route path="/calendario" element={<Calendar />} />
-          <Route path="/calendario/:id" element={<EventDetails />} /> {/* ✅ NUEVA RUTA (Hija de calendario) */}
+          <Route path="/calendario/:id" element={<EventDetails />} />
           
           <Route path="/servicios" element={<MyServices />} />
-          {/* 👇 AGREGA ESTA LÍNEA */}
           <Route path="/historial" element={<HistoryPage />} />
           <Route path="/apps" element={<AppsHub />} />
           <Route path="/perfil" element={<Profile />} /> 
