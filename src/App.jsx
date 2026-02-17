@@ -5,10 +5,12 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore'; // ✅ Importamos updateDoc y arrayUnion
 import { getToken } from 'firebase/messaging'; // ✅ Importamos getToken
 import { Toaster } from 'sonner';
+
+// Importación del detalle de evento y POST (Agregada para corregir el error)
 import EventDetails from './pages/EventDetails';
+import PostDetail from './pages/PostDetail'; // 👈 ESTA ERA LA LÍNEA QUE FALTABA
 
 // Layouts y Páginas
-
 import MainLayout from './layouts/MainLayout';
 import Home from './pages/Home';
 import Calendar from './pages/Calendar';
@@ -18,7 +20,6 @@ import AppsHub from './pages/AppsHub';
 import Login from './pages/Login';
 import Profile from './pages/Profile';
 import Directory from './pages/Directory';
-
 
 function App() {
   const [user, setUser] = useState(null);
@@ -45,7 +46,7 @@ function App() {
           console.log("Usuario creado en el Directorio automáticamente.");
         }
 
-        // 3. 🔥 LÓGICA DE NOTIFICACIONES PUSH (NUEVO) 🔥
+        // 3. 🔥 LÓGICA DE NOTIFICACIONES PUSH 🔥
         try {
           // Pedimos permiso al navegador
           const permission = await Notification.requestPermission();
@@ -67,7 +68,6 @@ function App() {
           }
         } catch (error) {
           console.log("No se pudo configurar las notificaciones Push:", error);
-          // No bloqueamos la app si esto falla, solo lo logueamos
         }
       }
       
@@ -98,6 +98,7 @@ function App() {
         <Route element={user ? <MainLayout /> : <Navigate to="/login" />}>
           <Route path="/" element={<Home />} />
           
+          {/* ✅ Ruta para el detalle de las publicaciones */}
           <Route path="/post/:postId" element={<PostDetail />} />
           
           <Route path="/calendario" element={<Calendar />} />
