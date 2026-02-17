@@ -15,27 +15,20 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
-// Manejador de mensajes en segundo plano
+// 1. MANEJADOR DE MENSAJES EN SEGUNDO PLANO
 messaging.onBackgroundMessage(function(payload) {
   console.log('[firebase-messaging-sw.js] Mensaje recibido:', payload);
   
-  // 💡 IMPORTANTE: Ahora leemos todo de 'payload.data' porque el servidor
-  // ya no envía el objeto 'notification'. Esto evita la duplicidad.
+  // Extraemos datos del objeto 'data' (enviado desde server.js)
   const notificationTitle = payload.data.title || "Nuevo Aviso";
-  
   const notificationOptions = {
     body: payload.data.body || "Tienes contenido nuevo en la app.",
-    // Imagen a color (derecha)
     icon: '/web-app-manifest-192x192.png', 
-    // Silueta BLANCA (Barra de estado arriba en Android)
     badge: '/badge-72x72.png', 
     vibrate: [200, 100, 200],
-    // El 'tag' es vital: si llega otra notificación con el mismo tag, 
-    // reemplaza a la anterior en lugar de crear un segundo globo.
-    tag: 'cds-notif-unica', 
+    tag: 'cds-notif-unica', // Evita que se dupliquen globos
     renotify: true,
     data: {
-      // Guardamos la URL para el evento 'notificationclick'
       url: payload.data.url || '/' 
     }
   };
@@ -43,21 +36,34 @@ messaging.onBackgroundMessage(function(payload) {
   return self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
-// Manejador del clic en la notificación
+// 2. LÓGICA DE CLIC ACTUALIZADA (Deep Linking Forzado)
 self.addEventListener('notificationclick', function(event) {
-  event.notification.close();
+  event.notification.close(); // Cierra el globo de notificación
+
+  // Obtenemos la URL de destino guardada en la notificación
+  const targetUrl = event.notification.data.url || '/';
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-      // Si la app ya está abierta, la enfocamos
-      for (const client of clientList) {
-        if (client.url === event.notification.data.url && 'focus' in client) {
-          return client.focus();
+      // 1. Si la app ya está abierta en alguna pestaña/ventana
+      if (clientList.length > 0) {
+        let client = clientList[0];
+        
+        // Priorizamos la ventana que el usuario esté viendo actualmente
+        for (const c of clientList) {
+          if (c.visibilityState === 'visible') {
+            client = c;
+            break;
+          }
         }
+        
+        // 🔥 FUERZA BRUTA: Obligamos a esa ventana a navegar a la URL del evento
+        return client.navigate(targetUrl).then(c => c.focus());
       }
-      // Si no está abierta o es una ruta distinta, la abrimos
+      
+      // 2. Si la app está cerrada completamente, abrimos una nueva
       if (clients.openWindow) {
-        return clients.openWindow(event.notification.data.url);
+        return clients.openWindow(targetUrl);
       }
     })
   );
