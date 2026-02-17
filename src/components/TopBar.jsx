@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth, messaging } from '../firebase'; 
-import { collection, query, orderBy, limit, onSnapshot, getDoc, doc, updateDoc, arrayUnion, arrayRemove, where } from 'firebase/firestore'; 
+import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, arrayUnion, arrayRemove, where } from 'firebase/firestore'; 
 import { getToken, deleteToken } from 'firebase/messaging'; 
-import { Bell, BellOff, X, Calendar, MessageCircle, ChevronRight, Briefcase, ShieldAlert, Sparkles, Megaphone, BookOpen, Clock, Settings } from 'lucide-react';
+import { Bell, BellOff, X, Calendar, MessageCircle, ChevronRight, Briefcase, ShieldAlert, Sparkles, Megaphone, BookOpen, Clock, Settings, Loader2 } from 'lucide-react';
 import { format, isToday, isYesterday } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { toast } from 'sonner'; // 🔥 IMPORTANTE: Usamos Sonner para las notificaciones
 
 // ⚠️ TU CLAVE VAPID
 const VAPID_KEY = "BGMeg-zLHj3i9JZ09bYjrsV5P0eVEll09oaXMgHgs6ImBloOLHRFKKjELGxHrAEfd96ZnmlBf7XyoLKXiyIA3Wk";
@@ -19,23 +20,22 @@ export default function TopBar({ title, subtitle }) {
   const [displayLimit, setDisplayLimit] = useState(10);
   const [userRole, setUserRole] = useState('miembro');
   
-  // 🔥 NUEVO ESTADO: Controlamos la activación con una variable local + permiso real
+  // Estado de suscripción
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isSupported, setIsSupported] = useState(true);
+
+  // 🔥 NUEVO: Estado de carga para el botón de activar/desactivar
+  const [loadingAction, setLoadingAction] = useState(false);
 
   const currentUser = auth.currentUser;
 
   // 1. VERIFICAR ESTADO AL CARGAR
   useEffect(() => {
-    // Verificamos si el navegador soporta notificaciones
     if (!('Notification' in window)) {
         setIsSupported(false);
         return;
     }
 
-    // LÓGICA CLAVE: Estamos suscritos SOLO SI:
-    // 1. El permiso del navegador es 'granted'
-    // 2. Y ADEMÁS tenemos nuestra "bandera" en localStorage (esto arregla el bug visual)
     const localFlag = localStorage.getItem('fcm_active');
     const browserPerm = Notification.permission;
 
@@ -43,12 +43,11 @@ export default function TopBar({ title, subtitle }) {
         setIsSubscribed(true);
     } else {
         setIsSubscribed(false);
-        // Si el permiso está dado pero no tenemos la bandera, limpiamos por si acaso
         if (browserPerm === 'granted') localStorage.removeItem('fcm_active');
     }
   }, [isOpen]); 
 
-  // 2. OBTENER DATOS (Igual que antes)
+  // 2. OBTENER DATOS DE USUARIO
   useEffect(() => {
     if (!currentUser) return;
     const userRef = doc(db, 'users', currentUser.uid);
@@ -62,7 +61,7 @@ export default function TopBar({ title, subtitle }) {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // 3. GENERAR NOTIFICACIONES (Igual que antes)
+  // 3. GENERAR NOTIFICACIONES
   useEffect(() => {
     if (!currentUser) return;
     const unsubscribes = [];
@@ -163,9 +162,15 @@ export default function TopBar({ title, subtitle }) {
       }
   }, [notifications, readIds, isSubscribed]);
 
-  // 🔥 5. ACTIVAR (Guardar Token + Poner Bandera Local)
+  // 🔥 5. ACTIVAR (Mejorado: Sin Alert, Con Spinner y Anti-doble-click)
   const enableNotifications = async () => {
-      if (!isSupported) return alert("Tu navegador no soporta notificaciones.");
+      if (!isSupported) {
+          toast.error("Tu navegador no soporta notificaciones.");
+          return;
+      }
+      if (loadingAction) return; // Evita doble clic
+
+      setLoadingAction(true); // Activa spinner
       
       try {
           const result = await Notification.requestPermission();
@@ -175,53 +180,62 @@ export default function TopBar({ title, subtitle }) {
                   const token = await getToken(messaging, { vapidKey: VAPID_KEY });
                   if (token) {
                       console.log("Token guardado:", token);
-                      // Guardar en BD
+                      // Guardar en BD (arrayUnion evita duplicados)
                       await updateDoc(doc(db, 'users', currentUser.uid), { fcmTokens: arrayUnion(token) });
                       
-                      // ✅ MARCAR COMO ACTIVO EN ESTE CELULAR
+                      // Marcar activo localmente
                       localStorage.setItem('fcm_active', 'true');
-                      setIsSubscribed(true); // Actualizar UI
+                      setIsSubscribed(true);
                       
                       if ('setAppBadge' in navigator && unreadCount > 0) navigator.setAppBadge(unreadCount);
-                      alert("✅ Notificaciones activadas.");
+                      
+                      // ✅ Toast elegante en vez de Alert
+                      toast.success("¡Notificaciones activadas!");
+                  } else {
+                      toast.error("No se pudo obtener el token.");
                   }
               }
           } else {
-              alert("Permiso denegado por el navegador.");
+              toast.info("Debes dar permiso en el navegador para recibir avisos.");
           }
       } catch (error) {
           console.error("Error al activar:", error);
-          alert("Error de conexión. Intenta recargar la página.");
+          toast.error("Error de conexión. Intenta de nuevo.");
+      } finally {
+          setLoadingAction(false); // Apaga spinner
       }
   };
 
-  // 🔥 6. DESACTIVAR (Borrar Token + Borrar Bandera Local + Ignorar Error de deleteToken)
+  // 🔥 6. DESACTIVAR (Mejorado: Sin Alert, Con Spinner)
   const disableNotifications = async () => {
-      if (!window.confirm("¿Desactivar notificaciones en este dispositivo?")) return;
+      if (loadingAction) return;
+      
+      // Confirmación rápida (puedes quitarla si quieres que sea instantáneo)
+      if (!window.confirm("¿Quieres dejar de recibir avisos en este celular?")) return;
+
+      setLoadingAction(true);
       
       try {
-          // 1. Limpiar Badge
           if ('clearAppBadge' in navigator) navigator.clearAppBadge();
 
-          // 2. Intentar borrar de Firebase (si falla, no importa, actualizamos UI igual)
           if (messaging) {
               try {
                   const token = await getToken(messaging, { vapidKey: VAPID_KEY });
                   if (token) {
                       await updateDoc(doc(db, 'users', currentUser.uid), { fcmTokens: arrayRemove(token) });
-                      await deleteToken(messaging).catch(e => console.log("Warning deleteToken:", e)); // Ignoramos error del SW
+                      await deleteToken(messaging).catch(e => console.log("Warning deleteToken:", e));
                   }
               } catch (innerError) {
-                  console.log("No se pudo contactar al servidor push para borrar el token, pero se desactivó localmente.", innerError);
+                  console.log("Error menor borrando token:", innerError);
               }
           }
       } catch (error) {
           console.error("Error general:", error);
       } finally {
-          // 3. ✅ ESTO SE EJECUTA SIEMPRE: FORZAMOS EL ESTADO VISUAL A "DESACTIVADO"
           localStorage.removeItem('fcm_active');
           setIsSubscribed(false); 
-          alert("🔕 Notificaciones desactivadas.");
+          setLoadingAction(false);
+          toast.success("Notificaciones desactivadas.");
       }
   };
 
@@ -241,6 +255,7 @@ export default function TopBar({ title, subtitle }) {
       setIsOpen(false);
       await updateDoc(doc(db, 'users', currentUser.uid), { readNotifications: allIds });
       if (typeof navigator !== 'undefined' && 'clearAppBadge' in navigator) navigator.clearAppBadge();
+      toast.success("Todo marcado como leído");
   };
 
   const formatNotifTime = (ts) => {
@@ -310,7 +325,7 @@ export default function TopBar({ title, subtitle }) {
                     <button onClick={() => setIsOpen(false)} className="p-2 bg-slate-50 rounded-full hover:bg-slate-100"><X size={24} className="text-slate-500"/></button>
                 </div>
 
-                {/* 🔥 ZONA DE CONTROL (Basada en Bandera Local + Permiso) */}
+                {/* 🔥 ZONA DE CONTROL MEJORADA */}
                 <div className="px-4 py-4 bg-slate-50 border-b border-slate-100">
                     {!isSupported ? (
                         <div className="p-3 bg-amber-100 text-amber-700 rounded-xl text-xs text-center font-bold">
@@ -320,27 +335,33 @@ export default function TopBar({ title, subtitle }) {
                         <div className="flex flex-col gap-2">
                             <button 
                                 onClick={disableNotifications} 
-                                className="w-full bg-white border border-slate-200 text-slate-600 hover:bg-red-50 hover:text-red-600 py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all"
+                                disabled={loadingAction} // 🔒 Bloquear botón
+                                className={`w-full border border-slate-200 py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all ${loadingAction ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-white text-slate-600 hover:bg-red-50 hover:text-red-600'}`}
                             >
-                                <BellOff size={18} />
-                                <span className="text-sm font-bold">Desactivar Notificaciones</span>
+                                {loadingAction ? <Loader2 size={18} className="animate-spin"/> : <BellOff size={18} />}
+                                <span className="text-sm font-bold">{loadingAction ? "Desactivando..." : "Desactivar Notificaciones"}</span>
                             </button>
-                            <p className="text-[10px] text-center text-green-600 font-bold flex items-center justify-center gap-1">
-                                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Activas en este dispositivo
-                            </p>
+                            {!loadingAction && (
+                                <p className="text-[10px] text-center text-green-600 font-bold flex items-center justify-center gap-1">
+                                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Activas en este dispositivo
+                                </p>
+                            )}
                         </div>
                     ) : (
                         <div className="flex flex-col gap-2">
                             <button 
                                 onClick={enableNotifications} 
-                                className="w-full bg-slate-900 text-white hover:bg-slate-800 py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"
+                                disabled={loadingAction} // 🔒 Bloquear botón
+                                className={`w-full py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all ${loadingAction ? 'bg-slate-200 text-slate-500 cursor-not-allowed' : 'bg-slate-900 text-white hover:bg-slate-800'}`}
                             >
-                                <Bell size={18} className="fill-white animate-pulse"/>
-                                <span className="text-sm font-bold">ACTIVAR NOTIFICACIONES 🔴</span>
+                                {loadingAction ? <Loader2 size={18} className="animate-spin"/> : <Bell size={18} className="fill-white animate-pulse"/>}
+                                <span className="text-sm font-bold">{loadingAction ? "Guardando..." : "ACTIVAR NOTIFICACIONES 🔴"}</span>
                             </button>
-                            <p className="text-[10px] text-center text-slate-400">
-                                Toca para activar el globo rojo en el icono.
-                            </p>
+                            {!loadingAction && (
+                                <p className="text-[10px] text-center text-slate-400">
+                                    Toca para activar el globo rojo en el icono.
+                                </p>
+                            )}
                         </div>
                     )}
                 </div>

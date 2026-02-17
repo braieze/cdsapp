@@ -4,10 +4,11 @@ import { auth, db, messaging } from './firebase'; // ✅ Importamos messaging
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore'; // ✅ Importamos updateDoc y arrayUnion
 import { getToken } from 'firebase/messaging'; // ✅ Importamos getToken
-
+import { Toaster } from 'sonner';
 import EventDetails from './pages/EventDetails';
 
 // Layouts y Páginas
+
 import MainLayout from './layouts/MainLayout';
 import Home from './pages/Home';
 import Calendar from './pages/Calendar';
@@ -17,6 +18,7 @@ import AppsHub from './pages/AppsHub';
 import Login from './pages/Login';
 import Profile from './pages/Profile';
 import Directory from './pages/Directory';
+
 
 function App() {
   const [user, setUser] = useState(null);
@@ -87,6 +89,7 @@ function App() {
 
   return (
     <BrowserRouter>
+      <Toaster richColors position="top-center" />
       <Routes>
         {/* Si no hay usuario, solo puede ver el Login */}
         <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
