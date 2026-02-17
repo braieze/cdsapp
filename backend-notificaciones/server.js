@@ -24,14 +24,30 @@ app.post('/send-notification', async (req, res) => {
   if (!tokens || !tokens.length) return res.status(400).send('Faltan tokens');
 
   try {
-    const response = await admin.messaging().sendMulticast({
+    // ⚠️ CAMBIO IMPORTANTE: Usamos 'sendEachForMulticast' en lugar de 'sendMulticast'
+    // Esto es compatible con la versión más nueva de Firebase instalada
+    const response = await admin.messaging().sendEachForMulticast({
       notification: { title, body },
-      tokens: tokens,
+      tokens: tokens, // La lista de tokens
     });
-    console.log(`Enviados: ${response.successCount}`);
-    res.json({ success: true });
+    
+    console.log(`Enviados: ${response.successCount}, Fallos: ${response.failureCount}`);
+    
+    // Si hubo fallos, mostramos por qué (ayuda a depurar)
+    if (response.failureCount > 0) {
+      const failedTokens = [];
+      response.responses.forEach((resp, idx) => {
+        if (!resp.success) {
+          failedTokens.push(resp.error);
+        }
+      });
+      console.log('Errores:', failedTokens);
+    }
+
+    res.json({ success: true, detail: response });
+    
   } catch (error) {
-    console.error("Error:", error);
+    console.error("❌ Error grave en el servidor:", error);
     res.status(500).json({ error: error.message });
   }
 });
