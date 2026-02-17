@@ -15,18 +15,17 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
-// 1. MANEJADOR DE MENSAJES EN SEGUNDO PLANO
+// 1. MANEJADOR EN SEGUNDO PLANO (Evita duplicados)
 messaging.onBackgroundMessage(function(payload) {
   console.log('[firebase-messaging-sw.js] Mensaje recibido:', payload);
   
-  // Extraemos datos del objeto 'data' (enviado desde server.js)
   const notificationTitle = payload.data.title || "Nuevo Aviso";
   const notificationOptions = {
     body: payload.data.body || "Tienes contenido nuevo en la app.",
     icon: '/web-app-manifest-192x192.png', 
     badge: '/badge-72x72.png', 
     vibrate: [200, 100, 200],
-    tag: 'cds-notif-unica', // Evita que se dupliquen globos
+    tag: 'cds-notif-unica', 
     renotify: true,
     data: {
       url: payload.data.url || '/' 
@@ -36,32 +35,25 @@ messaging.onBackgroundMessage(function(payload) {
   return self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
-// 2. LÓGICA DE CLIC ACTUALIZADA (Deep Linking Forzado)
+// 2. LÓGICA DE CLIC (Deep Linking con URL Absoluta para iPhone)
 self.addEventListener('notificationclick', function(event) {
-  event.notification.close(); // Cierra el globo de notificación
+  event.notification.close();
 
-  // Obtenemos la URL de destino guardada en la notificación
-  const targetUrl = event.notification.data.url || '/';
+  // ✅ SOLUCIÓN AL BLANCO: Convertimos ruta relativa a URL Absoluta
+  // Esto asegura que iPhone y Android siempre encuentren la ruta correcta
+  const relativeUrl = event.notification.data.url || '/';
+  const targetUrl = new URL(relativeUrl, self.location.origin).href;
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-      // 1. Si la app ya está abierta en alguna pestaña/ventana
-      if (clientList.length > 0) {
-        let client = clientList[0];
-        
-        // Priorizamos la ventana que el usuario esté viendo actualmente
-        for (const c of clientList) {
-          if (c.visibilityState === 'visible') {
-            client = c;
-            break;
-          }
+      // Intentamos encontrar la pestaña de la app y navegar
+      for (const client of clientList) {
+        if ('navigate' in client) {
+          return client.navigate(targetUrl).then(c => c.focus());
         }
-        
-        // 🔥 FUERZA BRUTA: Obligamos a esa ventana a navegar a la URL del evento
-        return client.navigate(targetUrl).then(c => c.focus());
       }
       
-      // 2. Si la app está cerrada completamente, abrimos una nueva
+      // Si la app está cerrada, abrimos la URL absoluta
       if (clients.openWindow) {
         return clients.openWindow(targetUrl);
       }

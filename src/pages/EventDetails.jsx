@@ -126,75 +126,71 @@ export default function EventDetails() {
   const hasChecklist = TypeConfig.hasChecklist;
   const canEdit = ['pastor', 'lider'].includes(userRole);
 
+  // src/pages/EventDetails.jsx (Trozo corregido del Header y Chips)
+
+// ... (imports y lógica inicial igual)
+
   return (
     <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-fade-in overflow-hidden">
       
-      {/* 🎨 HEADER CON DISEÑO RECUPERADO (Banner de Color y Forma Redondeada) */}
-      <div className={`relative pt-12 pb-14 px-6 ${isAyuno ? 'bg-rose-500' : 'bg-slate-900'} print:hidden flex-shrink-0`}>
-        {/* Botones Flotantes */}
+      {/* BANNER SUPERIOR - Aumentamos padding para dar aire */}
+      <div className={`relative pt-12 pb-20 px-6 ${isAyuno ? 'bg-rose-500' : 'bg-slate-900'} print:hidden flex-shrink-0`}>
         <div className="absolute top-4 left-4 right-4 flex justify-between items-center">
-            <button 
-                onClick={() => navigate('/calendario')} // ✅ SIEMPRE LLEVA HACIA AGENDA
-                className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white hover:bg-white/30 transition-all"
-            >
-                <X size={24} />
-            </button>
+            <button onClick={() => navigate('/calendario')} className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white"><X size={24} /></button>
             <div className="flex gap-2">
                 <button onClick={() => window.print()} className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white"><Printer size={20}/></button>
                 {canEdit && (
-                    <button 
-                        onClick={() => setIsEditing(!isEditing)} 
-                        className={`px-4 py-2 rounded-full font-bold text-xs ${isEditing ? 'bg-white text-slate-900' : 'bg-white/20 text-white'}`}
-                    >
+                    <button onClick={() => setIsEditing(!isEditing)} className={`px-4 py-2 rounded-full font-bold text-xs ${isEditing ? 'bg-white text-slate-900' : 'bg-white/20 text-white'}`}>
                         {isEditing ? 'Cancelar' : 'Editar'}
                     </button>
                 )}
             </div>
         </div>
 
-        {/* Icono Característico Recuperado */}
         <div className="flex flex-col items-center text-center">
-            <div className="w-20 h-20 bg-white rounded-3xl shadow-xl flex items-center justify-center mb-4 transform -rotate-3 border-4 border-white/20 overflow-hidden">
+            <div className="w-20 h-20 bg-white rounded-3xl shadow-xl flex items-center justify-center mb-4 transform -rotate-3 border-4 border-white/20">
                 <TypeConfig.icon size={40} className={isAyuno ? 'text-rose-500' : 'text-slate-800'} />
             </div>
             <span className="text-[10px] font-black tracking-widest uppercase text-white/60 mb-1">{TypeConfig.label}</span>
             <h1 className="text-2xl font-black text-white leading-tight px-4">{event.title}</h1>
         </div>
 
-        {/* 🌙 LA FORMA REDONDEADA DE FONDO (Efecto decorativo unificado) */}
-        <div className="absolute -bottom-1 left-0 right-0 h-8 bg-white rounded-t-[40px]"></div>
+        {/* CURVA DE FONDO - Ajustamos posición */}
+        <div className="absolute -bottom-1 left-0 right-0 h-10 bg-white rounded-t-[40px]"></div>
       </div>
 
-      {/* CUERPO DEL EVENTO */}
-      <div className="flex-1 overflow-y-auto bg-white px-6 pb-24 -mt-1">
+      {/* CUERPO - Eliminamos el -mt-1 para que no se suba tanto */}
+      <div className="flex-1 overflow-y-auto bg-white px-6 pb-24">
         <div className="max-w-xl mx-auto space-y-6">
             
-            {/* Chips de Info Rápida */}
-            <div className="flex flex-wrap gap-2 justify-center -mt-2">
-                <div className="flex items-center gap-1.5 bg-slate-100 px-4 py-2 rounded-2xl text-xs font-bold text-slate-600 shadow-sm border border-white">
-                    <Calendar size={14} className="text-brand-500"/>
+            {/* CHIPS DE FECHA - Ahora con más margen superior */}
+            <div className="flex flex-wrap gap-2 justify-center mt-2">
+                <div className="flex items-center gap-2 bg-slate-50 px-4 py-2.5 rounded-2xl text-sm font-bold text-slate-700 border border-slate-100 shadow-sm">
+                    <Calendar size={16} className="text-brand-500"/>
                     {isAyuno && event.endDate && event.endDate !== event.date 
-                        ? `${format(new Date(event.date + 'T00:00:00'), 'd MMM', {locale:es})} - ${format(new Date(event.endDate + 'T00:00:00'), 'd MMM', {locale:es})}`
+                        ? `${format(new Date(event.date + 'T00:00:00'), 'd MMM', {locale:es})} al ${format(new Date(event.endDate + 'T00:00:00'), 'd MMM', {locale:es})}`
                         : format(new Date(event.date + 'T00:00:00'), "EEEE d 'de' MMMM", { locale: es })
                     }
                 </div>
                 {!isAyuno && (
-                  <div className="flex items-center gap-1.5 bg-slate-100 px-4 py-2 rounded-2xl text-xs font-bold text-slate-600 shadow-sm border border-white">
-                    <Clock size={14} className="text-brand-500"/>{event.time} hs
+                  <div className="flex items-center gap-2 bg-slate-50 px-4 py-2.5 rounded-2xl text-sm font-bold text-slate-700 border border-slate-100 shadow-sm">
+                    <Clock size={16} className="text-brand-500"/>{event.time} hs
                   </div>
                 )}
             </div>
 
-            {/* Descripción */}
+            {/* DESCRIPCIÓN - Aseguramos visibilidad */}
             {event.description && (
-                <div className="bg-slate-50 p-5 rounded-3xl border border-slate-100">
-                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-                        <MapPin size={14} className="text-brand-500"/> Detalles del Evento
+                <div className="bg-slate-50/50 p-6 rounded-3xl border border-slate-100">
+                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                        <MapPin size={14} className="text-brand-500"/> Información adicional
                     </h3>
-                    <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-wrap font-medium">{event.description}</p>
+                    <p className="text-slate-800 text-base leading-relaxed whitespace-pre-wrap font-medium">
+                      {event.description}
+                    </p>
                 </div>
             )}
-
+            
             {/* Render de Ayuno o Estructura de Equipo */}
             {isAyuno ? (
                 <div className="space-y-3 pb-10">
