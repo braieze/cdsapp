@@ -16,14 +16,15 @@ firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage(function(payload) {
-  const notificationTitle = payload.data.title;
+  const notificationTitle = payload.data.title || "Nuevo Aviso";
   const notificationOptions = {
-    body: payload.data.body,
+    body: payload.data.body || "Toca para ver los detalles.",
     icon: '/web-app-manifest-192x192.png',
     badge: '/badge-72x72.png',
-    tag: 'cds-notif',
+    tag: 'cds-notif-unica',
+    renotify: true,
     data: {
-      url: payload.data.url // Guardamos la ruta: /post/ID
+      url: payload.data.url || '/' 
     }
   };
   return self.registration.showNotification(notificationTitle, notificationOptions);
@@ -32,28 +33,22 @@ messaging.onBackgroundMessage(function(payload) {
 self.addEventListener('notificationclick', function(event) {
   event.notification.close();
 
-  // Convertimos a URL absoluta para que iPhone no se pierda (VITAL)
-  const targetPath = event.notification.data.url || '/';
-  const fullUrl = new URL(targetPath, self.location.origin).href;
+  // CONSTRUIMOS URL ABSOLUTA PARA EVITAR PANTALLA EN BLANCO
+  const targetUrl = new URL(event.notification.data.url || '/', self.location.origin).href;
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-      // 1. Buscamos si la app ya está abierta
-      for (let client of clientList) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
-          // ✅ PRIMERO DAMOS FOCO, LUEGO NAVEGAMOS
-          // Esto soluciona el problema del segundo plano en Android e iPhone
-          return client.focus().then(() => {
-            if ('navigate' in client) {
-              return client.navigate(fullUrl);
-            }
-          });
+      // 1. Si la app está abierta (en primer o segundo plano)
+      for (const client of clientList) {
+        if (client.url.includes(self.location.origin) && 'navigate' in client) {
+          // 🔥 NAVEGAMOS PRIMERO Y LUEGO DAMOS FOCO
+          return client.navigate(targetUrl).then(() => client.focus());
         }
       }
       
-      // 2. Si no hay ventana abierta (App cerrada), abrimos una nueva
+      // 2. Si la app está cerrada completamente
       if (clients.openWindow) {
-        return clients.openWindow(fullUrl);
+        return clients.openWindow(targetUrl);
       }
     })
   );

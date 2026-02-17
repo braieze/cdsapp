@@ -31,6 +31,18 @@ export default function PostDetail() {
     return () => unsubComments();
   }, [postId]);
 
+  const handleClose = () => {
+  // Si el usuario tiene historial (vino desde dentro de la app), vuelve atrás.
+  // Si no (vino desde notificación), lo mandamos al Home o Agenda.
+  if (window.history.length > 1) {
+    navigate(-1);
+  } else {
+    // Si estás en PostDetail, usa navigate('/')
+    // Si estás en EventDetails, puedes usar navigate('/calendario')
+    navigate('/'); 
+  }
+};
+
   const sendComment = async () => {
     if (!commentText.trim()) return;
     await addDoc(collection(db, `posts/${postId}/comments`), {
@@ -56,7 +68,7 @@ export default function PostDetail() {
       
       {/* Header Fijo */}
       <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-white flex-shrink-0">
-        <button onClick={() => navigate(-1)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+        <button onClick={handleClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
           <X size={26} className="text-slate-800" />
         </button>
         <span className="font-bold text-slate-500 uppercase tracking-widest text-[10px]">{post.type}</span>
