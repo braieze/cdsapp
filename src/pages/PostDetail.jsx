@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase';
-import { ArrowLeft, Clock, User, Tag as TagIcon, Share2, MessageCircle, Heart } from 'lucide-react';
+import { X, Clock, Tag as TagIcon, Send } from 'lucide-react'; // Cambiamos ArrowLeft por X, agregamos Send
 
 export default function PostDetail() {
-  const { postId } = useParams(); // Captura el ID desde la URL (/post/ID)
+  const { postId } = useParams();
   const navigate = useNavigate();
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [comment, setComment] = useState(''); // Estado para el input de comentarios
 
   useEffect(() => {
     const fetchPost = async () => {
@@ -31,114 +32,106 @@ export default function PostDetail() {
     fetchPost();
   }, [postId]);
 
+  // Función auxiliar para formatear fechas de Firestore
+  const formatDate = (timestamp) => {
+    if (!timestamp || !(timestamp instanceof Timestamp)) return '';
+    return timestamp.toDate().toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
   if (loading) return (
-    <div className="flex items-center justify-center min-h-screen bg-slate-50">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand-600"></div>
+    <div className="flex items-center justify-center min-h-screen bg-white">
+      <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-brand-600"></div>
     </div>
   );
 
-  if (!post) return (
-    <div className="p-8 text-center min-h-screen bg-slate-50 flex flex-col items-center justify-center">
-      <h2 className="text-xl font-bold text-slate-800">Publicación no encontrada</h2>
-      <button 
-        onClick={() => navigate('/')} 
-        className="mt-4 bg-brand-600 text-white px-6 py-2 rounded-full font-bold shadow-md"
-      >
-        Volver al inicio
-      </button>
-    </div>
-  );
+  if (!post) return null; // Opcional: Podrías mostrar un mensaje de error aquí
 
   return (
-    <div className="max-w-2xl mx-auto bg-white min-h-screen shadow-sm animate-fade-in pb-20">
-      {/* Header Pegajoso */}
-      <div className="sticky top-0 bg-white/90 backdrop-blur-md z-10 p-4 border-b border-slate-100 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={() => navigate('/')} 
-            className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-700"
-          >
-            <ArrowLeft size={24} />
-          </button>
-          <span className="font-bold text-slate-800 line-clamp-1">
-            {post.type || 'Publicación'}
-          </span>
-        </div>
-        <button className="p-2 text-slate-500 hover:bg-slate-100 rounded-full">
-          <Share2 size={20} />
+    // Usamos 'fixed inset-0' y 'z-50' para que se sienta como un modal de pantalla completa sobre todo lo demás
+    <div className="fixed inset-0 bg-white z-50 flex flex-col animate-fade-in">
+      
+      {/* === HEADER ESTILO MODAL === */}
+      <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-white flex-shrink-0">
+        <button 
+          onClick={() => navigate('/')} // Al cerrar, vuelve al inicio
+          className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-800"
+        >
+          <X size={24} /> {/* Usamos la X en lugar de la flecha */}
         </button>
+        <h2 className="font-bold text-slate-800 text-sm uppercase tracking-wider">
+          {post.type || 'Publicación'}
+        </h2>
+        <div className="w-10"></div> {/* Espaciador para centrar el título */}
       </div>
 
-      <div className="p-4 md:p-6">
-        {/* Título Principal */}
-        <h1 className="text-2xl md:text-3xl font-black text-slate-900 mb-4 leading-tight">
+      {/* === CONTENIDO SCROLLEABLE === */}
+      <div className="flex-1 overflow-y-auto p-4 md:p-5 bg-white pb-20"> {/* pb-20 para dejar espacio al input */}
+        
+        {/* Imagen Principal */}
+        {post.image && (
+          <div className="rounded-2xl overflow-hidden shadow-sm mb-5 border border-slate-100">
+            <img src={post.image} alt={post.title} className="w-full h-auto object-cover" />
+          </div>
+        )}
+
+        {/* Título */}
+        <h1 className="text-2xl font-black text-slate-900 mb-4 leading-tight">
           {post.title}
         </h1>
 
-        {/* Info del Autor */}
-        <div className="flex items-center gap-3 mb-6 bg-slate-50 p-3 rounded-2xl">
+        {/* Info Autor y Fecha */}
+        <div className="flex items-center gap-3 mb-6">
           <img 
             src={post.authorPhoto || '/default-avatar.png'} 
             alt={post.authorName} 
-            className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-sm" 
+            className="w-10 h-10 rounded-full object-cover border border-slate-200" 
           />
           <div>
             <h3 className="font-bold text-slate-900 text-sm">{post.authorName}</h3>
             <div className="flex items-center gap-2 text-slate-500 text-xs">
               <Clock size={12} />
-              <span>{post.createdAt?.toDate().toLocaleDateString()}</span>
+              <span>{formatDate(post.createdAt)}</span>
             </div>
           </div>
         </div>
 
-        {/* Imagen del Post */}
-        {post.image && (
-          <div className="relative mb-6 rounded-3xl overflow-hidden shadow-lg border border-slate-100">
-            <img src={post.image} alt="Contenido" className="w-full h-auto object-cover" />
-          </div>
-        )}
-
-        {/* Contenido de Texto */}
-        <div className="prose prose-slate max-w-none mb-8">
-          <p className="text-slate-700 leading-relaxed text-lg whitespace-pre-wrap">
+        {/* Cuerpo del Texto */}
+        <div className="prose prose-slate max-w-none mb-6">
+          <p className="text-slate-700 leading-relaxed text-base whitespace-pre-wrap">
             {post.content}
           </p>
         </div>
 
         {/* Tags */}
         {post.tags?.length > 0 && (
-          <div className="flex flex-wrap gap-2 pt-6 border-t border-slate-100">
+          <div className="flex flex-wrap gap-2 mt-4">
             {post.tags.map((tag, idx) => (
-              <span key={idx} className="flex items-center gap-1 bg-brand-50 text-brand-700 px-4 py-1.5 rounded-full text-xs font-bold">
+              <span key={idx} className="flex items-center gap-1 bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-semibold">
                 <TagIcon size={12} />
-                {tag}
+                {tag.trim()}
               </span>
             ))}
           </div>
         )}
-
-        {/* Enlace si existe */}
-        {post.link && (
-          <a 
-            href={post.link} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="mt-8 flex items-center justify-center gap-2 bg-slate-900 text-white p-4 rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-lg"
-          >
-            {post.linkText || 'Ver más'}
-          </a>
-        )}
       </div>
 
-      {/* Barra de Interacción (Visual) */}
-      <div className="fixed bottom-0 left-0 right-0 max-w-2xl mx-auto bg-white/80 backdrop-blur-md border-t border-slate-100 p-4 flex justify-around items-center">
-        <button className="flex items-center gap-2 text-slate-600 font-medium">
-          <Heart size={20} /> {post.likes?.length || 0}
-        </button>
-        <button className="flex items-center gap-2 text-slate-600 font-medium">
-          <MessageCircle size={20} /> {post.commentsCount || 0}
+      {/* === INPUT DE COMENTARIOS FIJO ABAJO === */}
+      <div className="border-t border-slate-100 p-3 bg-white flex items-center gap-2 flex-shrink-0 safe-area-bottom">
+        <input 
+          type="text"
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          placeholder="Escribe un comentario..."
+          className="flex-1 bg-slate-100 rounded-full px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+        />
+        <button 
+          disabled={!comment.trim()}
+          className="bg-brand-600 text-white p-3 rounded-full hover:bg-brand-700 disabled:opacity-50 transition-colors flex items-center justify-center shadow-sm"
+        >
+          <Send size={18} className={comment.trim() ? 'ml-0.5' : ''} />
         </button>
       </div>
+
     </div>
   );
 }
