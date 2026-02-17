@@ -15,46 +15,45 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
-// 1. RECEPCIÓN: Guardamos la URL en el objeto data
 messaging.onBackgroundMessage(function(payload) {
-  const notificationTitle = payload.data.title || "Nuevo Aviso";
+  const notificationTitle = payload.data.title;
   const notificationOptions = {
-    body: payload.data.body || "Toca para ver más.",
+    body: payload.data.body,
     icon: '/web-app-manifest-192x192.png',
     badge: '/badge-72x72.png',
     tag: 'cds-notif',
     data: {
-      url: payload.data.url || '/' 
+      url: payload.data.url // Guardamos la ruta: /post/ID
     }
   };
   return self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
-// 2. CLIC: Navegación forzada a URL absoluta (Solución iPhone)
 self.addEventListener('notificationclick', function(event) {
   event.notification.close();
 
-  // Convertimos la ruta relativa (/post/123) en una URL absoluta que el celular entienda
-  const targetUrl = new URL(event.notification.data.url || '/', self.location.origin).href;
+  // Convertimos a URL absoluta para que iPhone no se pierda (VITAL)
+  const targetPath = event.notification.data.url || '/';
+  const fullUrl = new URL(targetPath, self.location.origin).href;
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-      // Intentamos encontrar cualquier pestaña de nuestra app abierta
-      if (clientList.length > 0) {
-        let client = clientList[0];
-        for (const c of clientList) {
-          if (c.visibilityState === 'visible') {
-            client = c;
-            break;
-          }
+      // 1. Buscamos si la app ya está abierta
+      for (let client of clientList) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          // ✅ PRIMERO DAMOS FOCO, LUEGO NAVEGAMOS
+          // Esto soluciona el problema del segundo plano en Android e iPhone
+          return client.focus().then(() => {
+            if ('navigate' in client) {
+              return client.navigate(fullUrl);
+            }
+          });
         }
-        // Navegamos al destino y damos foco
-        return client.navigate(targetUrl).then(c => c.focus());
       }
       
-      // Si la app estaba cerrada, abrimos la URL absoluta directamente
+      // 2. Si no hay ventana abierta (App cerrada), abrimos una nueva
       if (clients.openWindow) {
-        return clients.openWindow(targetUrl);
+        return clients.openWindow(fullUrl);
       }
     })
   );

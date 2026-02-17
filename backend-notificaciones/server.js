@@ -33,6 +33,7 @@ if (!admin.apps.length && serviceAccount) {
 app.get('/ping', (req, res) => res.send('pong'));
 
 // 🔔 RUTA DE ENVÍO DE NOTIFICACIONES
+// server.js (Render)
 app.post('/send-notification', async (req, res) => {
   const { title, body, tokens, url } = req.body;
 
@@ -40,21 +41,19 @@ app.post('/send-notification', async (req, res) => {
 
   try {
     const response = await admin.messaging().sendEachForMulticast({
-      // ✅ IMPORTANTE: No usamos el objeto 'notification' de Firebase.
-      // Metemos todo en 'data' para que tu Service Worker tome el control 
-      // y sepa exactamente a qué link navegar.
+      // ✅ Metemos todo en 'data' y forzamos que sean Strings
       data: { 
         title: String(title || "Nuevo Aviso"), 
         body: String(body || "Toca para ver el contenido"),
-        url: String(url || '/') // 👈 Esta es la ruta: "/post/ID" o "/calendario/ID"
+        url: String(url || '/') // Ej: "/post/123"
       },
       tokens: tokens,
     });
     
-    console.log(`✅ Enviados: ${response.successCount}, Fallos: ${response.failureCount}`);
-    res.json({ success: true, detail: response });
+    console.log(`✅ Enviados: ${response.successCount}`);
+    res.json({ success: true });
   } catch (error) {
-    console.error("🔥 Error en el servidor:", error);
+    console.error("🔥 Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
