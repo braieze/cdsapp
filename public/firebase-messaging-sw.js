@@ -16,17 +16,11 @@ firebase.initializeApp(firebaseConfig);
 
 const messaging = firebase.messaging();
 
-// Manejador de notificaciones en segundo plano
+// 💡 Solo usamos onBackgroundMessage para registrar que llegó el mensaje
+// No llamamos a showNotification aquí porque Firebase lo hace solo
 messaging.onBackgroundMessage(function(payload) {
-  console.log('[firebase-messaging-sw.js] Notificación recibida:', payload);
+  console.log('[firebase-messaging-sw.js] Mensaje recibido en segundo plano:', payload);
   
-  const notificationTitle = payload.notification.title;
-  const notificationOptions = {
-    body: payload.notification.body,
-    icon: '/logo192.png', // Asegúrate de tener este icono en public
-    badge: '/logo192.png',
-    data: payload.data
-  };
-
-  self.registration.showNotification(notificationTitle, notificationOptions);
+  // Si en el futuro envías datos extra (data), podrías manejarlos aquí.
+  // Pero para notificaciones estándar de título y cuerpo, no hace falta hacer nada más.
 });
