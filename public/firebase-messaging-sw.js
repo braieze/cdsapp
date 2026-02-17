@@ -1,3 +1,4 @@
+// public/firebase-messaging-sw.js
 importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js');
 
@@ -14,31 +15,31 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
-// MANEJADOR EN SEGUNDO PLANO
+// 1. RECEPCIÓN: Guardamos la URL en el objeto data
 messaging.onBackgroundMessage(function(payload) {
   const notificationTitle = payload.data.title || "Nuevo Aviso";
   const notificationOptions = {
     body: payload.data.body || "Toca para ver más.",
     icon: '/web-app-manifest-192x192.png',
     badge: '/badge-72x72.png',
-    vibrate: [200, 100, 200],
     tag: 'cds-notif',
     data: {
-      // ✅ IMPORTANTE: Guardamos la URL aquí para que el clic la encuentre
       url: payload.data.url || '/' 
     }
   };
   return self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
-// ✅ LÓGICA QUE SÍ FUNCIONABA (Restaurada al 100%)
+// 2. CLIC: Navegación forzada a URL absoluta (Solución iPhone)
 self.addEventListener('notificationclick', function(event) {
-  event.notification.close(); 
+  event.notification.close();
 
-  const targetUrl = event.notification.data.url || '/';
+  // Convertimos la ruta relativa (/post/123) en una URL absoluta que el celular entienda
+  const targetUrl = new URL(event.notification.data.url || '/', self.location.origin).href;
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+      // Intentamos encontrar cualquier pestaña de nuestra app abierta
       if (clientList.length > 0) {
         let client = clientList[0];
         for (const c of clientList) {
@@ -47,9 +48,14 @@ self.addEventListener('notificationclick', function(event) {
             break;
           }
         }
+        // Navegamos al destino y damos foco
         return client.navigate(targetUrl).then(c => c.focus());
       }
-      return clients.openWindow(targetUrl);
+      
+      // Si la app estaba cerrada, abrimos la URL absoluta directamente
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
     })
   );
 });
