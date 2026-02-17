@@ -99,7 +99,6 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // Cierra menú si clicamos fuera
   useEffect(() => {
     const closeMenu = () => setMenuOpenId(null);
     if (menuOpenId) window.addEventListener('click', closeMenu);
@@ -254,12 +253,12 @@ export default function Home() {
                         </button>
                       ))}
                     </div>
-                    {/* ✅ UNIFICACIÓN: Ahora navega a la página de detalle */}
+                    {/* ✅ TODO UNO: Navega a la ruta dinámica */}
                     <button onClick={(e) => { e.stopPropagation(); navigate(`/post/${post.id}`); }} className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-brand-600 transition-colors px-2 py-1 rounded-lg hover:bg-slate-50">
                       <MessageCircle size={22} /> Comentar
                     </button>
                   </div>
-                  {/* ✅ UNIFICACIÓN: Click en la previsualización también navega */}
+                  {/* ✅ TODO UNO: Click en la previsualización navega a la ruta */}
                   <CommentPreview postId={post.id} onClick={() => navigate(`/post/${post.id}`)} />
                 </div>
               );
@@ -268,7 +267,7 @@ export default function Home() {
                 return (
                   <div key={post.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mx-4 sm:mx-0 relative">
                      <div className="absolute top-4 right-4 z-10"><ManagementMenu /></div>
-                    {/* ✅ UNIFICACIÓN: Click en la tarjeta navega a la página */}
+                    {/* ✅ TODO UNO: Navega a la ruta dinámica */}
                     <div onClick={() => navigate(`/post/${post.id}`)} className="cursor-pointer">
                       {post.image ? (
                         <div className="h-56 w-full bg-slate-200 relative">
@@ -319,7 +318,7 @@ export default function Home() {
                     </div>
                     <ManagementMenu />
                   </div>
-                  {/* ✅ UNIFICACIÓN: El contenido de la noticia también lleva al detalle */}
+                  {/* ✅ TODO UNO: Navega a la ruta dinámica */}
                   <div className="px-5 mb-4 cursor-pointer" onClick={() => navigate(`/post/${post.id}`)}>
                     <div className={`text-base text-slate-800 whitespace-pre-wrap leading-relaxed ${isExpanded ? '' : 'line-clamp-4'}`}>{post.content}</div>
                     {post.content.length > 200 && !isExpanded && <button onClick={(e) => { e.stopPropagation(); toggleExpand(post.id); }} className="text-brand-600 text-sm font-bold mt-2 hover:underline">Leer más...</button>}
