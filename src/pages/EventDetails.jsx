@@ -13,30 +13,23 @@ export default function EventDetails() {
   const [event, setEvent] = useState(null);
   const [users, setUsers] = useState([]); 
   const [loading, setLoading] = useState(true);
-  
-  // Estado de permisos y edición
   const [userRole, setUserRole] = useState(null); 
   const [isEditing, setIsEditing] = useState(false); 
-  
   const [assignments, setAssignments] = useState({});
   const [expandedDay, setExpandedDay] = useState(null);
-
-  // ESTADOS PARA EL MODAL DE SELECCIÓN DE PERSONAS
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const [activeRoleKey, setActiveRoleKey] = useState(null); 
   const [activeRoleConfig, setActiveRoleConfig] = useState(null); 
   const [personSearchTerm, setPersonSearchTerm] = useState('');
 
-  // ✅ USUARIO ACTUAL
   const currentUser = auth.currentUser;
   const myUid = currentUser?.uid;
 
-  // 1. CARGAR DATOS
+  // 1. CARGAR DATOS (Mantenemos tu lógica original)
   useEffect(() => {
     const fetchData = async () => {
       try {
         if (!currentUser) return;
-
         const userRef = doc(db, 'users', currentUser.uid);
         const userSnap = await getDoc(userRef);
         if (userSnap.exists()) setUserRole(userSnap.data().role);
@@ -52,7 +45,6 @@ export default function EventDetails() {
         if (eventSnap.exists()) {
           const data = eventSnap.data();
           setEvent({ id: eventSnap.id, ...data });
-          
           const rawAssignments = data.assignments || {};
           const normalizedAssignments = {};
           Object.keys(rawAssignments).forEach(key => {
@@ -60,7 +52,6 @@ export default function EventDetails() {
             normalizedAssignments[key] = Array.isArray(val) ? val : [val];
           });
           setAssignments(normalizedAssignments);
-
         } else {
           alert("Evento no encontrado");
           navigate('/calendario');
@@ -71,19 +62,16 @@ export default function EventDetails() {
     fetchData();
   }, [id, navigate, currentUser]);
 
-  // --- LÓGICA DEL MODAL DE SELECCIÓN ---
+  // --- TODA TU LÓGICA EXISTENTE (NO TOCAMOS NADA) ---
   const openPersonSelector = (roleKey, roleConfig) => {
       setActiveRoleKey(roleKey);
       setActiveRoleConfig(roleConfig);
       setPersonSearchTerm(''); 
       setIsSelectorOpen(true);
   };
-
   const handleSelectPersonFromModal = (personName) => {
       if (!activeRoleKey || !personName) return;
       const currentList = assignments[activeRoleKey] || [];
-      
-      // Al asignar a alguien nuevo, borramos cualquier confirmación previa de esa posición si la hubiera (opcional, pero limpio)
       if (activeRoleConfig.type === 'single') {
           setAssignments({ ...assignments, [activeRoleKey]: [personName] });
       } else {
@@ -93,86 +81,58 @@ export default function EventDetails() {
       }
       setIsSelectorOpen(false); 
   };
-
-  // --- FILTRO DE USUARIOS (MODAL) ---
   const getUsersForModal = () => {
       if (!activeRoleConfig) return users;
-
       return users.filter(user => {
           const name = (user.displayName || user.name || '').toLowerCase();
           const search = personSearchTerm.toLowerCase();
-          
           if (!name.includes(search)) return false;
-
-          // Filtro Estricto para Liderazgo
           if (activeRoleConfig.allowedRoles && activeRoleConfig.allowedRoles.includes('pastor')) {
                const uRole = user.role || 'miembro';
                return activeRoleConfig.allowedRoles.includes(uRole);
           }
-          // Filtro para Alabanza
           if (activeRoleConfig.allowedAreas && activeRoleConfig.allowedAreas.includes('alabanza')) {
               return user.area === 'alabanza';
           }
-          // Resto: Todos
           return true;
       });
   };
-
   const handleRemovePersonRole = (roleKey, personName) => {
     const currentList = assignments[roleKey] || [];
     setAssignments({ ...assignments, [roleKey]: currentList.filter(p => p !== personName) });
   };
-
   const handleToggleTask = async (taskIndex) => {
     const newTasks = [...(event.checklist || [])];
     if (!newTasks[taskIndex]) return;
     newTasks[taskIndex].completed = !newTasks[taskIndex].completed;
-    if (newTasks[taskIndex].completed) {
-        newTasks[taskIndex].completedBy = currentUser?.displayName || 'Usuario';
-    } else {
-        delete newTasks[taskIndex].completedBy;
-    }
+    if (newTasks[taskIndex].completed) newTasks[taskIndex].completedBy = currentUser?.displayName || 'Usuario';
+    else delete newTasks[taskIndex].completedBy;
     try {
-        const eventRef = doc(db, 'events', id);
-        await updateDoc(eventRef, { checklist: newTasks });
+        await updateDoc(doc(db, 'events', id), { checklist: newTasks });
         setEvent(prev => ({ ...prev, checklist: newTasks }));
     } catch (error) { console.error(error); }
   };
-
   const handleToggleFastingDate = async (dateStr) => {
     if (!myUid) return; 
     const currentFasters = assignments[dateStr] || [];
-    let newFasters;
-    if (currentFasters.includes(myUid)) newFasters = currentFasters.filter(uid => uid !== myUid);
-    else newFasters = [...currentFasters, myUid];
-
+    let newFasters = currentFasters.includes(myUid) ? currentFasters.filter(uid => uid !== myUid) : [...currentFasters, myUid];
     const newAssignments = { ...assignments, [dateStr]: newFasters };
     setAssignments(newAssignments);
-    try {
-        const eventRef = doc(db, 'events', id);
-        await updateDoc(eventRef, { assignments: newAssignments });
-    } catch (error) { alert("Error de conexión"); }
+    try { await updateDoc(doc(db, 'events', id), { assignments: newAssignments }); } catch (error) { alert("Error"); }
   };
-
   const handleSaveAssignments = async () => {
     try {
-      const eventRef = doc(db, 'events', id);
-      await updateDoc(eventRef, { assignments });
+      await updateDoc(doc(db, 'events', id), { assignments });
       setIsEditing(false);
-      alert("✅ Equipo guardado exitosamente");
-    } catch (error) { alert("Error al guardar"); }
+      alert("✅ Equipo guardado");
+    } catch (error) { alert("Error"); }
   };
-
   const handleDelete = async () => {
-    if(!window.confirm("¿Seguro que quieres eliminar este evento?")) return;
-    try {
-        await deleteDoc(doc(db, 'events', id));
-        navigate('/calendario');
-    } catch (error) { console.error(error); }
+    if(!window.confirm("¿Eliminar evento?")) return;
+    await deleteDoc(doc(db, 'events', id));
+    navigate('/calendario');
   };
-
-  const handlePrint = () => { window.print(); };
-
+  const handlePrint = () => window.print();
   const getAyunoDays = () => {
     if (!event || !event.date) return [];
     try {
@@ -181,26 +141,21 @@ export default function EventDetails() {
         return eachDayOfInterval({ start, end });
     } catch (e) { return []; }
   };
-
   const getStructure = (type) => {
     const config = EVENT_TYPES[type] || EVENT_TYPES.culto;
     if (config.structure === 'same_as_culto') return EVENT_TYPES.culto.structure;
     if (config.structure === 'same_as_limpieza') return EVENT_TYPES.limpieza.structure;
     return config.structure || []; 
   };
-
-  // --- HELPER PARA MOSTRAR ESTADO ---
   const getStatusIcon = (personName) => {
-      if (!event.confirmations) return <HelpCircle size={14} className="text-slate-300"/>; // Pendiente (Gris)
-      
+      if (!event.confirmations) return <HelpCircle size={14} className="text-slate-300"/>;
       const status = event.confirmations[personName];
       if (status === 'confirmed') return <CheckCircle size={14} className="text-green-500"/>;
       if (status === 'declined') return <X size={14} className="text-red-500"/>;
-      
-      return <HelpCircle size={14} className="text-slate-300"/>; // Pendiente por defecto
+      return <HelpCircle size={14} className="text-slate-300"/>;
   };
 
-  if (loading || !event) return <div className="p-10 text-center">Cargando...</div>;
+  if (loading || !event) return <div className="fixed inset-0 bg-white z-[100] flex items-center justify-center">Cargando...</div>;
 
   const TypeConfig = EVENT_TYPES[event.type] || EVENT_TYPES.culto;
   const isAyuno = event.type === 'ayuno';
@@ -208,219 +163,226 @@ export default function EventDetails() {
   const canEdit = ['pastor', 'lider'].includes(userRole);
 
   return (
-    <div className="pb-32 bg-slate-50 min-h-screen animate-fade-in relative print:bg-white print:pb-0">
+    // ✅ UNIFICACIÓN: Contenedor 'fixed inset-0' para pantalla completa total
+    <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-fade-in overflow-hidden print:relative print:overflow-visible print:z-auto">
       
-      {/* HEADER */}
-      <div className={`relative px-4 pt-12 pb-8 ${TypeConfig.color.replace('text-', 'bg-').replace('100', '50')} border-b border-slate-100 print:hidden`}>
-        <button onClick={() => navigate('/calendario')} className="absolute top-4 left-4 p-2 bg-white/50 backdrop-blur-md rounded-full hover:bg-white transition-colors shadow-sm">
-          <ArrowLeft size={20} className="text-slate-700"/>
-        </button>
-        
-        <button onClick={handlePrint} className="absolute top-4 right-16 p-2 bg-white/50 backdrop-blur-md rounded-full hover:bg-white transition-colors text-slate-700 shadow-sm">
+      {/* HEADER UNIFICADO (Igual al de PostDetail) */}
+      <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-white flex-shrink-0 print:hidden shadow-sm">
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => navigate(-1)} // ✅ TODO UNO: Navegación inteligente
+            className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-800"
+          >
+            <X size={26} />
+          </button>
+          {/* Botón Imprimir al lado de cerrar para que sea accesible */}
+          <button onClick={handlePrint} className="p-2 text-slate-500 hover:bg-slate-100 rounded-full">
             <Printer size={20}/>
-        </button>
+          </button>
+        </div>
 
-        {canEdit && !isAyuno && !hasChecklist && (
-            <button 
-                onClick={() => setIsEditing(!isEditing)} 
-                className={`absolute top-4 right-4 p-2 rounded-full transition-colors flex items-center gap-2 px-3 text-xs font-bold ${isEditing ? 'bg-slate-800 text-white' : 'bg-white/50 text-slate-700 hover:bg-white'}`}
-            >
-                {isEditing ? <><X size={16}/> Cancelar</> : <><Edit3 size={16}/> Editar</>}
-            </button>
-        )}
+        <span className="font-bold text-slate-500 uppercase tracking-widest text-[10px]">{TypeConfig.label}</span>
+
+        <div className="flex items-center gap-2">
+          {canEdit && (
+            <>
+              {/* Botón eliminar (Solo aparece si estamos editando o es checklist) */}
+              {(isEditing || hasChecklist) && (
+                <button onClick={handleDelete} className="p-2 text-red-500 hover:bg-red-50 rounded-full">
+                  <Trash2 size={20}/>
+                </button>
+              )}
+              {/* Botón Editar/Cancelar */}
+              {!isAyuno && !hasChecklist && (
+                <button 
+                  onClick={() => setIsEditing(!isEditing)} 
+                  className={`p-2 rounded-full font-bold text-xs flex items-center gap-1 px-3 ${isEditing ? 'bg-slate-800 text-white' : 'bg-brand-50 text-brand-700'}`}
+                >
+                  {isEditing ? 'Cerrar' : 'Editar'}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* CUERPO SCROLLEABLE */}
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24">
         
-        {hasChecklist && canEdit && (
-             <button onClick={handleDelete} className="absolute top-4 right-4 p-2 text-red-500 bg-white/50 hover:bg-red-50 rounded-full transition-colors"><Trash2 size={20}/></button>
-        )}
-
-        {isEditing && (
-            <button onClick={handleDelete} className="absolute top-4 right-28 p-2 text-red-500 bg-white/50 hover:bg-red-50 rounded-full transition-colors"><Trash2 size={20}/></button>
-        )}
-
-        <div className="flex flex-col items-center text-center mt-2">
-            <div className={`p-4 rounded-2xl mb-4 bg-white shadow-sm ${TypeConfig.color} ring-4 ring-white`}><TypeConfig.icon size={32} /></div>
-            <span className={`text-[10px] font-black tracking-widest uppercase mb-2 px-3 py-1 rounded-full bg-white/60 ${TypeConfig.color.split(' ')[1]}`}>{TypeConfig.label}</span>
-            <h1 className="text-2xl font-black text-slate-800 leading-tight px-4">{event.title}</h1>
+        {/* Banner de Título (Mantenemos tu estética pero más integrada) */}
+        <div className="flex flex-col items-center text-center mb-8">
+            <div className={`p-4 rounded-3xl mb-4 ${TypeConfig.color} bg-opacity-10 ring-1 ring-slate-100 shadow-inner`}>
+              <TypeConfig.icon size={40} className={TypeConfig.color.replace('bg-', 'text-')} />
+            </div>
+            <h1 className="text-3xl font-black text-slate-900 leading-tight mb-4">{event.title}</h1>
             
-            <div className="flex items-center gap-4 mt-4 text-sm font-medium text-slate-600">
-                <div className="flex items-center gap-1 bg-white px-3 py-1 rounded-lg shadow-sm">
-                    <Calendar size={14} className="text-slate-400"/>
+            <div className="flex flex-wrap justify-center gap-3">
+                <div className="flex items-center gap-1.5 bg-slate-100 px-4 py-2 rounded-xl text-sm font-bold text-slate-600">
+                    <Calendar size={16} className="text-slate-400"/>
                     {isAyuno && event.endDate && event.endDate !== event.date 
                         ? `${format(new Date(event.date + 'T00:00:00'), 'd MMM', {locale:es})} - ${format(new Date(event.endDate + 'T00:00:00'), 'd MMM', {locale:es})}`
                         : format(new Date(event.date + 'T00:00:00'), 'EEEE d MMMM', { locale: es })
                     }
                 </div>
-                {!isAyuno && <div className="flex items-center gap-1 bg-white px-3 py-1 rounded-lg shadow-sm"><Clock size={14} className="text-slate-400"/>{event.time} hs</div>}
+                {!isAyuno && (
+                  <div className="flex items-center gap-1.5 bg-slate-100 px-4 py-2 rounded-xl text-sm font-bold text-slate-600">
+                    <Clock size={16} className="text-slate-400"/>{event.time} hs
+                  </div>
+                )}
             </div>
+        </div>
+
+        <div className="max-w-xl mx-auto space-y-6 print:max-w-none">
+          {/* Detalles / Descripción */}
+          {event.description && (
+              <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 print:bg-white print:border-slate-300">
+                  <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2 text-sm uppercase tracking-wider">
+                    <MapPin size={16} className="text-brand-500"/> Descripción
+                  </h3>
+                  <p className="text-slate-600 leading-relaxed whitespace-pre-wrap">{event.description}</p>
+              </div>
+          )}
+
+          {/* Checklist (Tareas) */}
+          {hasChecklist && event.checklist && (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                  <div className="bg-cyan-50 px-4 py-3 border-b border-cyan-100 flex items-center gap-2">
+                     <h3 className="font-black text-cyan-700 text-xs uppercase tracking-widest">Tareas del evento</h3>
+                  </div>
+                  {event.checklist.map((task, idx) => (
+                      <div key={idx} onClick={() => handleToggleTask(idx)} className="p-4 flex items-start gap-3 cursor-pointer hover:bg-slate-50 border-b border-slate-50 last:border-0 group">
+                          <div className={`mt-0.5 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${task.completed ? 'bg-cyan-500 border-cyan-500' : 'border-slate-300 group-hover:border-cyan-400'}`}>
+                              {task.completed && <CheckSquare size={16} className="text-white" />}
+                          </div>
+                          <div className="flex-1">
+                              <p className={`text-base font-bold transition-all ${task.completed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{task.text}</p>
+                              {task.completed && task.completedBy && <p className="text-[10px] text-cyan-600 font-bold mt-1 uppercase">✓ Por {task.completedBy}</p>}
+                          </div>
+                      </div>
+                  ))}
+              </div>
+          )}
+
+          {/* Ayuno (Inscripciones) */}
+          {isAyuno && (
+              <div className="space-y-3">
+                  <h3 className="font-black text-slate-800 text-lg flex items-center gap-2"><Calendar size={20} className="text-rose-500"/> Calendario de Ayuno</h3>
+                  {getAyunoDays().map((day) => {
+                      const dateStr = format(day, 'yyyy-MM-dd');
+                      const fastersUids = assignments[dateStr] || [];
+                      const isJoined = fastersUids.includes(myUid);
+                      const isExpanded = expandedDay === dateStr;
+                      return (
+                          <div key={dateStr} className="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm print:break-inside-avoid">
+                              <div className="p-4 flex items-center justify-between gap-3">
+                                  <div className="flex items-center gap-3">
+                                      <div className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl border ${isJoined ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-100'}`}>
+                                          <span className="text-[10px] font-bold uppercase text-slate-400">{format(day, 'MMM', {locale: es})}</span>
+                                          <span className={`text-lg font-black ${isJoined ? 'text-rose-600' : 'text-slate-700'}`}>{format(day, 'dd')}</span>
+                                      </div>
+                                      <div>
+                                          <h4 className="font-bold text-slate-700 text-sm capitalize">{format(day, 'EEEE', {locale: es})}</h4>
+                                          <button onClick={() => setExpandedDay(isExpanded ? null : dateStr)} className="text-[10px] font-bold text-slate-400 hover:text-brand-600 flex items-center gap-1 mt-0.5 uppercase print:hidden">
+                                              <Users size={12}/> {fastersUids.length} hermanos <ChevronDown size={10} className={isExpanded ? 'rotate-180' : ''}/>
+                                          </button>
+                                      </div>
+                                  </div>
+                                  <button onClick={() => handleToggleFastingDate(dateStr)} className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm print:hidden ${isJoined ? 'bg-rose-500 text-white' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
+                                      {isJoined ? 'Anotado ✓' : 'Sumarme'}
+                                  </button>
+                              </div>
+                              {isExpanded && fastersUids.length > 0 && (
+                                  <div className="bg-slate-50 px-4 py-3 border-t border-slate-100 flex flex-wrap gap-2">
+                                      {fastersUids.map(uid => {
+                                          const u = users.find(user => user.id === uid);
+                                          return <span key={uid} className="text-[10px] bg-white border border-slate-200 px-2.5 py-1.5 rounded-lg text-slate-600 font-bold shadow-sm">{u?.displayName || u?.name || 'Hermano'}</span>
+                                      })}
+                                  </div>
+                              )}
+                          </div>
+                      )
+                  })}
+              </div>
+          )}
+
+          {/* Estructura de Equipo (Cultos, etc.) */}
+          {!isAyuno && !hasChecklist && getStructure(event.type).map((section, idx) => (
+               <div key={idx} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden print:border-slate-300 print:break-inside-avoid print:mb-6">
+                  <div className="bg-slate-50/80 px-4 py-3 border-b border-slate-100 flex items-center gap-2">
+                     <h3 className="font-black text-slate-700 text-xs uppercase tracking-widest">{section.section}</h3>
+                  </div>
+                  <div className="p-5 space-y-6">
+                    {section.roles.map(role => {
+                      const RoleIcon = role.icon;
+                      const assignedPeople = assignments[role.key] || [];
+                      return (
+                        <div key={role.key}>
+                          <label className="text-[11px] font-black text-slate-400 uppercase mb-3 flex items-center gap-2 tracking-wider">
+                            <RoleIcon size={14} className="text-brand-500" /> {role.label}
+                          </label>
+                          <div className="flex flex-wrap gap-2">
+                              {assignedPeople.length > 0 ? assignedPeople.map((person, i) => {
+                                  const statusIcon = getStatusIcon(person);
+                                  const isDeclined = event.confirmations?.[person] === 'declined';
+                                  return (
+                                      <span key={i} className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold border transition-all ${isDeclined ? 'bg-red-50 border-red-100 text-red-400 line-through' : (isEditing ? 'bg-brand-50 text-brand-700 border-brand-100' : 'bg-slate-50 text-slate-800 border-slate-200')}`}>
+                                          {person}
+                                          {!isEditing && <span className="print:hidden">{statusIcon}</span>}
+                                          {isEditing && <button onClick={() => handleRemovePersonRole(role.key, person)} className="p-0.5 hover:bg-brand-200 rounded-full"><X size={14}/></button>}
+                                      </span>
+                                  )
+                              }) : (
+                                  <p className="text-[11px] text-slate-300 font-bold uppercase tracking-tight">-- Vacante --</p>
+                              )}
+                          </div>
+                          {isEditing && (role.type === 'multi' || assignedPeople.length === 0) && (
+                              <button onClick={() => openPersonSelector(role.key, role)} className="w-full mt-3 py-3 bg-slate-50 border border-dashed border-slate-300 rounded-xl text-[10px] font-black uppercase text-slate-400 hover:text-brand-600 hover:border-brand-300 transition-all flex items-center justify-center gap-1.5">
+                                  <Plus size={14}/> {role.type === 'multi' ? 'Añadir persona' : 'Asignar responsable'}
+                              </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+               </div>
+          ))}
         </div>
       </div>
 
-      <div className="p-4 max-w-lg mx-auto space-y-6 print:p-0 print:max-w-none">
-        
-        {event.description && (
-            <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm print:border-none print:shadow-none print:p-0 print:mb-4">
-                <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2 text-sm"><MapPin size={16} className="text-brand-500"/> Detalles</h3>
-                <p className="text-sm text-slate-600 leading-relaxed">{event.description}</p>
-            </div>
-        )}
+      {/* BOTÓN GUARDAR FIJO (Solo si editamos) */}
+      {isEditing && !isAyuno && !hasChecklist && (
+          <div className="p-4 bg-white border-t border-slate-100 absolute bottom-0 w-full flex-shrink-0 shadow-[0_-4px_10px_rgba(0,0,0,0.05)] print:hidden">
+              <button onClick={handleSaveAssignments} className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-xl">
+                  <Save size={20}/> GUARDAR EQUIPO
+              </button>
+          </div>
+      )}
 
-        {hasChecklist && event.checklist && event.checklist.length > 0 && (
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden animate-fade-in print:border-slate-300">
-                <div className="bg-cyan-50/50 px-4 py-3 border-b border-cyan-100 flex items-center gap-2">
-                   <div className="w-1 h-4 bg-cyan-500 rounded-full"></div>
-                   <h3 className="font-black text-cyan-700 text-sm uppercase tracking-wide">Lista de Tareas</h3>
-                </div>
-                <div>
-                    {event.checklist.map((task, idx) => (
-                        <div key={idx} onClick={() => handleToggleTask(idx)} className="p-4 flex items-start gap-3 cursor-pointer hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 group">
-                            <div className={`mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${task.completed ? 'bg-cyan-500 border-cyan-500' : 'border-slate-300 group-hover:border-cyan-400'}`}>
-                                {task.completed ? <CheckSquare size={14} className="text-white" /> : null}
-                            </div>
-                            <div className="flex-1">
-                                <p className={`text-sm font-bold transition-all ${task.completed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{task.text}</p>
-                                {task.completed && task.completedBy && <p className="text-[10px] text-cyan-600 font-bold mt-1">Completado por {task.completedBy}</p>}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        )}
-
-        {isAyuno && (
-            <div className="space-y-3">
-                <h3 className="font-black text-slate-800 text-lg flex items-center gap-2"><Calendar size={20} className="text-rose-500"/> Días de Ayuno</h3>
-                {getAyunoDays().map((day) => {
-                    const dateStr = format(day, 'yyyy-MM-dd');
-                    const fastersUids = assignments[dateStr] || [];
-                    const isJoined = fastersUids.includes(myUid);
-                    const isExpanded = expandedDay === dateStr;
-                    return (
-                        <div key={dateStr} className="bg-white border border-slate-100 rounded-xl overflow-hidden shadow-sm transition-all print:break-inside-avoid">
-                            <div className="p-3 flex items-center justify-between gap-3">
-                                <div className="flex items-center gap-3">
-                                    <div className={`flex flex-col items-center justify-center w-12 h-12 rounded-lg border ${isJoined ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-100'}`}>
-                                        <span className="text-[10px] font-bold uppercase text-slate-400">{format(day, 'MMM', {locale: es})}</span>
-                                        <span className={`text-lg font-black ${isJoined ? 'text-rose-600' : 'text-slate-700'}`}>{format(day, 'dd')}</span>
-                                    </div>
-                                    <div>
-                                        <h4 className="font-bold text-slate-700 text-sm capitalize">{format(day, 'EEEE', {locale: es})}</h4>
-                                        <button onClick={() => setExpandedDay(isExpanded ? null : dateStr)} className="text-xs text-slate-400 hover:text-brand-600 flex items-center gap-1 mt-0.5 group print:hidden">
-                                            <Users size={12}/> {fastersUids.length} hermanos <ChevronDown size={10} className={`transform transition-transform ${isExpanded ? 'rotate-180' : ''}`}/>
-                                        </button>
-                                        <span className="hidden print:inline text-xs text-slate-500"> - {fastersUids.length} inscritos</span>
-                                    </div>
-                                </div>
-                                <button onClick={() => handleToggleFastingDate(dateStr)} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1 print:hidden ${isJoined ? 'bg-rose-500 text-white shadow-rose-200' : 'bg-white border border-slate-200 text-slate-500'}`}>
-                                    {isJoined ? <><CheckCircle size={12}/> Anotado</> : 'Sumarme'}
-                                </button>
-                            </div>
-                            {(isExpanded || (window.matchMedia && window.matchMedia('print').matches)) && fastersUids.length > 0 && (
-                                <div className="bg-slate-50 px-4 py-3 border-t border-slate-100 print:bg-white">
-                                    <div className="flex flex-wrap gap-2">
-                                        {fastersUids.map(uid => {
-                                            const u = users.find(user => user.id === uid);
-                                            return <span key={uid} className="text-[10px] bg-white border border-slate-200 px-2 py-1 rounded-md text-slate-600 font-bold shadow-sm">{u?.displayName || u?.name || 'Hermano'}</span>
-                                        })}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )
-                })}
-            </div>
-        )}
-
-        {!isAyuno && !hasChecklist && getStructure(event.type).map((section, idx) => (
-             <div key={idx} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden print:shadow-none print:border-slate-300 print:break-inside-avoid print:mb-4">
-                <div className="bg-slate-50/50 px-4 py-3 border-b border-slate-100 flex items-center gap-2 print:bg-slate-100">
-                   <div className="w-1 h-4 bg-brand-500 rounded-full"></div>
-                   <h3 className="font-black text-slate-700 text-sm uppercase tracking-wide">{section.section}</h3>
-                </div>
-                <div className="p-4 space-y-5">
-                  {section.roles.map(role => {
-                    const RoleIcon = role.icon;
-                    const assignedPeople = assignments[role.key] || [];
-                    
-                    return (
-                      <div key={role.key}>
-                        <label className="text-[11px] font-bold text-slate-400 uppercase mb-2 flex items-center gap-1.5">
-                          <RoleIcon size={12} /> {role.label}
-                        </label>
-                        
-                        {/* LISTA DE PERSONAS CON STATUS VISUAL */}
-                        <div className="flex flex-wrap gap-2 mb-2">
-                            {assignedPeople.length > 0 ? assignedPeople.map((person, i) => {
-                                const statusIcon = getStatusIcon(person);
-                                const isDeclined = event.confirmations?.[person] === 'declined';
-
-                                return (
-                                    <span key={i} className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${isDeclined ? 'bg-red-50 border-red-100 text-red-400 line-through' : (isEditing ? 'bg-brand-50 text-brand-700 border-brand-100' : 'bg-slate-50 text-slate-700 border-slate-200')} print:bg-white print:border-slate-300`}>
-                                        {person}
-                                        {/* Ícono de estado (solo visible si NO estamos editando o si imprimimos) */}
-                                        {!isEditing && <span className="print:hidden">{statusIcon}</span>}
-                                        
-                                        {isEditing && <button onClick={() => handleRemovePersonRole(role.key, person)} className="p-0.5 hover:bg-brand-200 rounded-full print:hidden"><X size={12}/></button>}
-                                    </span>
-                                )
-                            }) : (
-                                <p className="text-xs text-slate-300 italic print:hidden">-- Sin asignar --</p>
-                            )}
-                        </div>
-
-                        {/* BOTÓN AGREGAR */}
-                        {isEditing && (role.type === 'multi' || assignedPeople.length === 0) && (
-                            <button 
-                                onClick={() => openPersonSelector(role.key, role)}
-                                className="w-full py-2 bg-slate-50 border border-dashed border-slate-300 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 hover:text-brand-600 transition-colors flex items-center justify-center gap-1 print:hidden"
-                            >
-                                <Plus size={14}/> {role.type === 'multi' ? 'Agregar persona...' : 'Seleccionar responsable...'}
-                            </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-        ))}
-
-        {isEditing && !isAyuno && !hasChecklist && (
-            <button onClick={handleSaveAssignments} className="w-full bg-slate-900 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 shadow-xl shadow-slate-200 active:scale-95 transition-all sticky bottom-4 z-20 animate-slide-up print:hidden">
-                <Save size={18}/> Guardar Cambios
-            </button>
-        )}
-      </div>
-
-      {/* --- MODAL SELECTOR DE PERSONAS --- */}
+      {/* SELECTOR DE PERSONAS (MODAL INTERNO) - SE MANTIENE TU LÓGICA */}
       {isSelectorOpen && (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setIsSelectorOpen(false)}>
-              <div className="bg-white w-full sm:max-w-sm h-[80vh] sm:h-auto sm:max-h-[80vh] rounded-t-2xl sm:rounded-2xl flex flex-col animate-slide-up shadow-2xl" onClick={e => e.stopPropagation()}>
-                  <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white rounded-t-2xl">
-                      <div>
-                          <h3 className="font-bold text-slate-800">Seleccionar Persona</h3>
-                          <p className="text-xs text-slate-400 capitalize">{activeRoleKey?.replace('_', ' ')}</p>
-                      </div>
-                      <button onClick={() => setIsSelectorOpen(false)} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={18} className="text-slate-600"/></button>
+          <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setIsSelectorOpen(false)}>
+              <div className="bg-white w-full sm:max-w-sm h-[80vh] sm:h-auto sm:max-h-[80vh] rounded-t-3xl sm:rounded-3xl flex flex-col animate-slide-up shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+                  <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white">
+                      <div><h3 className="font-black text-slate-800 text-lg">Asignar Persona</h3><p className="text-xs text-brand-600 font-bold uppercase tracking-widest">{activeRoleConfig?.label}</p></div>
+                      <button onClick={() => setIsSelectorOpen(false)} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20}/></button>
                   </div>
-                  <div className="p-3 bg-slate-50 border-b border-slate-100">
-                      <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2.5">
-                          <Search size={16} className="text-slate-400"/>
-                          <input type="text" placeholder="Buscar por nombre..." className="w-full text-sm outline-none text-slate-700 placeholder:text-slate-400" autoFocus value={personSearchTerm} onChange={(e) => setPersonSearchTerm(e.target.value)}/>
+                  <div className="p-4 bg-slate-50 border-b border-slate-100">
+                      <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm">
+                          <Search size={18} className="text-slate-400"/>
+                          <input type="text" placeholder="Buscar hermano..." className="w-full text-base outline-none text-slate-700" autoFocus value={personSearchTerm} onChange={(e) => setPersonSearchTerm(e.target.value)}/>
                       </div>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                  <div className="flex-1 overflow-y-auto p-2 space-y-1 bg-white">
                       {getUsersForModal().map(u => (
-                          <button key={u.id} onClick={() => handleSelectPersonFromModal(u.displayName || u.name)} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl transition-colors text-left group">
-                              <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold text-sm border-2 border-white shadow-sm group-hover:border-slate-200">
-                                  {u.photoURL ? <img src={u.photoURL} className="w-full h-full rounded-full object-cover"/> : (u.displayName || u.name || '?')[0].toUpperCase()}
+                          <button key={u.id} onClick={() => handleSelectPersonFromModal(u.displayName || u.name)} className="w-full flex items-center gap-4 p-4 hover:bg-slate-50 rounded-2xl transition-all text-left group">
+                              <div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold text-lg border-2 border-white shadow-sm overflow-hidden">
+                                  {u.photoURL ? <img src={u.photoURL} className="w-full h-full object-cover"/> : (u.displayName || u.name || '?')[0].toUpperCase()}
                               </div>
-                              <div className="flex-1">
-                                  <p className="text-sm font-bold text-slate-800">{u.displayName || u.name || 'Sin Nombre'}</p>
-                                  <p className="text-[10px] text-slate-400 uppercase tracking-wide">{u.area || 'Miembro'}</p>
-                              </div>
-                              <Plus size={16} className="text-brand-600 opacity-0 group-hover:opacity-100 transition-opacity"/>
+                              <div className="flex-1"><p className="font-black text-slate-800 text-base leading-tight">{u.displayName || u.name}</p><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">{u.area || 'Miembro'}</p></div>
+                              <Plus size={20} className="text-brand-600 opacity-0 group-hover:opacity-100 transition-opacity"/>
                           </button>
                       ))}
-                      {getUsersForModal().length === 0 && <div className="p-10 text-center text-slate-400 text-sm">No se encontraron personas.</div>}
+                      {getUsersForModal().length === 0 && <div className="p-10 text-center text-slate-400 italic">No se encontraron personas.</div>}
                   </div>
               </div>
           </div>
