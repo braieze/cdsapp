@@ -22,10 +22,7 @@ messaging.onBackgroundMessage(function(payload) {
     icon: '/web-app-manifest-192x192.png',
     badge: '/badge-72x72.png',
     tag: 'cds-notif-unica',
-    renotify: true,
-    data: {
-      url: payload.data.url || '/' 
-    }
+    data: { url: payload.data.url || '/' }
   };
   return self.registration.showNotification(notificationTitle, notificationOptions);
 });
@@ -33,22 +30,26 @@ messaging.onBackgroundMessage(function(payload) {
 self.addEventListener('notificationclick', function(event) {
   event.notification.close();
 
-  // CONSTRUIMOS URL ABSOLUTA PARA EVITAR PANTALLA EN BLANCO
-  const targetUrl = new URL(event.notification.data.url || '/', self.location.origin).href;
+  // 1. Construimos la URL absoluta (Crucial para que iPhone sepa a dónde ir)
+  const targetPath = event.notification.data.url || '/';
+  const fullUrl = new URL(targetPath, self.location.origin).href;
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-      // 1. Si la app está abierta (en primer o segundo plano)
-      for (const client of clientList) {
-        if (client.url.includes(self.location.origin) && 'navigate' in client) {
-          // 🔥 NAVEGAMOS PRIMERO Y LUEGO DAMOS FOCO
-          return client.navigate(targetUrl).then(() => client.focus());
+      // 2. Buscamos si la app ya está abierta (primer o segundo plano)
+      for (let client of clientList) {
+        if (client.url.includes(self.location.origin)) {
+          // 🔥 ESTRATEGIA DE INGENIERÍA:
+          // Primero damos foco para despertar la app, luego navegamos.
+          return client.focus().then((focusedClient) => {
+            return focusedClient.navigate(fullUrl);
+          });
         }
       }
       
-      // 2. Si la app está cerrada completamente
+      // 3. Si la app estaba cerrada (Cold Start)
       if (clients.openWindow) {
-        return clients.openWindow(targetUrl);
+        return clients.openWindow(fullUrl);
       }
     })
   );
