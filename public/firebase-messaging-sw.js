@@ -1,4 +1,3 @@
-// public/firebase-messaging-sw.js
 importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js');
 
@@ -15,38 +14,42 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
+// MANEJADOR EN SEGUNDO PLANO
 messaging.onBackgroundMessage(function(payload) {
   const notificationTitle = payload.data.title || "Nuevo Aviso";
   const notificationOptions = {
     body: payload.data.body || "Toca para ver más.",
-    icon: '/web-app-manifest-192x192.png', 
-    badge: '/badge-72x72.png', 
+    icon: '/web-app-manifest-192x192.png',
+    badge: '/badge-72x72.png',
     vibrate: [200, 100, 200],
     tag: 'cds-notif',
     data: {
+      // ✅ IMPORTANTE: Guardamos la URL aquí para que el clic la encuentre
       url: payload.data.url || '/' 
     }
   };
   return self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
-// LÓGICA BASE QUE SÍ FUNCIONABA
+// ✅ LÓGICA QUE SÍ FUNCIONABA (Restaurada al 100%)
 self.addEventListener('notificationclick', function(event) {
-  event.notification.close();
+  event.notification.close(); 
+
   const targetUrl = event.notification.data.url || '/';
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-      // Si la app está abierta, navegamos y damos foco
-      for (const client of clientList) {
-        if ('focus' in client && 'navigate' in client) {
-          return client.navigate(targetUrl).then(c => c.focus());
+      if (clientList.length > 0) {
+        let client = clientList[0];
+        for (const c of clientList) {
+          if (c.visibilityState === 'visible') {
+            client = c;
+            break;
+          }
         }
+        return client.navigate(targetUrl).then(c => c.focus());
       }
-      // Si está cerrada, la abrimos
-      if (clients.openWindow) {
-        return clients.openWindow(targetUrl);
-      }
+      return clients.openWindow(targetUrl);
     })
   );
 });

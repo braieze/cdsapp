@@ -41,12 +41,9 @@ app.get('/ping', (req, res) => {
 app.post('/send-notification', async (req, res) => {
   const { title, body, tokens, url } = req.body;
 
-  if (!tokens || !tokens.length) return res.status(400).send('Faltan tokens');
-
   try {
     const response = await admin.messaging().sendEachForMulticast({
-      // ❌ ELIMINADO: El objeto 'notification' (esto evita que el navegador la duplique)
-      // ✅ TODO AL OBJETO 'data': Así tu Service Worker tiene el control total
+      // ✅ Enviamos como 'data' para que el SW tenga el control
       data: { 
         title: title || "Nuevo Aviso", 
         body: body || "Toca para ver el contenido",
@@ -54,11 +51,8 @@ app.post('/send-notification', async (req, res) => {
       },
       tokens: tokens,
     });
-    
-    console.log(`✅ Enviados: ${response.successCount}, Fallos: ${response.failureCount}`);
-    res.json({ success: true, detail: response });
+    res.json({ success: true });
   } catch (error) {
-    console.error("🔥 Error en el servidor de notificaciones:", error);
     res.status(500).json({ error: error.message });
   }
 });
