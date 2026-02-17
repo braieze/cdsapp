@@ -36,19 +36,34 @@ if (!admin.apps.length && serviceAccount) {
   });
 }
 
+// RUTA ACTUALIZADA PARA DEEP LINKING
 app.post('/send-notification', async (req, res) => {
-  const { title, body, tokens } = req.body;
+  // Recibimos la 'url' enviada desde el modal de React
+  const { title, body, tokens, url } = req.body;
+
   if (!tokens || !tokens.length) return res.status(400).send('Faltan tokens');
 
   try {
+    // Usamos sendEachForMulticast para compatibilidad con Firebase v12+
     const response = await admin.messaging().sendEachForMulticast({
-      notification: { title, body },
+      // El objeto 'notification' hace que el sistema operativo muestre el globo automáticamente
+      notification: { 
+        title: title || "Nuevo Aviso", 
+        body: body || "Toca para ver el contenido" 
+      },
+      // El objeto 'data' lleva la URL que el Service Worker usará para abrir la app
+      data: { 
+        url: url || '/' 
+      },
       tokens: tokens,
     });
+    
+    // Log para monitorear si llegan duplicados (Debería decir Enviados: 1)
     console.log(`✅ Enviados: ${response.successCount}, Fallos: ${response.failureCount}`);
+    
     res.json({ success: true, detail: response });
   } catch (error) {
-    console.error("Error:", error);
+    console.error("🔥 Error en el servidor de notificaciones:", error);
     res.status(500).json({ error: error.message });
   }
 });

@@ -98,6 +98,8 @@ function App() {
         <Route element={user ? <MainLayout /> : <Navigate to="/login" />}>
           <Route path="/" element={<Home />} />
           
+          <Route path="/post/:postId" element={<PostDetail />} />
+          
           <Route path="/calendario" element={<Calendar />} />
           <Route path="/calendario/:id" element={<EventDetails />} />
           

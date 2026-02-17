@@ -13,14 +13,41 @@ const firebaseConfig = {
 };
 
 firebase.initializeApp(firebaseConfig);
-
 const messaging = firebase.messaging();
 
-// 💡 Solo usamos onBackgroundMessage para registrar que llegó el mensaje
-// No llamamos a showNotification aquí porque Firebase lo hace solo
+// Configuración de la apariencia nativa
 messaging.onBackgroundMessage(function(payload) {
-  console.log('[firebase-messaging-sw.js] Mensaje recibido en segundo plano:', payload);
+  console.log('[firebase-messaging-sw.js] Notificación recibida:', payload);
   
-  // Si en el futuro envías datos extra (data), podrías manejarlos aquí.
-  // Pero para notificaciones estándar de título y cuerpo, no hace falta hacer nada más.
+  const notificationTitle = payload.notification.title || "Nuevo Aviso";
+  const notificationOptions = {
+    body: payload.notification.body || "Tienes contenido nuevo en la app.",
+    // El 'icon' es la imagen a color que sale a la derecha
+    icon: '/web-app-manifest-192x192.png', 
+    // El 'badge' es la silueta BLANCA que sale arriba en la barra de estado (Android)
+    badge: '/badge-72x72.png', 
+    vibrate: [200, 100, 200],
+    tag: 'cds-notification', // Evita que se amontonen si envías varias
+    renotify: true,
+    data: {
+      url: payload.data?.url || '/' // Puedes enviar una URL desde el backend
+    }
+  };
+
+  return self.registration.showNotification(notificationTitle, notificationOptions);
+});
+
+// Lógica para abrir la App al hacer clic en la notificación
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close(); // Cierra el globo de la notificación
+
+  // Abre la aplicación o enfoca la pestaña si ya está abierta
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+      if (clientList.length > 0) {
+        return clientList[0].focus();
+      }
+      return clients.openWindow(event.notification.data.url);
+    })
+  );
 });

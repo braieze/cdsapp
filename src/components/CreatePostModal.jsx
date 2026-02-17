@@ -43,10 +43,9 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     setImage(null); setPreview(null); setShowPoll(false); setPollOptions(['', '']);
   };
 
-  // 🔥 FUNCIÓN ACTUALIZADA CON DEPURACIÓN (Sin perder lógica)
-  const sendPushNotification = async (postTitle, postContent) => {
+  // 🔥 FUNCIÓN ACTUALIZADA: Ahora envía la URL para Deep Linking
+  const sendPushNotification = async (postTitle, postContent, postUrl) => {
     try {
-      // 1. Obtener tokens de usuarios de la base de datos
       const usersSnap = await getDocs(collection(db, "users"));
       let tokens = [];
 
@@ -57,25 +56,14 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         }
       });
 
-      // Eliminamos duplicados exactos
       const uniqueTokens = [...new Set(tokens)];
 
-      // 🕵️ LOGS DE CONTROL (Para ver por qué llegan 2)
-      console.log("--- DEBUG NOTIFICACIONES ---");
-      console.log("Tokens totales en Firestore:", tokens.length);
-      console.log("Tokens tras filtro 'Set':", uniqueTokens.length);
-      console.log("Tokens únicos a enviar:", uniqueTokens);
+      if (uniqueTokens.length === 0) return;
 
-      if (uniqueTokens.length === 0) {
-        console.log("No hay usuarios para notificar.");
-        return;
-      }
-
-      console.log(`Enviando notificación a ${uniqueTokens.length} dispositivos vía Render...`);
+      console.log(`Enviando notificación a ${uniqueTokens.length} dispositivos...`);
 
       const BACKEND_URL = "https://backend-notificaciones-mceh.onrender.com/send-notification";
 
-      // 2. LLAMAR A TU API EN RENDER
       const response = await fetch(BACKEND_URL, {
         method: "POST",
         headers: {
@@ -84,16 +72,17 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         body: JSON.stringify({
           title: postTitle || "Nueva Publicación",
           body: postContent ? postContent.substring(0, 100) : "Toca para ver más.",
-          tokens: uniqueTokens
+          tokens: uniqueTokens,
+          url: postUrl || "/" // 👈 Enviamos la URL al backend
         })
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Error desconocido en el servidor');
+        throw new Error(errorData.error || 'Error en el servidor');
       }
 
-      console.log(`✅ ¡Notificación enviada con éxito!`);
+      console.log(`✅ Notificación con URL enviada con éxito`);
 
     } catch (error) {
       console.error("❌ Error enviando notificación:", error.message);
@@ -169,7 +158,8 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           }
         }
 
-        await addDoc(collection(db, 'posts'), {
+        // Capturamos la referencia del nuevo post para obtener su ID
+        const docRef = await addDoc(collection(db, 'posts'), {
           ...commonData,
           authorId: auth.currentUser.uid,
           authorName: auth.currentUser.displayName,
@@ -182,10 +172,12 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           commentsCount: 0
         });
 
-        // 🔥 ACTIVAR NOTIFICACIÓN (Solo al crear)
+        // 🔥 NOTIFICACIÓN CON REDIRECCIÓN
+        // Por ahora enviamos a la raíz "/", pero podrías usar `/post/${docRef.id}`
         await sendPushNotification(
             title || `Nueva ${type}`, 
-            text || "Hay nuevo contenido en la app."
+            text || "Hay nuevo contenido en la app.",
+            "`/post/${docRef.id}` // 👈 Esta es la ruta dinámica" 
         );
       }
 
