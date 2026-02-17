@@ -177,7 +177,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         await sendPushNotification(
             title || `Nueva ${type}`, 
             text || "Hay nuevo contenido en la app.",
-            "`/post/${docRef.id}` // 👈 Esta es la ruta dinámica" 
+            `/post/${docRef.id}` 
         );
       }
 
