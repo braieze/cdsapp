@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom'; 
-// ✅ CORRECCIÓN: Agregué 'Send' a los imports
 import { Cake, BookOpen, Pin, Link as LinkIcon, ExternalLink, MessageCircle, MoreVertical, X, Edit3, Trash2, PlusCircle, AlertTriangle, Calendar, Heart, Send } from 'lucide-react';
 import CreatePostModal from '../components/CreatePostModal';
 import TopBar from '../components/TopBar'; 
 import BirthdayModal from '../components/BirthdayModal';
 import { db, auth } from '../firebase';
-import { collection, query, orderBy, onSnapshot, deleteDoc, doc, updateDoc, limit, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, deleteDoc, doc, updateDoc, limit } from 'firebase/firestore';
 
 // --- SKELETON LOADER ---
 const PostSkeleton = () => (
@@ -21,7 +20,6 @@ const PostSkeleton = () => (
     <div className="space-y-2">
       <div className="h-4 bg-slate-200 rounded w-full"></div>
       <div className="h-4 bg-slate-200 rounded w-5/6"></div>
-      <div className="h-4 bg-slate-200 rounded w-4/6"></div>
     </div>
   </div>
 );
@@ -33,7 +31,7 @@ const EmptyState = () => (
       <Heart size={48} className="text-slate-300" fill="currentColor" />
     </div>
     <h3 className="text-lg font-black text-slate-700">¡El muro está tranquilo!</h3>
-    <p className="text-sm text-slate-500 mt-2 max-w-xs">Aún no hay publicaciones recientes. Sé el primero en compartir una bendición.</p>
+    <p className="text-sm text-slate-500 mt-2 max-w-xs">Aún no hay publicaciones recientes.</p>
   </div>
 );
 
@@ -59,7 +57,6 @@ export default function Home() {
   // Modales de Acción
   const [editingPost, setEditingPost] = useState(null); 
   const [postToDelete, setPostToDelete] = useState(null); 
-  const [readingPost, setReadingPost] = useState(null); 
   const [fullImage, setFullImage] = useState(null); 
   const [showReactionsFor, setShowReactionsFor] = useState(null);
 
@@ -171,11 +168,9 @@ export default function Home() {
 
   return (
     <div className="pb-28 animate-fade-in relative min-h-screen bg-slate-50">
-      
       <TopBar />
 
       <div className="px-4 mt-4">
-          {/* Widget Cumpleaños */}
           <div 
             onClick={() => { if (birthdays.length > 0) setIsBirthdayModalOpen(true); }}
             className={`bg-white p-5 mb-6 border border-slate-100 rounded-2xl flex items-center justify-between shadow-sm transition-all ${birthdays.length > 0 ? 'cursor-pointer hover:bg-slate-50 hover:shadow-md active:scale-[0.98]' : ''}`}
@@ -194,7 +189,6 @@ export default function Home() {
             {birthdays.length > 0 && <span className="text-xs font-bold text-slate-400 bg-slate-100 px-3 py-1 rounded-full">Ver</span>}
           </div>
 
-          {/* Filtros */}
           <div className="flex gap-3 overflow-x-auto py-2 mb-4 hide-scrollbar">
             {['Todo', 'Noticia', 'Devocional', 'Urgente'].map((cat) => (
               <button key={cat} onClick={() => setFilter(cat)} className={`px-5 py-2.5 text-sm font-bold rounded-full transition-colors shadow-sm ${filter === cat ? 'bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-600'}`}>{cat}</button>
@@ -202,7 +196,6 @@ export default function Home() {
           </div>
       </div>
 
-      {/* FEED */}
       <div className="space-y-6 px-0 sm:px-4 mt-2">
         {loading ? (
             <div className="px-4">
@@ -261,11 +254,13 @@ export default function Home() {
                         </button>
                       ))}
                     </div>
-                    <button onClick={(e) => { e.stopPropagation(); setReadingPost(post); }} className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-brand-600 transition-colors px-2 py-1 rounded-lg hover:bg-slate-50">
+                    {/* ✅ UNIFICACIÓN: Ahora navega a la página de detalle */}
+                    <button onClick={(e) => { e.stopPropagation(); navigate(`/post/${post.id}`); }} className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-brand-600 transition-colors px-2 py-1 rounded-lg hover:bg-slate-50">
                       <MessageCircle size={22} /> Comentar
                     </button>
                   </div>
-                  <CommentPreview postId={post.id} onClick={() => setReadingPost(post)} />
+                  {/* ✅ UNIFICACIÓN: Click en la previsualización también navega */}
+                  <CommentPreview postId={post.id} onClick={() => navigate(`/post/${post.id}`)} />
                 </div>
               );
 
@@ -273,12 +268,13 @@ export default function Home() {
                 return (
                   <div key={post.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mx-4 sm:mx-0 relative">
                      <div className="absolute top-4 right-4 z-10"><ManagementMenu /></div>
-                    <div onClick={() => setReadingPost(post)} className="cursor-pointer">
+                    {/* ✅ UNIFICACIÓN: Click en la tarjeta navega a la página */}
+                    <div onClick={() => navigate(`/post/${post.id}`)} className="cursor-pointer">
                       {post.image ? (
                         <div className="h-56 w-full bg-slate-200 relative">
                             <img src={post.image} className="w-full h-full object-cover" />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
-                            <span className="absolute top-4 left-4 bg-white/20 backdrop-blur-md text-white text-xs font-bold px-3 py-1 rounded border border-white/20">DEVOCIONAL</span>
+                            <span className="absolute top-4 left-4 bg-white/20 backdrop-blur-md text-white text-xs font-bold px-3 py-1 rounded border border-white/20 uppercase tracking-widest">DEVOCIONAL</span>
                             <h2 className="absolute bottom-5 left-5 right-5 text-2xl font-black text-white leading-tight drop-shadow-md">{post.title || 'Reflexión del día'}</h2>
                         </div>
                       ) : (
@@ -323,10 +319,10 @@ export default function Home() {
                     </div>
                     <ManagementMenu />
                   </div>
-                  <div className="px-5 mb-4">
+                  {/* ✅ UNIFICACIÓN: El contenido de la noticia también lleva al detalle */}
+                  <div className="px-5 mb-4 cursor-pointer" onClick={() => navigate(`/post/${post.id}`)}>
                     <div className={`text-base text-slate-800 whitespace-pre-wrap leading-relaxed ${isExpanded ? '' : 'line-clamp-4'}`}>{post.content}</div>
-                    {post.content.length > 200 && !isExpanded && <button onClick={() => toggleExpand(post.id)} className="text-brand-600 text-sm font-bold mt-2 hover:underline">Leer más...</button>}
-                    {post.content.length > 200 && isExpanded && <button onClick={() => toggleExpand(post.id)} className="text-slate-400 text-sm font-bold mt-3 hover:underline">Leer menos</button>}
+                    {post.content.length > 200 && !isExpanded && <button onClick={(e) => { e.stopPropagation(); toggleExpand(post.id); }} className="text-brand-600 text-sm font-bold mt-2 hover:underline">Leer más...</button>}
                     <div className="mt-3 flex flex-wrap gap-2">
                         {post.tags?.map((tag, i) => <span key={i} className="inline-block text-xs bg-slate-100 text-slate-500 px-2.5 py-1 rounded-lg font-bold">#{tag}</span>)}
                     </div>
@@ -371,17 +367,9 @@ export default function Home() {
         </button>
       )}
 
-      {/* MODALES */}
+      {/* MODALES ACTIVOS */}
       <CreatePostModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} postToEdit={editingPost} />
       {fullImage && <ImageModal src={fullImage} onClose={() => setFullImage(null)} />}
-      
-      {readingPost && (
-        <PostDetailModal 
-            post={readingPost} 
-            currentUser={currentUser} 
-            onClose={() => setReadingPost(null)} 
-        />
-      )}
       
       {showReactionsFor && <ReactionsListModal post={showReactionsFor} onClose={() => setShowReactionsFor(null)} />}
       
@@ -398,7 +386,7 @@ export default function Home() {
               <div className="bg-red-500/10 p-3 rounded-full"><AlertTriangle size={28}/></div>
               <h3 className="font-bold text-xl text-white">¿Eliminar publicación?</h3>
             </div>
-            <p className="text-slate-400 text-base mb-8 leading-relaxed">Esta acción no se puede deshacer. Se borrará permanentemente del muro.</p>
+            <p className="text-slate-400 text-base mb-8 leading-relaxed">Esta acción no se puede deshacer.</p>
             <div className="flex gap-3">
               <button onClick={() => setPostToDelete(null)} className="flex-1 py-3.5 rounded-xl font-bold text-slate-300 hover:bg-slate-800 transition-colors text-sm">Cancelar</button>
               <button onClick={handleConfirmDelete} className="flex-1 py-3.5 rounded-xl font-bold bg-red-600 text-white hover:bg-red-700 transition-colors text-sm shadow-lg shadow-red-900/20">Sí, eliminar</button>
@@ -410,14 +398,13 @@ export default function Home() {
   );
 }
 
-// ... SUBCOMPONENTES ...
+// --- SUBCOMPONENTES ---
 
 function CommentPreview({ postId, onClick }) {
   const [previewComments, setPreviewComments] = useState([]);
   
   useEffect(() => {
     if (!postId) return; 
-    
     const q = query(collection(db, `posts/${postId}/comments`), orderBy('createdAt', 'desc'), limit(2));
     const unsubscribe = onSnapshot(q, (snap) => setPreviewComments(snap.docs.map(d => d.data())));
     return () => unsubscribe();
@@ -425,7 +412,7 @@ function CommentPreview({ postId, onClick }) {
 
   if (previewComments.length === 0) return null;
   return (
-    <div className="bg-slate-50/50 rounded-xl p-3 cursor-pointer hover:bg-slate-100 transition-colors" onClick={(e) => { e.stopPropagation(); onClick(); }}>
+    <div className="bg-slate-50/50 rounded-xl p-3 cursor-pointer hover:bg-slate-100 transition-colors mt-2" onClick={(e) => { e.stopPropagation(); onClick(); }}>
       {previewComments.map((c, idx) => (
         <div key={idx} className="flex gap-2 mb-1.5 last:mb-0"><span className="font-bold text-sm text-slate-800 whitespace-nowrap">{c.name}:</span><span className="text-sm text-slate-600 line-clamp-1">{c.text}</span></div>
       ))}
@@ -455,77 +442,3 @@ function ReactionsListModal({ post, onClose }) {
 }
 
 function ImageModal({ src, onClose }) { return (<div className="fixed inset-0 z-[90] bg-black/95 flex items-center justify-center p-2 animate-fade-in" onClick={onClose}><button className="absolute top-6 right-6 text-white bg-white/10 p-3 rounded-full hover:bg-white/20 transition-colors"><X size={28}/></button><img src={src} className="max-w-full max-h-screen object-contain rounded-lg shadow-2xl" /></div>); }
-
-function PostDetailModal({ post, currentUser, onClose }) {
-  const [commentText, setCommentText] = useState('');
-  const [comments, setComments] = useState([]);
-  
-  useEffect(() => { 
-      if (!post?.id) return;
-      
-      const q = query(collection(db, `posts/${post.id}/comments`), orderBy('createdAt', 'desc')); 
-      return onSnapshot(q, (snap) => setComments(snap.docs.map(d => ({ id: d.id, ...d.data() })))); 
-  }, [post?.id]);
-
-  const sendComment = async () => { if(!commentText.trim()) return; await addDoc(collection(db, `posts/${post.id}/comments`), { text: commentText, uid: currentUser.uid, name: currentUser.displayName, photo: currentUser.photoURL, createdAt: serverTimestamp() }); setCommentText(''); };
-  const deleteComment = async (id) => { if(confirm('Borrar comentario?')) await deleteDoc(doc(db, `posts/${post.id}/comments`, id)); };
-  
-  if (!post) return null;
-
-  return (
-    <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center animate-fade-in" onClick={onClose}>
-      <div className="bg-white w-full h-[90vh] sm:h-[85vh] sm:max-w-lg rounded-t-3xl sm:rounded-3xl flex flex-col relative overflow-hidden animate-slide-up shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-white sticky top-0 z-10"><button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full"><X size={24}/></button><span className="font-bold text-base text-slate-800 uppercase tracking-wider text-xs">{post.type}</span><div className="w-8"></div></div>
-        <div className="flex-1 overflow-y-auto p-0 pb-24">
-          {post.type === 'Devocional' && (
-            <>
-                {post.image && <img src={post.image} className="w-full h-auto object-cover" />}
-                <div className="p-6">
-                    <h1 className="text-3xl font-black text-slate-900 mb-4 leading-tight">{post.title}</h1>
-                    <div className="flex items-center gap-3 mb-6">
-                        <img src={post.authorPhoto} className="w-12 h-12 rounded-full border shadow-sm" />
-                        <div><p className="font-bold text-base text-slate-800">{post.authorName}</p><p className="text-sm text-slate-500">{new Date(post.createdAt?.toDate()).toLocaleDateString()}</p></div>
-                    </div>
-                    <p className="text-lg text-slate-700 leading-relaxed whitespace-pre-wrap mb-6">{post.content}</p>
-                </div>
-                <hr className="border-slate-100"/>
-            </>
-          )}
-          <div className="p-6">
-            <h3 className="font-black text-xl text-slate-800 mb-6 flex items-center gap-2"><MessageCircle className="text-brand-500" size={24}/> Comentarios <span className="text-slate-400 text-base font-normal">({comments.length})</span></h3>
-            <div className="space-y-6">
-                {comments.length === 0 && <p className="text-center text-slate-400 py-10 italic">Sé el primero en comentar...</p>}
-                {comments.map(c => (
-                    <div key={c.id} className="flex gap-4">
-                        <img src={c.photo} className="w-10 h-10 rounded-full border border-slate-100" />
-                        <div className="flex-1 bg-slate-50 p-4 rounded-2xl rounded-tl-none border border-slate-100">
-                            <div className="flex justify-between items-start mb-1">
-                                <span className="font-bold text-sm text-slate-800">{c.name}</span>
-                                {(c.uid === currentUser.uid || post.authorId === currentUser.uid) && <button onClick={() => deleteComment(c.id)} className="text-slate-300 hover:text-red-500 p-1"><Trash2 size={16}/></button>}
-                            </div>
-                            <p className="text-base text-slate-600 leading-snug">{c.text}</p>
-                        </div>
-                    </div>
-                ))}
-            </div>
-          </div>
-        </div>
-        <div className="p-4 border-t border-slate-100 bg-white absolute bottom-0 w-full flex gap-3 items-center shadow-lg">
-            <input 
-                value={commentText} 
-                onChange={e => setCommentText(e.target.value)} 
-                placeholder="Escribe un comentario..." 
-                className="flex-1 bg-slate-100 rounded-full px-6 py-3.5 text-base outline-none focus:ring-2 focus:ring-brand-200 transition-all"
-            />
-            <button 
-                onClick={sendComment} 
-                disabled={!commentText.trim()} 
-                className="p-3.5 bg-brand-600 text-white rounded-full disabled:opacity-50 hover:bg-brand-700 transition-colors shadow-md active:scale-95"
-            >
-                <Send size={20}/>
-            </button>
-        </div>
-      </div>
-    </div>
-  );
-}
