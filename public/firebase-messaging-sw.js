@@ -1,3 +1,4 @@
+// public/firebase-messaging-sw.js
 importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js');
 
@@ -23,33 +24,28 @@ messaging.onBackgroundMessage(function(payload) {
     vibrate: [200, 100, 200],
     tag: 'cds-notif',
     data: {
-      // Guardamos la URL que viene del servidor
-      url: payload.data.url 
+      url: payload.data.url || '/' 
     }
   };
   return self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
+// LÓGICA BASE QUE SÍ FUNCIONABA
 self.addEventListener('notificationclick', function(event) {
   event.notification.close();
-
-  // 1. Construimos la URL completa para que iPhone no se quede en blanco
-  const baseUrl = self.location.origin;
-  const path = event.notification.data.url || '/';
-  const fullTargetUrl = new URL(path, baseUrl).href;
+  const targetUrl = event.notification.data.url || '/';
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-      // 2. Si la app ya está abierta, navegamos en esa misma pestaña
-      for (let client of clientList) {
-        if ('navigate' in client) {
-          client.focus();
-          return client.navigate(fullTargetUrl);
+      // Si la app está abierta, navegamos y damos foco
+      for (const client of clientList) {
+        if ('focus' in client && 'navigate' in client) {
+          return client.navigate(targetUrl).then(c => c.focus());
         }
       }
-      // 3. Si está cerrada, abrimos una nueva con la URL completa
+      // Si está cerrada, la abrimos
       if (clients.openWindow) {
-        return clients.openWindow(fullTargetUrl);
+        return clients.openWindow(targetUrl);
       }
     })
   );
