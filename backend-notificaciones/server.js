@@ -2,57 +2,58 @@ const express = require('express');
 const cors = require('cors');
 const admin = require('firebase-admin');
 
-// Cargar la llave
-const serviceAccount = require('./service-account.json');
-
 const app = express();
 
-// 1. CONFIGURACIÓN CORS (LA SOLUCIÓN AL BLOQUEO)
-// Esto permite que Vercel, Localhost o cualquier origen se conecte.
 app.use(cors({
-  origin: '*', 
+  origin: '*',
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 app.use(express.json());
 
-// 2. INICIAR FIREBASE
-if (!admin.apps.length) {
+// --- LÓGICA INTELIGENTE DE CREDENCIALES ---
+let serviceAccount;
+
+try {
+  // 1. Intenta leer el archivo (Para cuando estás en Codespaces)
+  serviceAccount = require('./service-account.json');
+  console.log("✅ Usando archivo service-account.json local");
+} catch (error) {
+  // 2. Si falla, intenta leer la variable de entorno (Para Render)
+  if (process.env.FIREBASE_CREDENTIALS) {
+    serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS);
+    console.log("✅ Usando credenciales de Variable de Entorno (Render)");
+  } else {
+    console.error("❌ FATAL: No se encontraron credenciales (ni archivo ni variable).");
+  }
+}
+// -------------------------------------------
+
+if (!admin.apps.length && serviceAccount) {
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount)
   });
 }
 
-console.log("🔥 Backend activo y con CORS habilitado!");
-
 app.post('/send-notification', async (req, res) => {
   const { title, body, tokens } = req.body;
-
   if (!tokens || !tokens.length) return res.status(400).send('Faltan tokens');
 
   try {
-    // 3. USAR LA FUNCIÓN NUEVA (Para evitar error "is not a function")
     const response = await admin.messaging().sendEachForMulticast({
       notification: { title, body },
       tokens: tokens,
     });
-    
-    console.log(`✅ Enviados: ${response.successCount}, ❌ Fallos: ${response.failureCount}`);
-    
-    if (response.failureCount > 0) {
-      console.log('Detalle errores:', response.responses.filter(r => !r.success).map(r => r.error));
-    }
-
+    console.log(`✅ Enviados: ${response.successCount}, Fallos: ${response.failureCount}`);
     res.json({ success: true, detail: response });
-    
   } catch (error) {
-    console.error("🔥 Error grave en el servidor:", error);
+    console.error("Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Arrancar en puerto 3000
-app.listen(3000, () => {
-  console.log("🚀 Servidor escuchando en el puerto 3000");
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`🚀 Servidor listo en puerto ${PORT}`);
 });
