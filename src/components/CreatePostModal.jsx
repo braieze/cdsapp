@@ -43,7 +43,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     setImage(null); setPreview(null); setShowPoll(false); setPollOptions(['', '']);
   };
 
-  // 🔥 FUNCIÓN ACTUALIZADA: Conectada a tu servidor en Codespaces
+  // 🔥 FUNCIÓN ACTUALIZADA CON DEPURACIÓN (Sin perder lógica)
   const sendPushNotification = async (postTitle, postContent) => {
     try {
       // 1. Obtener tokens de usuarios de la base de datos
@@ -57,19 +57,25 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         }
       });
 
+      // Eliminamos duplicados exactos
       const uniqueTokens = [...new Set(tokens)];
+
+      // 🕵️ LOGS DE CONTROL (Para ver por qué llegan 2)
+      console.log("--- DEBUG NOTIFICACIONES ---");
+      console.log("Tokens totales en Firestore:", tokens.length);
+      console.log("Tokens tras filtro 'Set':", uniqueTokens.length);
+      console.log("Tokens únicos a enviar:", uniqueTokens);
 
       if (uniqueTokens.length === 0) {
         console.log("No hay usuarios para notificar.");
         return;
       }
 
-      console.log(`Enviando notificación a ${uniqueTokens.length} dispositivos vía Backend Codespaces...`);
+      console.log(`Enviando notificación a ${uniqueTokens.length} dispositivos vía Render...`);
 
-      // 👇 AQUÍ ESTÁ LA MAGIA: TU URL DE CODESPACES
       const BACKEND_URL = "https://backend-notificaciones-mceh.onrender.com/send-notification";
 
-      // 2. LLAMAR A TU API DE CODESPACES
+      // 2. LLAMAR A TU API EN RENDER
       const response = await fetch(BACKEND_URL, {
         method: "POST",
         headers: {
@@ -82,7 +88,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         })
       });
 
-      // Verificamos si el backend respondió bien
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Error desconocido en el servidor');
@@ -151,7 +156,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           ...commonData,
           updatedAt: serverTimestamp()
         });
-        // Nota: No enviamos notificación al editar
       } else {
         // --- MODO CREACIÓN ---
         let finalPoll = null;
