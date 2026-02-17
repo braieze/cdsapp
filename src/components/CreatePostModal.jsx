@@ -67,7 +67,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
       console.log(`Enviando notificación a ${uniqueTokens.length} dispositivos vía Backend Codespaces...`);
 
       // 👇 AQUÍ ESTÁ LA MAGIA: TU URL DE CODESPACES
-      const BACKEND_URL = "https://glowing-garbanzo-p6565vvgj7r2rv95-3000.app.github.dev/send-notification";
+      const BACKEND_URL = "https://backend-notificaciones-mceh.onrender.com/";
 
       // 2. LLAMAR A TU API DE CODESPACES
       const response = await fetch(BACKEND_URL, {
