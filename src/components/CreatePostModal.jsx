@@ -43,7 +43,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     setImage(null); setPreview(null); setShowPoll(false); setPollOptions(['', '']);
   };
 
-  // 🔥 FUNCIÓN ACTUALIZADA: Usa el backend robusto de Vercel
+  // 🔥 FUNCIÓN ACTUALIZADA: Conectada a tu servidor en Codespaces
   const sendPushNotification = async (postTitle, postContent) => {
     try {
       // 1. Obtener tokens de usuarios de la base de datos
@@ -64,10 +64,13 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         return;
       }
 
-      console.log(`Enviando notificación a ${uniqueTokens.length} dispositivos vía Backend Vercel...`);
+      console.log(`Enviando notificación a ${uniqueTokens.length} dispositivos vía Backend Codespaces...`);
 
-      // 2. LLAMAR A TU API INTERNA (backend con Admin SDK)
-      const response = await fetch("/api/send-notification", {
+      // 👇 AQUÍ ESTÁ LA MAGIA: TU URL DE CODESPACES
+      const BACKEND_URL = "https://glowing-garbanzo-p6565vvgj7r2rv95-3000.app.github.dev/send-notification";
+
+      // 2. LLAMAR A TU API DE CODESPACES
+      const response = await fetch(BACKEND_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
