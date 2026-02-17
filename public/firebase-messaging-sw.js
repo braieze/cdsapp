@@ -1,4 +1,3 @@
-// public/firebase-messaging-sw.js
 importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js');
 
@@ -15,47 +14,42 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
-// 1. MANEJADOR EN SEGUNDO PLANO (Evita duplicados)
 messaging.onBackgroundMessage(function(payload) {
-  console.log('[firebase-messaging-sw.js] Mensaje recibido:', payload);
-  
   const notificationTitle = payload.data.title || "Nuevo Aviso";
   const notificationOptions = {
-    body: payload.data.body || "Tienes contenido nuevo en la app.",
+    body: payload.data.body || "Toca para ver más.",
     icon: '/web-app-manifest-192x192.png', 
     badge: '/badge-72x72.png', 
     vibrate: [200, 100, 200],
-    tag: 'cds-notif-unica', 
-    renotify: true,
+    tag: 'cds-notif',
     data: {
-      url: payload.data.url || '/' 
+      // Guardamos la URL que viene del servidor
+      url: payload.data.url 
     }
   };
-
   return self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
-// 2. LÓGICA DE CLIC (Deep Linking con URL Absoluta para iPhone)
 self.addEventListener('notificationclick', function(event) {
   event.notification.close();
 
-  // ✅ SOLUCIÓN AL BLANCO: Convertimos ruta relativa a URL Absoluta
-  // Esto asegura que iPhone y Android siempre encuentren la ruta correcta
-  const relativeUrl = event.notification.data.url || '/';
-  const targetUrl = new URL(relativeUrl, self.location.origin).href;
+  // 1. Construimos la URL completa para que iPhone no se quede en blanco
+  const baseUrl = self.location.origin;
+  const path = event.notification.data.url || '/';
+  const fullTargetUrl = new URL(path, baseUrl).href;
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-      // Intentamos encontrar la pestaña de la app y navegar
-      for (const client of clientList) {
+      // 2. Si la app ya está abierta, navegamos en esa misma pestaña
+      for (let client of clientList) {
         if ('navigate' in client) {
-          return client.navigate(targetUrl).then(c => c.focus());
+          client.focus();
+          return client.navigate(fullTargetUrl);
         }
       }
-      
-      // Si la app está cerrada, abrimos la URL absoluta
+      // 3. Si está cerrada, abrimos una nueva con la URL completa
       if (clients.openWindow) {
-        return clients.openWindow(targetUrl);
+        return clients.openWindow(fullTargetUrl);
       }
     })
   );
