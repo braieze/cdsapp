@@ -12,23 +12,19 @@ app.use(cors({
 
 app.use(express.json());
 
-// --- LÓGICA INTELIGENTE DE CREDENCIALES ---
+// --- LÓGICA DE CREDENCIALES ---
 let serviceAccount;
-
 try {
-  // 1. Intenta leer el archivo (Para cuando estás en Codespaces)
   serviceAccount = require('./service-account.json');
   console.log("✅ Usando archivo service-account.json local");
 } catch (error) {
-  // 2. Si falla, intenta leer la variable de entorno (Para Render)
   if (process.env.FIREBASE_CREDENTIALS) {
     serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS);
     console.log("✅ Usando credenciales de Variable de Entorno (Render)");
   } else {
-    console.error("❌ FATAL: No se encontraron credenciales (ni archivo ni variable).");
+    console.error("❌ FATAL: No se encontraron credenciales.");
   }
 }
-// -------------------------------------------
 
 if (!admin.apps.length && serviceAccount) {
   admin.initializeApp({
@@ -36,31 +32,30 @@ if (!admin.apps.length && serviceAccount) {
   });
 }
 
-// RUTA ACTUALIZADA PARA DEEP LINKING
+// 🚀 NUEVO: Ruta de "Despertador" para evitar carga lenta
+app.get('/ping', (req, res) => {
+  res.send('pong');
+});
+
+// 🔔 RUTA MODIFICADA: "SÓLO DATOS" PARA EVITAR DUPLICADOS
 app.post('/send-notification', async (req, res) => {
-  // Recibimos la 'url' enviada desde el modal de React
   const { title, body, tokens, url } = req.body;
 
   if (!tokens || !tokens.length) return res.status(400).send('Faltan tokens');
 
   try {
-    // Usamos sendEachForMulticast para compatibilidad con Firebase v12+
     const response = await admin.messaging().sendEachForMulticast({
-      // El objeto 'notification' hace que el sistema operativo muestre el globo automáticamente
-      notification: { 
-        title: title || "Nuevo Aviso", 
-        body: body || "Toca para ver el contenido" 
-      },
-      // El objeto 'data' lleva la URL que el Service Worker usará para abrir la app
+      // ❌ ELIMINADO: El objeto 'notification' (esto evita que el navegador la duplique)
+      // ✅ TODO AL OBJETO 'data': Así tu Service Worker tiene el control total
       data: { 
+        title: title || "Nuevo Aviso", 
+        body: body || "Toca para ver el contenido",
         url: url || '/' 
       },
       tokens: tokens,
     });
     
-    // Log para monitorear si llegan duplicados (Debería decir Enviados: 1)
     console.log(`✅ Enviados: ${response.successCount}, Fallos: ${response.failureCount}`);
-    
     res.json({ success: true, detail: response });
   } catch (error) {
     console.error("🔥 Error en el servidor de notificaciones:", error);

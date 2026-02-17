@@ -15,39 +15,50 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
-// Configuración de la apariencia nativa
+// Manejador de mensajes en segundo plano
 messaging.onBackgroundMessage(function(payload) {
-  console.log('[firebase-messaging-sw.js] Notificación recibida:', payload);
+  console.log('[firebase-messaging-sw.js] Mensaje recibido:', payload);
   
-  const notificationTitle = payload.notification.title || "Nuevo Aviso";
+  // 💡 IMPORTANTE: Ahora leemos todo de 'payload.data' porque el servidor
+  // ya no envía el objeto 'notification'. Esto evita la duplicidad.
+  const notificationTitle = payload.data.title || "Nuevo Aviso";
+  
   const notificationOptions = {
-    body: payload.notification.body || "Tienes contenido nuevo en la app.",
-    // El 'icon' es la imagen a color que sale a la derecha
+    body: payload.data.body || "Tienes contenido nuevo en la app.",
+    // Imagen a color (derecha)
     icon: '/web-app-manifest-192x192.png', 
-    // El 'badge' es la silueta BLANCA que sale arriba en la barra de estado (Android)
+    // Silueta BLANCA (Barra de estado arriba en Android)
     badge: '/badge-72x72.png', 
     vibrate: [200, 100, 200],
-    tag: 'cds-notification', // Evita que se amontonen si envías varias
+    // El 'tag' es vital: si llega otra notificación con el mismo tag, 
+    // reemplaza a la anterior en lugar de crear un segundo globo.
+    tag: 'cds-notif-unica', 
     renotify: true,
     data: {
-      url: payload.data?.url || '/' // Puedes enviar una URL desde el backend
+      // Guardamos la URL para el evento 'notificationclick'
+      url: payload.data.url || '/' 
     }
   };
 
   return self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
-// Lógica para abrir la App al hacer clic en la notificación
+// Manejador del clic en la notificación
 self.addEventListener('notificationclick', function(event) {
-  event.notification.close(); // Cierra el globo de la notificación
+  event.notification.close();
 
-  // Abre la aplicación o enfoca la pestaña si ya está abierta
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-      if (clientList.length > 0) {
-        return clientList[0].focus();
+      // Si la app ya está abierta, la enfocamos
+      for (const client of clientList) {
+        if (client.url === event.notification.data.url && 'focus' in client) {
+          return client.focus();
+        }
       }
-      return clients.openWindow(event.notification.data.url);
+      // Si no está abierta o es una ruta distinta, la abrimos
+      if (clients.openWindow) {
+        return clients.openWindow(event.notification.data.url);
+      }
     })
   );
 });
