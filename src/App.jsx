@@ -20,32 +20,51 @@ import Login from './pages/Login';
 import Profile from './pages/Profile';
 import Directory from './pages/Directory';
 
-// 🔥 COMPONENTE DESPERTADOR (PASO 4)
-// Este componente escucha al Service Worker y fuerza la navegación
+// COMPONENTE DESPERTADOR
 function NavigationHandler() {
   const navigate = useNavigate();
 
   useEffect(() => {
     if ('serviceWorker' in navigator) {
       const handleMessage = (event) => {
-        // Escuchamos el mensaje 'NAVIGATE' enviado por el SW
         if (event.data && event.data.type === 'NAVIGATE') {
           console.log("🔔 Notificación recibida en vivo. Navegando a:", event.data.url);
           navigate(event.data.url);
         }
       };
-
       navigator.serviceWorker.addEventListener('message', handleMessage);
       return () => navigator.serviceWorker.removeEventListener('message', handleMessage);
     }
   }, [navigate]);
 
-  return null; // No renderiza nada, solo escucha
+  return null;
 }
 
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // ✅ 1. DETECTOR DE NUEVA VERSIÓN (PWA UPDATE)
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then(registration => {
+        // Escuchamos si hay un nuevo worker instalándose
+        registration.onupdatefound = () => {
+          const installingWorker = registration.installing;
+          if (installingWorker) {
+            installingWorker.onstatechange = () => {
+              // Si el worker se instaló y ya hay uno activo, hay una versión nueva
+              if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                console.log("🚀 Nueva versión detectada.");
+                window.swUpdateAvailable = true;
+                window.dispatchEvent(new Event('swUpdated'));
+              }
+            };
+          }
+        };
+      });
+    }
+  }, []);
 
   const syncUserAndNotifications = async (currentUser) => {
     try {
@@ -97,9 +116,7 @@ function App() {
 
   return (
     <BrowserRouter>
-      {/* ✅ El NavigationHandler debe estar AQUÍ, dentro del BrowserRouter */}
       <NavigationHandler /> 
-      
       <Toaster richColors position="top-center" />
       <Routes>
         <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />

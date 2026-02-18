@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, getDoc, serverTimestamp, getDocs } from 'firebase/firestore';
+import { 
+  collection, query, orderBy, onSnapshot, doc, updateDoc, 
+  getDoc, serverTimestamp, getDocs 
+} from 'firebase/firestore';
 import { 
   Calendar, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, 
   History, ChevronRight, Loader2, RefreshCcw, Users, ShieldAlert, 
@@ -21,20 +24,44 @@ export default function MyServices() {
   const [userRole, setUserRole] = useState(null); 
   const [stats, setStats] = useState({ monthCount: 0, lastServiceDate: null, nextServiceDays: null });
   
-  // ✅ ESTADOS DE INTERFAZ PERSONALIZADA
+  // ✅ ESTADO PARA MENSAJES NO LEÍDOS POR EVENTO
+  const [unreadCounts, setUnreadCounts] = useState({}); 
+
   const [showAttendanceEvent, setShowAttendanceEvent] = useState(null);
-  const [confirmAction, setConfirmAction] = useState(null); // { eventId, status, title }
-  const [toast, setToast] = useState(null); // { message, type }
+  const [confirmAction, setConfirmAction] = useState(null); 
+  const [toast, setToast] = useState(null); 
 
   const currentUser = auth.currentUser;
 
-  // Sistema de Toasts Automático
   useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => setToast(null), 3000);
       return () => clearTimeout(timer);
     }
   }, [toast]);
+
+  // ✅ ESCUCHA ACTIVA DE CHATS PARA BADGES
+  useEffect(() => {
+    if (!currentUser || myEvents.length === 0) return;
+
+    // Creamos listeners para cada chat de mis eventos confirmados
+    const unsubscribes = myEvents.map(event => {
+      const notesRef = collection(db, `events/${event.id}/notes`);
+      return onSnapshot(notesRef, (snapshot) => {
+        const unread = snapshot.docs.filter(d => {
+          const data = d.data();
+          return !data.readBy?.includes(currentUser.uid);
+        }).length;
+
+        setUnreadCounts(prev => ({
+          ...prev,
+          [event.id]: unread
+        }));
+      });
+    });
+
+    return () => unsubscribes.forEach(unsub => unsub());
+  }, [myEvents, currentUser]);
 
   useEffect(() => {
     const markAsSeen = async () => {
@@ -83,21 +110,24 @@ export default function MyServices() {
                     setTeamEvents(futureEvents);
                 }
 
+                // ✅ SUMA TOTAL DE ALERTAS (Pendientes + Chats)
                 const myPendingCount = myAssignments.filter(e => !isPast(new Date(e.date + 'T00:00:00')) && (!e.confirmations || !e.confirmations[currentUser.displayName])).length;
+                const totalUnreadMessages = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
+
                 let teamIssuesCount = 0;
                 if ((role === 'pastor' || role === 'lider') && activeTab !== 'team') {
                     teamIssuesCount = futureEvents.filter(event => 
                         event.updatedAt && event.updatedAt.toDate() > lastSeenDate
                     ).length;
                 }
-                setAlerts({ me: myPendingCount, team: teamIssuesCount });
+                setAlerts({ me: myPendingCount + totalUnreadMessages, team: teamIssuesCount });
                 setLoading(false);
             });
             return () => unsubscribe();
         } catch (error) { setLoading(false); }
     };
     fetchData();
-  }, [currentUser, activeTab]);
+  }, [currentUser, activeTab, unreadCounts]); // Re-ejecutar cuando cambien los conteos de chat
 
   const calculateStats = (events, myName) => {
     const now = new Date();
@@ -112,7 +142,6 @@ export default function MyServices() {
     setStats({ monthCount: thisMonth.length, lastServiceDate: last ? format(new Date(last.date + 'T00:00:00'), 'd MMM', { locale: es }) : '-', nextServiceDays: days });
   };
 
-  // ✅ LOGICA DE RESPUESTA MEJORADA (SIN ALERT)
   const executeResponse = async () => {
     if (!confirmAction) return;
     const { eventId, status } = confirmAction;
@@ -123,9 +152,7 @@ export default function MyServices() {
             updatedAt: serverTimestamp() 
         });
         setToast({ message: status === 'confirmed' ? "¡Asistencia confirmada!" : "Baja notificada correctamente", type: "success" });
-    } catch (error) { 
-        setToast({ message: "Error al actualizar", type: "error" });
-    }
+    } catch (error) { setToast({ message: "Error al actualizar", type: "error" }); }
   };
 
   const handleUndo = async (eventId) => {
@@ -220,7 +247,16 @@ export default function MyServices() {
                             <div className="flex flex-col items-center justify-center w-12 h-12 bg-green-50 rounded-xl text-green-600 border border-green-100"><span className="text-[10px] font-bold uppercase">{format(new Date(event.date + 'T00:00:00'), 'MMM', { locale: es })}</span><span className="text-lg font-black">{format(new Date(event.date + 'T00:00:00'), 'dd')}</span></div>
                             <div className="flex-1"><h4 className="font-bold text-slate-800 text-sm">{event.title}</h4><p className="text-xs text-slate-500 font-medium">{getMyRole(event)}</p><div className="flex items-center gap-1 mt-1 text-[10px] text-green-600 font-black uppercase"><CheckCircle size={12}/> Confirmado</div></div>
                         </div>
-                        <button onClick={() => navigate(`/servicios/${event.id}`)} className="w-full bg-brand-600 hover:bg-brand-700 text-white font-black py-2.5 rounded-xl text-[10px] uppercase flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95"><MessageSquare size={14}/> IR AL CHAT DEL SERVICIO</button>
+                        {/* ✅ BOTÓN DE CHAT CON BADGE PERSONALIZADO */}
+                        <button onClick={() => navigate(`/servicios/${event.id}`)} className="w-full bg-brand-600 hover:bg-brand-700 text-white font-black py-2.5 rounded-xl text-[10px] uppercase flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 relative">
+                            <MessageSquare size={14}/> 
+                            IR AL CHAT DEL SERVICIO
+                            {unreadCounts[event.id] > 0 && (
+                                <span className="absolute -top-2 -right-2 bg-red-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] border-2 border-white shadow-md animate-bounce">
+                                    {unreadCounts[event.id]}
+                                </span>
+                            )}
+                        </button>
                     </div>
                 ))}
               </div>
@@ -265,7 +301,14 @@ export default function MyServices() {
                               <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mb-4"><div className={`h-full rounded-full transition-all duration-700 ${hasIssues ? 'bg-amber-400' : 'bg-brand-500'}`} style={{ width: `${progress}%` }}></div></div>
                               <div className="flex gap-2 mt-4">
                                 <button onClick={() => setShowAttendanceEvent(event)} className="flex-1 bg-slate-50 hover:bg-slate-100 text-slate-600 py-3 rounded-2xl text-[10px] font-black uppercase flex items-center justify-center gap-2 border border-slate-100 transition-all active:scale-95"><Users size={14}/> DETALLE ASISTENCIA</button>
-                                <button onClick={() => navigate(`/servicios/${event.id}`)} className="p-3 bg-brand-50 text-brand-600 rounded-2xl hover:bg-brand-100 transition-colors"><MessageSquare size={18}/></button>
+                                <button onClick={() => navigate(`/servicios/${event.id}`)} className="p-3 bg-brand-50 text-brand-600 rounded-2xl hover:bg-brand-100 transition-colors relative">
+                                    <MessageSquare size={18}/>
+                                    {unreadCounts[event.id] > 0 && (
+                                        <span className="absolute -top-1 -right-1 bg-red-500 w-4 h-4 rounded-full flex items-center justify-center text-[8px] text-white border border-white">
+                                            {unreadCounts[event.id]}
+                                        </span>
+                                    )}
+                                </button>
                               </div>
                           </div>
                       );
@@ -274,7 +317,6 @@ export default function MyServices() {
           </div>
       )}
 
-      {/* ✅ DIÁLOGO DE CONFIRMACIÓN PERSONALIZADO */}
       {confirmAction && (
         <div className="fixed inset-0 z-[300] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6 animate-fade-in">
           <div className="bg-white w-full max-w-xs rounded-[35px] p-8 shadow-2xl animate-scale-in text-center">
@@ -297,7 +339,6 @@ export default function MyServices() {
         </div>
       )}
 
-      {/* ✅ SISTEMA DE TOASTS */}
       {toast && (
         <div className="fixed bottom-24 left-6 right-6 z-[400] animate-slide-up">
           <div className={`flex items-center gap-3 px-6 py-4 rounded-[22px] shadow-2xl border ${toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-400' : toast.type === 'error' ? 'bg-rose-600 text-white border-rose-400' : 'bg-slate-800 text-white border-slate-600'}`}>
@@ -307,7 +348,6 @@ export default function MyServices() {
         </div>
       )}
 
-      {/* MODAL ASISTENCIA POR CATEGORÍAS */}
       {showAttendanceEvent && (() => {
         const grouped = getGroupedAttendance(showAttendanceEvent);
         return (
