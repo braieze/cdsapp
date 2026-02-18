@@ -1,4 +1,4 @@
-// MyServices.jsx - Versión con Detalle de Asistencia Pro
+// MyServices.jsx - Gestión de Asistencia por Categorías y Reconsideración
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase';
@@ -6,7 +6,7 @@ import { collection, query, orderBy, onSnapshot, doc, updateDoc, getDoc, serverT
 import { 
   Calendar, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, 
   History, ChevronRight, Loader2, RefreshCcw, Users, ShieldAlert, 
-  MessageSquare, HelpCircle, User, X
+  MessageSquare, HelpCircle, User, X, ArrowRightCircle
 } from 'lucide-react';
 import { format, isSameMonth, isPast, isFuture } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -17,17 +17,16 @@ export default function MyServices() {
   const [activeTab, setActiveTab] = useState('me');
   const [myEvents, setMyEvents] = useState([]);
   const [teamEvents, setTeamEvents] = useState([]);
-  const [allUsers, setAllUsers] = useState([]); // ✅ Para obtener fotos y roles
+  const [allUsers, setAllUsers] = useState([]); 
   const [alerts, setAlerts] = useState({ me: 0, team: 0 });
   const [userRole, setUserRole] = useState(null); 
   const [stats, setStats] = useState({ monthCount: 0, lastServiceDate: null, nextServiceDays: null });
   
-  // Estado para el Modal de Asistencia
   const [showAttendanceEvent, setShowAttendanceEvent] = useState(null);
 
   const currentUser = auth.currentUser;
 
-  // ✅ LIMPIAR GLOBITOS
+  // ✅ LIMPIAR ALERTAS AL ENTRAR A EQUIPO
   useEffect(() => {
     const markAsSeen = async () => {
       if (activeTab === 'team' && currentUser && (userRole === 'pastor' || userRole === 'lider')) {
@@ -41,20 +40,21 @@ export default function MyServices() {
     markAsSeen();
   }, [activeTab, userRole, currentUser]);
 
-  // ✅ CARGA DE DATOS COMPLETA
   useEffect(() => {
     const fetchData = async () => {
         if (!currentUser) return;
         try {
-            const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+            const userRef = doc(db, 'users', currentUser.uid);
+            const userSnap = await getDoc(userRef);
             const usersCol = await getDocs(collection(db, 'users'));
             setAllUsers(usersCol.docs.map(d => ({ id: d.id, ...d.data() })));
 
             let role = 'miembro';
-            let lastSeenDate = null;
+            let lastSeenDate = new Date(0);
             if (userSnap.exists()) {
-                role = userSnap.data().role;
-                lastSeenDate = userSnap.data().lastViewedTeam?.toDate() || new Date(0); 
+                const userData = userSnap.data();
+                role = userData.role;
+                lastSeenDate = userData.lastViewedTeam?.toDate() || new Date(0); 
                 setUserRole(role);
             }
 
@@ -75,14 +75,13 @@ export default function MyServices() {
                     setTeamEvents(futureEvents);
                 }
 
+                // ✅ ALERTAS: Notificar si pasó ALGO (Confirmación o Rechazo)
                 const myPendingCount = myAssignments.filter(e => !isPast(new Date(e.date + 'T00:00:00')) && (!e.confirmations || !e.confirmations[currentUser.displayName])).length;
                 let teamIssuesCount = 0;
-                if (role === 'pastor' || role === 'lider' && activeTab !== 'team') {
-                    teamIssuesCount = futureEvents.reduce((total, event) => {
-                        const hasDeclined = event.confirmations && Object.values(event.confirmations).includes('declined');
-                        const isNew = hasDeclined && (!event.updatedAt || event.updatedAt.toDate() > lastSeenDate);
-                        return isNew ? total + 1 : total;
-                    }, 0);
+                if ((role === 'pastor' || role === 'lider') && activeTab !== 'team') {
+                    teamIssuesCount = futureEvents.filter(event => 
+                        event.updatedAt && event.updatedAt.toDate() > lastSeenDate
+                    ).length;
                 }
                 setAlerts({ me: myPendingCount, team: teamIssuesCount });
                 setLoading(false);
@@ -109,12 +108,20 @@ export default function MyServices() {
   const handleResponse = async (eventId, status) => {
     if(!window.confirm(status === 'declined' ? "¿Seguro que no puedes asistir?" : "¿Confirmar asistencia?")) return;
     try {
-        await updateDoc(doc(db, 'events', eventId), { [`confirmations.${currentUser.displayName}`]: status, updatedAt: serverTimestamp() });
+        await updateDoc(doc(db, 'events', eventId), { 
+            [`confirmations.${currentUser.displayName}`]: status, 
+            updatedAt: serverTimestamp() 
+        });
     } catch (error) { alert("Error"); }
   };
 
   const handleUndo = async (eventId) => {
-    try { await updateDoc(doc(db, 'events', eventId), { [`confirmations.${currentUser.displayName}`]: null }); } catch (e) {}
+    try { 
+        await updateDoc(doc(db, 'events', eventId), { 
+            [`confirmations.${currentUser.displayName}`]: null,
+            updatedAt: serverTimestamp()
+        }); 
+    } catch (e) {}
   };
 
   const getMyRole = (event) => {
@@ -133,23 +140,43 @@ export default function MyServices() {
       return { total, confirmed, declined };
   };
 
+  // ✅ FUNCIÓN DE AGRUPACIÓN PARA EL MODAL
+  const getGroupedAttendance = (event) => {
+    const grouped = { confirmed: [], declined: [], pending: [] };
+    if (!event.assignments) return grouped;
+
+    Object.entries(event.assignments).forEach(([role, people]) => {
+      (Array.isArray(people) ? people : [people]).forEach(name => {
+        const status = event.confirmations?.[name];
+        const userData = allUsers.find(u => u.displayName === name);
+        const item = { name, role: role.replace(/_/g, ' '), photo: userData?.photoURL };
+        
+        if (status === 'confirmed') grouped.confirmed.push(item);
+        else if (status === 'declined') grouped.declined.push(item);
+        else grouped.pending.push(item);
+      });
+    });
+    return grouped;
+  };
+
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-brand-600" size={32}/></div>;
 
   return (
     <div className="pb-24 pt-6 px-4 bg-slate-50 min-h-screen animate-fade-in relative">
-      
-      {/* HEADER */}
       <div className="mb-6">
         <h1 className="text-2xl font-black text-slate-800 mb-1">Hola, {currentUser?.displayName?.split(' ')[0]} 👋</h1>
         {(userRole === 'pastor' || userRole === 'lider') && (
             <div className="flex p-1 bg-white border border-slate-200 rounded-xl mt-4 shadow-sm relative">
-                <button onClick={() => setActiveTab('me')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all relative ${activeTab === 'me' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500'}`}>Mis Turnos {alerts.me > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white flex items-center justify-center rounded-full text-[9px] border-2 border-white shadow-sm animate-pulse">{alerts.me}</span>}</button>
-                <button onClick={() => setActiveTab('team')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 relative ${activeTab === 'team' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500'}`}><Users size={14}/> Mi Equipo {alerts.team > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 text-white flex items-center justify-center rounded-full text-[9px] border-2 border-white shadow-sm">{alerts.team}</span>}</button>
+                <button onClick={() => setActiveTab('me')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all relative ${activeTab === 'me' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500'}`}>
+                    Mis Turnos {alerts.me > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white flex items-center justify-center rounded-full text-[9px] border-2 border-white shadow-sm animate-pulse">{alerts.me}</span>}
+                </button>
+                <button onClick={() => setActiveTab('team')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 relative ${activeTab === 'team' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500'}`}>
+                    <Users size={14}/> Mi Equipo {alerts.team > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 text-white flex items-center justify-center rounded-full text-[9px] border-2 border-white shadow-sm">{alerts.team}</span>}
+                </button>
             </div>
         )}
       </div>
 
-      {/* --- TAB: MIS TURNOS --- */}
       {activeTab === 'me' && (
           <div className="animate-fade-in">
               <div className="grid grid-cols-2 gap-3 mb-8">
@@ -157,7 +184,7 @@ export default function MyServices() {
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-28 relative overflow-hidden"><div className="absolute top-0 right-0 p-3 opacity-10 text-purple-600"><Clock size={60}/></div><span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{stats.nextServiceDays ? 'Próximo' : 'Último'}</span><div>{stats.nextServiceDays ? <><span className="text-4xl font-black text-slate-800">{stats.nextServiceDays}</span><span className="text-xs font-medium text-slate-500"> días</span></> : <span className="text-lg font-bold text-slate-700">{stats.lastServiceDate || '-'}</span>}</div></div>
               </div>
 
-              {/* Pendientes */}
+              {/* ⚠️ REQUIERE ATENCIÓN */}
               {myEvents.filter(e => !isPast(new Date(e.date + 'T00:00:00')) && (!e.confirmations || !e.confirmations[currentUser.displayName])).map(event => (
                   <div key={event.id} className="bg-slate-900 rounded-3xl p-6 text-white shadow-xl mb-6 relative overflow-hidden">
                       <div className="relative z-10">
@@ -168,7 +195,7 @@ export default function MyServices() {
                               <div className="flex items-center gap-2"><Clock size={14} className="text-brand-400"/> {event.time} hs</div>
                           </div>
                           <div className="flex gap-3">
-                              <button onClick={() => handleResponse(event.id, 'confirmed')} className="flex-1 bg-brand-500 hover:bg-brand-400 text-white py-3 rounded-2xl text-xs font-black uppercase shadow-lg">Confirmar ✓</button>
+                              <button onClick={() => handleResponse(event.id, 'confirmed')} className="flex-1 bg-brand-500 hover:bg-brand-400 text-white py-3 rounded-2xl text-xs font-black uppercase shadow-lg transition-all active:scale-95">Confirmar ✓</button>
                               <button onClick={() => handleResponse(event.id, 'declined')} className="flex-1 bg-white/10 hover:bg-white/20 text-white py-3 rounded-2xl text-xs font-black uppercase border border-white/10">No puedo</button>
                           </div>
                       </div>
@@ -176,72 +203,60 @@ export default function MyServices() {
               ))}
 
               <h2 className="text-sm font-black text-slate-800 uppercase tracking-wide mb-3">Agenda Confirmada</h2>
-              <div className="space-y-4">
+              <div className="space-y-4 mb-8">
                 {myEvents.filter(e => !isPast(new Date(e.date + 'T00:00:00')) && e.confirmations && e.confirmations[currentUser.displayName] === 'confirmed').map(event => (
-                    <div key={event.id} className="bg-white p-5 rounded-[32px] border border-slate-100 shadow-sm flex flex-col gap-4">
+                    <div key={event.id} className="bg-white p-5 rounded-[32px] border border-slate-100 shadow-sm flex flex-col gap-4 transition-all hover:shadow-md">
                         <div className="flex items-center gap-4">
-                            <div className="flex flex-col items-center justify-center w-12 h-12 bg-green-50 rounded-xl text-green-600 border border-green-100">
-                                <span className="text-[10px] font-bold uppercase">{format(new Date(event.date + 'T00:00:00'), 'MMM', { locale: es })}</span>
-                                <span className="text-lg font-black">{format(new Date(event.date + 'T00:00:00'), 'dd')}</span>
-                            </div>
-                            <div className="flex-1">
-                                <h4 className="font-bold text-slate-800 text-sm">{event.title}</h4>
-                                <p className="text-xs text-slate-500 font-medium">{getMyRole(event)}</p>
-                            </div>
+                            <div className="flex flex-col items-center justify-center w-12 h-12 bg-green-50 rounded-xl text-green-600 border border-green-100"><span className="text-[10px] font-bold uppercase">{format(new Date(event.date + 'T00:00:00'), 'MMM', { locale: es })}</span><span className="text-lg font-black">{format(new Date(event.date + 'T00:00:00'), 'dd')}</span></div>
+                            <div className="flex-1"><h4 className="font-bold text-slate-800 text-sm">{event.title}</h4><p className="text-xs text-slate-500 font-medium">{getMyRole(event)}</p><div className="flex items-center gap-1 mt-1 text-[10px] text-green-600 font-black uppercase"><CheckCircle size={12}/> Confirmado</div></div>
                         </div>
-                        {/* ✅ BOTÓN ESPECÍFICO IR AL CHAT */}
-                        <div className="flex items-center justify-between pt-3 border-t border-slate-50">
-                            <div className="flex items-center gap-1 text-[10px] text-green-600 font-black uppercase"><CheckCircle size={12}/> Confirmado</div>
-                            <button 
-                                onClick={() => navigate(`/servicios/${event.id}`)}
-                                className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2.5 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 shadow-lg shadow-brand-200 active:scale-95 transition-all"
-                            >
-                                <MessageSquare size={14}/> IR AL CHAT
-                            </button>
-                        </div>
+                        <button onClick={() => navigate(`/servicios/${event.id}`)} className="w-full bg-brand-600 hover:bg-brand-700 text-white font-black py-2.5 rounded-xl text-[10px] uppercase flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95"><MessageSquare size={14}/> IR AL CHAT DEL SERVICIO</button>
                     </div>
                 ))}
               </div>
+
+              {/* ✅ RECONSIDERAR: Servicios en Gris */}
+              {myEvents.filter(e => !isPast(new Date(e.date + 'T00:00:00')) && e.confirmations && e.confirmations[currentUser.displayName] === 'declined').length > 0 && (
+                  <div className="mb-6">
+                      <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Servicios Rechazados</h2>
+                      <div className="space-y-3">
+                        {myEvents.filter(e => !isPast(new Date(e.date + 'T00:00:00')) && e.confirmations && e.confirmations[currentUser.displayName] === 'declined').map(event => (
+                            <div key={event.id} className="bg-white/40 p-4 rounded-2xl border border-slate-100 flex items-center justify-between opacity-70 grayscale-[0.5]">
+                                <div className="flex items-center gap-3">
+                                    <div className="bg-slate-100 p-2 rounded-lg text-slate-400"><XCircle size={18}/></div>
+                                    <div><h4 className="font-bold text-slate-500 text-xs line-through">{event.title}</h4><p className="text-[10px] text-slate-400 font-bold uppercase">{format(new Date(event.date + 'T00:00:00'), 'dd MMM', { locale: es })}</p></div>
+                                </div>
+                                <button onClick={() => handleUndo(event.id)} className="text-[9px] font-black text-brand-600 flex items-center gap-1 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm active:scale-90 transition-all uppercase tracking-tighter"><RefreshCcw size={10}/> Reconsiderar</button>
+                            </div>
+                        ))}
+                      </div>
+                  </div>
+              )}
           </div>
       )}
 
-      {/* --- TAB: MI EQUIPO --- */}
+      {/* TAB: MI EQUIPO */}
       {activeTab === 'team' && (
           <div className="animate-slide-up">
               <div className="bg-slate-900 text-white p-6 rounded-[35px] mb-8 shadow-xl">
                   <h3 className="font-black text-xl mb-1">Panel de Liderazgo</h3>
-                  <p className="text-sm text-slate-400 font-medium tracking-tight">Supervisión técnica de asistencia.</p>
+                  <p className="text-sm text-slate-400 font-medium">Supervisión técnica de asistencia.</p>
               </div>
-
               <div className="space-y-5">
                   {teamEvents.map(event => {
                       const status = getTeamStatus(event);
                       if (status.total === 0) return null; 
                       const hasIssues = status.declined > 0;
                       const progress = Math.round(((status.confirmed + status.declined) / status.total) * 100);
-
                       return (
                           <div key={event.id} className={`bg-white p-6 rounded-[35px] border shadow-sm transition-all ${hasIssues ? 'border-red-100 bg-red-50/20' : 'border-slate-50'}`}>
                               <div className="flex justify-between items-start mb-4">
-                                  <div>
-                                      <h4 className="font-black text-slate-800 text-base">{event.title}</h4>
-                                      <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{format(new Date(event.date + 'T00:00:00'), 'EEEE d MMMM', { locale: es })}</p>
-                                  </div>
-                                  {hasIssues && <div className="bg-red-100 text-red-600 px-2 py-1 rounded-lg text-[9px] font-black flex items-center gap-1 uppercase tracking-tighter"><ShieldAlert size={12}/> {status.declined} Baja(s)</div>}
+                                  <div><h4 className="font-black text-slate-800 text-base">{event.title}</h4><p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{format(new Date(event.date + 'T00:00:00'), 'EEEE d MMMM', { locale: es })}</p></div>
+                                  {hasIssues && <div className="bg-red-100 text-red-600 px-2 py-1 rounded-lg text-[9px] font-black flex items-center gap-1 uppercase"><ShieldAlert size={12}/> {status.declined} Baja(s)</div>}
                               </div>
-
-                              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mb-4">
-                                  <div className={`h-full rounded-full transition-all duration-700 ${hasIssues ? 'bg-amber-400' : 'bg-brand-500'}`} style={{ width: `${progress}%` }}></div>
-                              </div>
-                              
-                              {/* ✅ NUEVO BOTÓN: VER ASISTENCIA DETALLADA */}
+                              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mb-4"><div className={`h-full rounded-full transition-all duration-700 ${hasIssues ? 'bg-amber-400' : 'bg-brand-500'}`} style={{ width: `${progress}%` }}></div></div>
                               <div className="flex gap-2 mt-4">
-                                <button 
-                                  onClick={() => setShowAttendanceEvent(event)}
-                                  className="flex-1 bg-slate-50 hover:bg-slate-100 text-slate-600 py-3 rounded-2xl text-[10px] font-black uppercase flex items-center justify-center gap-2 border border-slate-100 transition-all active:scale-95"
-                                >
-                                  <Users size={14}/> DETALLE ASISTENCIA
-                                </button>
+                                <button onClick={() => setShowAttendanceEvent(event)} className="flex-1 bg-slate-50 hover:bg-slate-100 text-slate-600 py-3 rounded-2xl text-[10px] font-black uppercase flex items-center justify-center gap-2 border border-slate-100 transition-all active:scale-95"><Users size={14}/> DETALLE ASISTENCIA</button>
                                 <button onClick={() => navigate(`/servicios/${event.id}`)} className="p-3 bg-brand-50 text-brand-600 rounded-2xl hover:bg-brand-100 transition-colors"><MessageSquare size={18}/></button>
                               </div>
                           </div>
@@ -251,58 +266,78 @@ export default function MyServices() {
           </div>
       )}
 
-      {/* ✅ MODAL DE ASISTENCIA DETALLADA (PUNTO 1) */}
-      {showAttendanceEvent && (
-        <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in" onClick={() => setShowAttendanceEvent(null)}>
-          <div className="bg-white w-full sm:max-w-md rounded-t-[40px] sm:rounded-[40px] max-h-[85vh] overflow-hidden flex flex-col shadow-2xl animate-slide-up" onClick={e => e.stopPropagation()}>
-            <div className="p-6 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
-              <div>
-                <h3 className="font-black text-slate-800 text-lg leading-tight">{showAttendanceEvent.title}</h3>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{format(new Date(showAttendanceEvent.date + 'T00:00:00'), 'd MMMM yyyy', {locale: es})}</p>
+      {/* ✅ MODAL DE ASISTENCIA DIVIDIDO POR CATEGORÍAS */}
+      {showAttendanceEvent && (() => {
+        const grouped = getGroupedAttendance(showAttendanceEvent);
+        return (
+          <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in" onClick={() => setShowAttendanceEvent(null)}>
+            <div className="bg-white w-full sm:max-w-md rounded-t-[40px] sm:rounded-[40px] max-h-[85vh] overflow-hidden flex flex-col shadow-2xl animate-slide-up" onClick={e => e.stopPropagation()}>
+              <div className="p-6 border-b border-slate-50 flex justify-between items-center bg-slate-50/50 flex-shrink-0">
+                <div>
+                  <h3 className="font-black text-slate-800 text-lg leading-tight">{showAttendanceEvent.title}</h3>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{format(new Date(showAttendanceEvent.date + 'T00:00:00'), 'd MMMM yyyy', {locale: es})}</p>
+                </div>
+                <button onClick={() => setShowAttendanceEvent(null)} className="p-2 bg-white rounded-full shadow-sm text-slate-400"><X size={20}/></button>
               </div>
-              <button onClick={() => setShowAttendanceEvent(null)} className="p-2 bg-white rounded-full shadow-sm text-slate-400"><X size={20}/></button>
-            </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              {Object.entries(showAttendanceEvent.assignments).map(([roleKey, people]) => {
-                return (Array.isArray(people) ? people : [people]).map((name, i) => {
-                  const userData = allUsers.find(u => u.displayName === name);
-                  const status = showAttendanceEvent.confirmations?.[name];
-                  
-                  return (
-                    <div key={`${roleKey}-${i}`} className="flex items-center gap-4 bg-slate-50/50 p-4 rounded-3xl border border-slate-50 hover:border-slate-100 transition-colors">
-                      <div className="w-12 h-12 rounded-2xl bg-white overflow-hidden shadow-sm flex items-center justify-center border-2 border-white">
-                        {userData?.photoURL ? (
-                          <img src={userData.photoURL} className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-400 font-black"><User size={20}/></div>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-black text-slate-800 text-sm truncate">{name}</h4>
-                        <p className="text-[10px] font-bold text-brand-600 uppercase tracking-tighter truncate">{roleKey.replace(/_/g, ' ')}</p>
-                      </div>
-                      <div className="flex-shrink-0">
-                        {status === 'confirmed' ? (
-                          <div className="bg-green-100 text-green-600 p-2 rounded-xl shadow-inner"><CheckCircle size={18} /></div>
-                        ) : status === 'declined' ? (
-                          <div className="bg-red-100 text-red-600 p-2 rounded-xl shadow-inner"><XCircle size={18} /></div>
-                        ) : (
-                          <div className="bg-slate-100 text-slate-300 p-2 rounded-xl shadow-inner animate-pulse"><HelpCircle size={18} /></div>
-                        )}
-                      </div>
+              <div className="flex-1 overflow-y-auto p-6 space-y-8 pb-10">
+                {/* 1. SECCIÓN CONFIRMADOS */}
+                {grouped.confirmed.length > 0 && (
+                  <div>
+                    <h4 className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em] mb-4 flex items-center gap-2 px-1"><CheckCircle size={14}/> Listos para servir ({grouped.confirmed.length})</h4>
+                    <div className="space-y-3">
+                      {grouped.confirmed.map((item, idx) => (
+                        <div key={idx} className="flex items-center gap-4 bg-emerald-50/30 p-3 rounded-2xl border border-emerald-100/50">
+                          <img src={item.photo || `https://ui-avatars.com/api/?name=${item.name}&background=10b981&color=fff`} className="w-10 h-10 rounded-xl object-cover shadow-sm border border-white"/>
+                          <div className="flex-1 min-w-0"><h4 className="font-black text-slate-800 text-xs truncate">{item.name}</h4><p className="text-[9px] font-bold text-emerald-600 uppercase tracking-tighter truncate">{item.role}</p></div>
+                          <CheckCircle size={16} className="text-emerald-500" />
+                        </div>
+                      ))}
                     </div>
-                  );
-                });
-              })}
-            </div>
-            
-            <div className="p-6 bg-slate-50/30 border-t border-slate-50 text-center">
-               <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{getTeamStatus(showAttendanceEvent).confirmed} Confirmados de {getTeamStatus(showAttendanceEvent).total}</p>
+                  </div>
+                )}
+
+                {/* 2. SECCIÓN RECHAZADOS (CON BOTÓN REEMPLAZO) */}
+                {grouped.declined.length > 0 && (
+                  <div>
+                    <h4 className="text-[10px] font-black text-rose-600 uppercase tracking-[0.2em] mb-4 flex items-center gap-2 px-1"><XCircle size={14}/> Bajas confirmadas ({grouped.declined.length})</h4>
+                    <div className="space-y-3">
+                      {grouped.declined.map((item, idx) => (
+                        <div key={idx} className="flex items-center gap-4 bg-rose-50/30 p-3 rounded-2xl border border-rose-100/50">
+                          <img src={item.photo || `https://ui-avatars.com/api/?name=${item.name}&background=ef4444&color=fff`} className="w-10 h-10 rounded-xl object-cover grayscale-[0.5]"/>
+                          <div className="flex-1 min-w-0"><h4 className="font-black text-slate-500 text-xs truncate line-through">{item.name}</h4><p className="text-[9px] font-bold text-rose-600 uppercase tracking-tighter truncate">{item.role}</p></div>
+                          <button onClick={() => navigate(`/calendario/${showAttendanceEvent.id}`)} className="bg-white text-rose-600 p-2 rounded-lg border border-rose-200 shadow-sm active:scale-90 transition-transform"><ArrowRightCircle size={16}/></button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. SECCIÓN FALTAN CONFIRMAR */}
+                {grouped.pending.length > 0 && (
+                  <div>
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2 px-1"><HelpCircle size={14}/> Pendientes de respuesta ({grouped.pending.length})</h4>
+                    <div className="space-y-3">
+                      {grouped.pending.map((item, idx) => (
+                        <div key={idx} className="flex items-center gap-4 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                          <img src={item.photo || `https://ui-avatars.com/api/?name=${item.name}&background=94a3b8&color=fff`} className="w-10 h-10 rounded-xl object-cover opacity-50"/>
+                          <div className="flex-1 min-w-0"><h4 className="font-black text-slate-600 text-xs truncate">{item.name}</h4><p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter truncate">{item.role}</p></div>
+                          <HelpCircle size={16} className="text-slate-200 animate-pulse" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              <div className="p-6 bg-slate-900 text-white flex justify-between items-center flex-shrink-0 rounded-t-[30px]">
+                 <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60">Resumen General</p>
+                 <p className="text-sm font-black">{grouped.confirmed.length} / {grouped.confirmed.length + grouped.declined.length + grouped.pending.length}</p>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       <button onClick={() => navigate('/historial')} className="w-full py-6 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-brand-600 flex items-center justify-center gap-2"><History size={14}/> Ver historial completo</button>
     </div>
