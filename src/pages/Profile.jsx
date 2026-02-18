@@ -1,22 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
 import { auth, db } from '../firebase';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { 
-  User, Phone, MapPin, Calendar, Save, Edit3, Shield, 
-  Briefcase, LogOut, Camera, Loader2, MessageCircle, 
-  Heart, Fingerprint, Download, CreditCard, X, QrCode, Award
+import {
+  User, Save, Edit3, Shield, Briefcase, LogOut, Camera,
+  Loader2, CreditCard, X, Download
 } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import imageCompression from 'browser-image-compression';
-import { QRCodeCanvas } from 'qrcode.react'; // ✅ QR para asistencias
-
-// LIBRERÍAS DE PDF
+import { QRCodeCanvas } from 'qrcode.react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
 export default function Profile() {
   const currentUser = auth.currentUser;
-  const credentialRef = useRef(null); 
+  const credentialRef = useRef(null);
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
@@ -24,8 +21,8 @@ export default function Profile() {
   const [showCredential, setShowCredential] = useState(false);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
-  const CLOUD_NAME = "djmkggzjp"; 
-  const UPLOAD_PRESET = "ml_default"; 
+  const CLOUD_NAME = "djmkggzjp";
+  const UPLOAD_PRESET = "ml_default";
 
   const [formData, setFormData] = useState({
     phone: '', address: '', birthday: '', dni: '',
@@ -63,18 +60,20 @@ export default function Profile() {
     if (!credentialRef.current) return;
     setIsGeneratingPDF(true);
     try {
+      // Para el diseño nuevo, necesitamos capturar el elemento con fondo blanco
       const canvas = await html2canvas(credentialRef.current, {
-        scale: 4, 
-        useCORS: true, 
-        backgroundColor: "#0f172a"
+        scale: 4,
+        useCORS: true,
+        backgroundColor: "#ffffff" // Fondo blanco para la credencial limpia
       });
       const imgData = canvas.toDataURL('image/png');
+      // Formato vertical más estándar para credencial
       const pdf = new jsPDF({
         orientation: 'portrait',
-        unit: 'px',
-        format: [canvas.width / 4, canvas.height / 4]
+        unit: 'mm',
+        format: [85.6, 139.7] // Tamaño cercano a CR-80 vertical extendido
       });
-      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width / 4, canvas.height / 4);
+      pdf.addImage(imgData, 'PNG', 0, 0, 85.6, 139.7);
       pdf.save(`Credencial_CDS_${currentUser.displayName.replace(/\s/g, '_')}.pdf`);
     } catch (error) {
       console.error("Error en PDF:", error);
@@ -109,161 +108,169 @@ export default function Profile() {
     } catch (e) { console.error(e); } finally { setUploadingPhoto(false); }
   };
 
-  if (loading) return <div className="flex justify-center pt-20"><Loader2 className="animate-spin text-brand-600" size={32}/></div>;
+  if (loading) return <div className="flex justify-center pt-20"><Loader2 className="animate-spin text-brand-600" size={32} /></div>;
 
   const displayPhoto = userData?.photoURL || currentUser?.photoURL;
+  const userRole = userData?.role || 'Miembro';
+  const userMinisterio = formData.ministerio;
 
   return (
     <div className="pb-24 bg-slate-50 min-h-screen relative animate-fade-in font-outfit">
-      
-      {/* PORTADA CON DISEÑO Y LOGO */}
-      <div className="relative mb-20">
-        <div className="h-52 bg-slate-900 w-full rounded-b-[60px] shadow-2xl overflow-hidden relative border-b-4 border-brand-500">
-           {/* Patrón de fondo abstracto */}
-           <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
-           <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent"></div>
-           <div className="h-full flex flex-col items-center justify-center pb-10">
-              <span className="text-brand-500 font-black text-6xl tracking-tighter opacity-40">CDS</span>
-              <span className="text-white/20 font-bold text-[10px] uppercase tracking-[0.4em] mt-1">Conquistadores de Sueños</span>
-           </div>
+
+      {/* PORTADA MÁS LIMPIA */}
+      <div className="relative mb-16">
+        <div className="h-44 bg-slate-900 w-full rounded-b-[40px] shadow-xl overflow-hidden relative border-b-2 border-brand-500">
+          <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
+          <div className="h-full flex flex-col items-center justify-center pb-6">
+            <span className="text-white font-black text-4xl tracking-tighter">CDS</span>
+            <span className="text-brand-500 font-bold text-[9px] uppercase tracking-[0.3em] mt-1">Conquistadores</span>
+          </div>
         </div>
-        
-        {/* FOTO DE PERFIL (POSICIONADA CORRECTAMENTE ARRIBA) */}
-        <div className="absolute -bottom-14 left-1/2 -translate-x-1/2">
+
+        {/* FOTO DE PERFIL */}
+        <div className="absolute -bottom-12 left-1/2 -translate-x-1/2">
           <div className="relative group">
-            <div className="w-36 h-36 rounded-[45px] border-[6px] border-slate-50 overflow-hidden shadow-2xl bg-white">
-               <img src={displayPhoto} className={`w-full h-full object-cover ${uploadingPhoto ? 'opacity-50' : ''}`} />
+            <div className="w-32 h-32 rounded-full border-4 border-white overflow-hidden shadow-xl bg-white">
+              <img src={displayPhoto} className={`w-full h-full object-cover ${uploadingPhoto ? 'opacity-50' : ''}`} />
             </div>
-            <label className="absolute bottom-1 right-1 bg-brand-600 text-white p-3 rounded-2xl border-4 border-slate-50 shadow-lg cursor-pointer hover:scale-110 active:scale-90 transition-all">
-              <Camera size={20} />
-              <input type="file" className="hidden" onChange={handlePhotoUpload}/>
+            <label className="absolute bottom-0 right-0 bg-brand-600 text-white p-2.5 rounded-full border-2 border-white shadow-md cursor-pointer hover:scale-110 active:scale-90 transition-all">
+              <Camera size={16} />
+              <input type="file" className="hidden" onChange={handlePhotoUpload} />
             </label>
           </div>
         </div>
       </div>
 
-      <div className="text-center px-6 mb-10">
-        <h1 className="text-3xl font-black text-slate-800 tracking-tight">{currentUser?.displayName}</h1>
-        <div className="flex justify-center gap-3 mt-4">
-          <span className="px-4 py-1.5 rounded-2xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg"><Shield size={12} className="text-brand-400"/> {userData?.role || 'Miembro'}</span>
-          <span className="px-4 py-1.5 rounded-2xl bg-white text-slate-800 text-[10px] font-black uppercase tracking-widest border-2 border-slate-100 flex items-center gap-2 shadow-sm"><Briefcase size={12} className="text-brand-600"/> {formData.ministerio || 'EQUIPO'}</span>
+      <div className="text-center px-6 mb-8">
+        <h1 className="text-2xl font-black text-slate-800 tracking-tight">{currentUser?.displayName}</h1>
+        <div className="flex justify-center gap-2 mt-3">
+          <span className="px-3 py-1 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5">
+            <Shield size={12} className="text-slate-400" /> {userRole}
+          </span>
+          {userMinisterio && (
+            <span className="px-3 py-1 rounded-lg bg-brand-50 text-brand-700 text-[10px] font-black uppercase tracking-widest border border-brand-100 flex items-center gap-1.5">
+              <Briefcase size={12} className="text-brand-500" /> {userMinisterio}
+            </span>
+          )}
         </div>
       </div>
 
-      {/* QUICK ACTIONS MEJORADOS */}
+      {/* BOTÓN ÚNICO DE CREDENCIAL (YA NO ESTÁN LOS DE WHATSAPP/MAPS) */}
       {!isEditing && (
-        <div className="px-6 mb-10 grid grid-cols-2 gap-4">
-           <a href={`https://wa.me/${formData.phone?.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="bg-white p-5 rounded-[35px] border-2 border-emerald-50 flex flex-col items-center gap-3 active:scale-95 transition-all shadow-xl shadow-emerald-900/5">
-              <div className="p-3 bg-emerald-500 rounded-2xl text-white shadow-lg shadow-emerald-200"><MessageCircle size={24}/></div>
-              <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">WhatsApp</span>
-           </a>
-           <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(formData.address || '')}`} target="_blank" rel="noreferrer" className="bg-white p-5 rounded-[35px] border-2 border-blue-50 flex flex-col items-center gap-3 active:scale-95 transition-all shadow-xl shadow-blue-900/5">
-              <div className="p-3 bg-blue-500 rounded-2xl text-white shadow-lg shadow-blue-200"><MapPin size={24}/></div>
-              <span className="text-[10px] font-black text-blue-700 uppercase tracking-widest">Ubicación</span>
-           </a>
-           <button onClick={() => setShowCredential(true)} className="col-span-2 bg-slate-900 text-white p-6 rounded-[40px] flex items-center justify-between gap-3 shadow-2xl active:scale-95 transition-all group overflow-hidden relative">
-              <div className="absolute right-0 top-0 p-4 opacity-10 group-hover:rotate-12 transition-transform"><Award size={80}/></div>
-              <div className="flex items-center gap-4 relative z-10">
-                 <div className="p-3 bg-brand-500 rounded-2xl shadow-lg"><CreditCard size={24} /></div>
-                 <div className="text-left"><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Identidad Digital</p><p className="text-sm font-black uppercase">VER CREDENCIAL CDS</p></div>
-              </div>
-              <QrCode size={32} className="text-brand-500 relative z-10"/>
-           </button>
+        <div className="px-6 mb-8">
+          <button onClick={() => setShowCredential(true)} className="w-full bg-slate-900 text-white p-4 rounded-2xl flex items-center justify-center gap-3 shadow-lg active:scale-95 transition-all group relative overflow-hidden">
+            <CreditCard size={20} className="text-brand-400" />
+            <span className="text-xs font-black uppercase tracking-widest">Ver Credencial Digital</span>
+          </button>
         </div>
       )}
 
-      {/* FICHA TÉCNICA (CON BRILLO) */}
+      {/* FICHA TÉCNICA (MÁS COMPACTA) */}
       <div className="px-6 space-y-6">
-        <div className="bg-white rounded-[45px] shadow-2xl shadow-slate-200/50 border border-slate-100 p-8 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 opacity-50"></div>
-          
-          <div className="flex justify-between items-center mb-10 relative z-10">
-            <h3 className="font-black text-slate-900 uppercase text-xs tracking-[0.2em] flex items-center gap-3">DATOS DE SERVIDOR</h3>
-            <button onClick={() => isEditing ? handleSave() : setIsEditing(true)} className={`p-4 rounded-[20px] transition-all shadow-lg ${isEditing ? 'bg-emerald-500 text-white shadow-emerald-200' : 'bg-slate-900 text-white shadow-slate-200'}`}>
-              {isEditing ? <Save size={20}/> : <Edit3 size={20}/>}
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 relative">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="font-black text-slate-700 uppercase text-xs tracking-wider flex items-center gap-2">
+              <User size={16} className="text-brand-500" /> Mis Datos
+            </h3>
+            <button onClick={() => isEditing ? handleSave() : setIsEditing(true)} className={`p-2.5 rounded-xl transition-all ${isEditing ? 'bg-emerald-500 text-white shadow-md' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}>
+              {isEditing ? <Save size={18} /> : <Edit3 size={18} />}
             </button>
           </div>
 
-          <div className="space-y-8 relative z-10">
-            <div className="grid grid-cols-2 gap-6">
-               <div className="space-y-2">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Nº DOCUMENTO</label>
-                  <input disabled={!isEditing} value={formData.dni} onChange={e => setFormData({...formData, dni: e.target.value})} className="w-full bg-slate-50 p-5 rounded-3xl text-sm font-black border-2 border-transparent focus:border-brand-500 outline-none disabled:text-slate-600 transition-all" placeholder="00.000.000" />
-               </div>
-               <div className="space-y-2">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">G. SANGRE</label>
-                  <input disabled={!isEditing} value={formData.bloodType} onChange={e => setFormData({...formData, bloodType: e.target.value})} className="w-full bg-slate-50 p-5 rounded-3xl text-sm font-black border-2 border-transparent focus:border-brand-500 outline-none uppercase disabled:text-slate-600 transition-all text-center" placeholder="O+" />
-               </div>
-            </div>
-            
-            <div className="space-y-2">
-               <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">DOMICILIO ACTUAL</label>
-               <input disabled={!isEditing} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full bg-slate-50 p-5 rounded-3xl text-sm font-black border-2 border-transparent focus:border-brand-500 outline-none disabled:text-slate-600 transition-all" placeholder="Calle y altura..." />
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold text-slate-400 uppercase ml-2">DNI</label>
+                <input disabled={!isEditing} value={formData.dni} onChange={e => setFormData({ ...formData, dni: e.target.value })} className="w-full bg-slate-50 p-3 rounded-xl text-sm font-bold border border-transparent focus:border-brand-500 outline-none disabled:text-slate-600 transition-all" placeholder="Ingrese DNI" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold text-slate-400 uppercase ml-2">Sangre</label>
+                <input disabled={!isEditing} value={formData.bloodType} onChange={e => setFormData({ ...formData, bloodType: e.target.value })} className="w-full bg-slate-50 p-3 rounded-xl text-sm font-bold border border-transparent focus:border-brand-500 outline-none uppercase disabled:text-slate-600 transition-all text-center" placeholder="O+" />
+              </div>
             </div>
 
-            <div className="bg-slate-900 p-6 rounded-[35px] shadow-xl">
-               <label className="text-[9px] font-black text-brand-400 uppercase tracking-[0.2em] mb-5 block border-b border-white/10 pb-2">CONTACTO DE EMERGENCIA</label>
-               <input disabled={!isEditing} value={formData.emergencyName} onChange={e => setFormData({...formData, emergencyName: e.target.value})} className="w-full bg-white/5 p-4 rounded-2xl text-xs font-bold text-white border border-white/10 outline-none mb-3 focus:border-brand-500" placeholder="Nombre completo" />
-               <input disabled={!isEditing} value={formData.emergencyPhone} onChange={e => setFormData({...formData, emergencyPhone: e.target.value})} className="w-full bg-white/5 p-4 rounded-2xl text-xs font-bold text-white border border-white/10 outline-none focus:border-brand-500" placeholder="Teléfono de contacto" />
+            <div className="space-y-1">
+              <label className="text-[9px] font-bold text-slate-400 uppercase ml-2">Dirección</label>
+              <input disabled={!isEditing} value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} className="w-full bg-slate-50 p-3 rounded-xl text-sm font-bold border border-transparent focus:border-brand-500 outline-none disabled:text-slate-600 transition-all" placeholder="Calle y altura..." />
             </div>
+
+            {(isEditing || (formData.emergencyName || formData.emergencyPhone)) && (
+              <div className="bg-rose-50 p-4 rounded-2xl border border-rose-100">
+                <label className="text-[9px] font-bold text-rose-500 uppercase mb-3 block">Emergencia</label>
+                <div className="space-y-2">
+                  <input disabled={!isEditing} value={formData.emergencyName} onChange={e => setFormData({ ...formData, emergencyName: e.target.value })} className="w-full bg-white p-3 rounded-xl text-xs font-bold border border-rose-200 outline-none placeholder:text-rose-300" placeholder="Nombre contacto" />
+                  <input disabled={!isEditing} value={formData.emergencyPhone} onChange={e => setFormData({ ...formData, emergencyPhone: e.target.value })} className="w-full bg-white p-3 rounded-xl text-xs font-bold border border-rose-200 outline-none placeholder:text-rose-300" placeholder="Teléfono contacto" />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        <button onClick={handleLogout} className="w-full flex items-center justify-center gap-3 text-rose-500 font-black text-[10px] uppercase tracking-[0.3em] py-6 rounded-[40px] bg-rose-50 border-2 border-rose-100 active:scale-95 transition-all mt-6 shadow-sm mb-10">
-          <LogOut size={18} /> CERRAR SESIÓN SEGURA
+        <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 text-rose-500 font-bold text-[10px] uppercase tracking-wider py-4 rounded-2xl bg-rose-50 border border-rose-100 active:scale-95 transition-all mt-4">
+          <LogOut size={16} /> Cerrar Sesión
         </button>
       </div>
 
-      {/* ✅ NUEVA CREDENCIAL CDS (REDiseñada para PDF) */}
+      {/* NUEVA CREDENCIAL LIMPIA (Diseño basado en referencia) */}
       {showCredential && (
-        <div className="fixed inset-0 z-[500] bg-slate-950 backdrop-blur-2xl flex flex-col items-center justify-center p-6 animate-fade-in overflow-y-auto">
-          
-          <button onClick={() => setShowCredential(false)} className="absolute top-8 right-8 text-white bg-white/10 p-3 rounded-full hover:bg-white/20 transition-all"><X size={28}/></button>
+        <div className="fixed inset-0 z-[500] bg-slate-900/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 animate-fade-in">
+          <button onClick={() => setShowCredential(false)} className="absolute top-6 right-6 text-white p-2 bg-white/10 rounded-full hover:bg-white/20"><X size={24} /></button>
 
-          {/* EL CARNET (FONDO NEGRO / DISEÑO CUADRADO PARA PDF) */}
-          <div ref={credentialRef} className="w-full max-w-[340px] bg-slate-900 shadow-2xl relative border-4 border-brand-500">
-            {/* Header Credencial */}
-            <div className="h-32 bg-slate-900 w-full flex flex-col items-center justify-center p-6 border-b-2 border-brand-500/30">
-               <div className="absolute top-0 right-0 p-4 opacity-5"><Shield size={100} className="text-white"/></div>
-               <h2 className="text-brand-500 font-black uppercase tracking-tighter text-3xl">CDS</h2>
-               <p className="text-white/40 text-[8px] font-black tracking-[0.5em] uppercase">Conquistadores</p>
+          {/* CONTENEDOR DEL CARNET PARA PDF */}
+          <div ref={credentialRef} className="w-full max-w-[320px] bg-white rounded-2xl overflow-hidden shadow-2xl relative flex flex-col">
+            {/* Cuerpo Blanco */}
+            <div className="p-8 pb-10 flex flex-col items-center text-center bg-white flex-1">
+              {/* Foto Circular Grande */}
+              <div className="w-36 h-36 rounded-full border-4 border-slate-100 shadow-sm overflow-hidden mb-4">
+                <img src={displayPhoto} className="w-full h-full object-cover" />
+              </div>
+
+              {/* Nombre y Rol */}
+              <h3 className="text-2xl font-black text-slate-800 uppercase leading-tight mb-1">
+                {currentUser?.displayName?.split(' ').slice(0, 2).join(' ')}
+              </h3>
+              <p className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-1">{userRole}</p>
+              
+              {/* Área (Condicional) */}
+              {userMinisterio && (
+                <span className="px-3 py-0.5 bg-brand-50 text-brand-700 text-[9px] font-black uppercase tracking-widest rounded-full border border-brand-100 inline-block mt-1">
+                  {userMinisterio}
+                </span>
+              )}
+
+              {/* Datos Extras */}
+              <div className="grid grid-cols-2 gap-4 w-full mt-8 pt-6 border-t border-slate-100">
+                <div className="text-center">
+                   <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">ID MIEMBRO</p>
+                   <p className="text-xs font-black text-slate-800 mt-0.5">{currentUser.uid.slice(0, 6).toUpperCase()}</p>
+                </div>
+                <div className="text-center">
+                   <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">DNI</p>
+                   <p className="text-xs font-black text-slate-800 mt-0.5">{formData.dni || '-'}</p>
+                </div>
+              </div>
+
+              {/* QR Code */}
+              <div className="mt-8">
+                <QRCodeCanvas value={`https://cds-app.com/verify/${currentUser.uid}`} size={80} level="M" bgColor={"#ffffff"} fgColor={"#0f172a"}/>
+              </div>
             </div>
 
-            <div className="p-10 text-center bg-slate-900">
-               {/* Foto integrada en el diseño */}
-               <div className="w-40 h-40 mx-auto -mt-24 border-[6px] border-brand-500 bg-slate-800 shadow-2xl overflow-hidden">
-                  <img src={displayPhoto} className="w-full h-full object-cover" />
+            {/* Footer Azul */}
+            <div className="h-16 bg-slate-900 w-full flex items-center justify-between px-6">
+               <div>
+                 <span className="text-white font-black text-xl tracking-tighter">CDS</span>
                </div>
-
-               <div className="mt-8">
-                  <h3 className="text-2xl font-black text-white uppercase tracking-tight mb-1">{currentUser?.displayName}</h3>
-                  <div className="inline-block px-4 py-1 bg-brand-500 text-slate-900 text-[10px] font-black uppercase tracking-widest rounded-sm mb-8">{formData.ministerio || 'EQUIPO CDS'}</div>
-               </div>
-               
-               <div className="grid grid-cols-2 gap-8 text-left border-t border-white/10 pt-8 mb-10">
-                  <div><p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">IDENTIDAD / DNI</p><p className="text-sm font-black text-white">{formData.dni || '-'}</p></div>
-                  <div><p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">RANGO / ROL</p><p className="text-sm font-black text-white uppercase">{userData?.role || 'Miembro'}</p></div>
-               </div>
-               
-               {/* ZONA QR TÁCTICA */}
-               <div className="pt-8 border-t-2 border-dashed border-brand-500/20 flex flex-col items-center gap-4">
-                  <div className="p-4 bg-white rounded-none shadow-inner">
-                    <QRCodeCanvas value={`https://mceh.app/verify/${currentUser.uid}`} size={100} level="H" />
-                  </div>
-                  <div className="text-center">
-                    <p className="text-[8px] font-black text-brand-500 uppercase tracking-[0.4em]">Verified Server</p>
-                    <p className="text-[7px] text-white/20 font-mono mt-1 italic">ID: {currentUser.uid.toUpperCase()}</p>
-                  </div>
-               </div>
+               <Shield size={24} className="text-brand-500 opacity-50"/>
             </div>
           </div>
-          
-          <button 
+
+          <button
             onClick={downloadPDF}
             disabled={isGeneratingPDF}
-            className="w-full max-w-[340px] bg-brand-500 text-slate-900 py-6 font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-2xl active:scale-95 transition-all disabled:opacity-50 mt-10 rounded-none"
+            className="w-full max-w-[320px] bg-brand-600 text-white py-4 rounded-2xl font-black text-xs uppercase flex items-center justify-center gap-3 shadow-lg active:scale-95 transition-all disabled:opacity-70 mt-6"
           >
-            {isGeneratingPDF ? <Loader2 className="animate-spin" size={18}/> : <><Download size={20}/> DESCARGAR CREDENCIAL PDF</>}
+            {isGeneratingPDF ? <Loader2 className="animate-spin" size={18} /> : <><Download size={18} /> Descargar Credencial PDF</>}
           </button>
         </div>
       )}
