@@ -8,8 +8,8 @@ import {
 } from 'firebase/firestore';
 import { 
   Calendar, Clock, CheckCircle, XCircle, 
-  ChevronLeft, Loader2, ListChecks, Users, 
-  Send, MessageSquare, Info, Eye, Image as ImageIcon,
+  ChevronLeft, Loader2, Users, 
+  Send, MessageSquare, Eye, Image as ImageIcon,
   Pin, X, EyeOff, Trash2, ListPlus, Square, CheckSquare, Download, Maximize2, ExternalLink
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -26,15 +26,12 @@ export default function ServiceDetails() {
   const [userRole, setUserRole] = useState(null);
   const [allUsers, setAllUsers] = useState([]);
   
-  // Archivos y Checklist
   const [selectedFile, setSelectedFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [isSending, setIsSending] = useState(false);
   const [viewingImage, setViewingImage] = useState(null); 
   const [showChecklistCreator, setShowChecklistCreator] = useState(false);
   const [tempTasks, setTempTasks] = useState(['']);
-
-  // Interfaz
   const [showReadersId, setShowReadersId] = useState(null);
   const [hideReceipts, setHideReceipts] = useState(false);
   
@@ -77,56 +74,41 @@ export default function ServiceDetails() {
     return () => unsubscribe();
   }, [id, currentUser.uid]);
 
-  // ✅ SOLUCIÓN AL ERROR: handleFileSelect definido antes del render
+  // 3. FUNCIONES
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
-    if (file) {
-      setSelectedFile(file);
-      setImagePreview(URL.createObjectURL(file));
-    }
+    if (file) { setSelectedFile(file); setImagePreview(URL.createObjectURL(file)); }
   };
 
   const handleDownload = async (url) => {
     try {
       const response = await fetch(url);
       const blob = await response.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = `Referencia-${event.title}.jpg`;
-      document.body.appendChild(link);
+      link.href = window.URL.createObjectURL(blob);
+      link.download = `Nota-${event.title}.jpg`;
       link.click();
-      document.body.removeChild(link);
-    } catch (e) { alert("Error al descargar"); }
+    } catch (e) { alert("Error"); }
   };
 
   const sendChatNotification = async (text, hasImage, hasChecklist) => {
     try {
-      const isSenderPastor = userRole === 'pastor';
-      let targetTokens = [];
-      const assignedNames = Object.values(event.assignments || {}).flat();
-
-      if (isSenderPastor) {
-        allUsers.forEach(u => {
-          if (assignedNames.includes(u.displayName) && u.fcmTokens) targetTokens.push(...u.fcmTokens);
-        });
+      let tokens = [];
+      const assigned = Object.values(event.assignments || {}).flat();
+      if (userRole === 'pastor') {
+        allUsers.forEach(u => { if (assigned.includes(u.displayName) && u.fcmTokens) tokens.push(...u.fcmTokens); });
       } else {
-        allUsers.forEach(u => {
-          if (u.role === 'pastor' && u.fcmTokens) targetTokens.push(...u.fcmTokens);
-        });
+        allUsers.forEach(u => { if (u.role === 'pastor' && u.fcmTokens) tokens.push(...u.fcmTokens); });
       }
-
-      const uniqueTokens = [...new Set(targetTokens)].filter(t => t && t.length > 10);
-      if (uniqueTokens.length === 0) return;
+      const unique = [...new Set(tokens)].filter(t => t?.length > 10);
+      if (unique.length === 0) return;
 
       await fetch("https://backend-notificaciones-mceh.onrender.com/send-notification", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: isSenderPastor ? `Nota del Pastor: ${event.title}` : `${currentUser.displayName} en ${event.title}`,
-          body: hasImage ? "📷 Imagen enviada" : hasChecklist ? "📋 Nueva lista de tareas" : text,
-          tokens: uniqueTokens,
-          url: `/servicios/${id}`
+          title: userRole === 'pastor' ? `Nota: ${event.title}` : `${currentUser.displayName} en ${event.title}`,
+          body: hasImage ? "📷 Imagen" : hasChecklist ? "📋 Tareas" : text,
+          tokens: unique, url: `/servicios/${id}`
         })
       });
     } catch (e) { console.error(e); }
@@ -138,40 +120,34 @@ export default function ServiceDetails() {
     try {
       let imageUrl = null;
       if (selectedFile) {
-        const options = { maxSizeMB: 0.8, maxWidthOrHeight: 1200, useWebWorker: true };
-        const compressedFile = await imageCompression(selectedFile, options);
+        const compressed = await imageCompression(selectedFile, { maxSizeMB: 0.8 });
         const formData = new FormData();
-        formData.append("file", compressedFile);
+        formData.append("file", compressed);
         formData.append("upload_preset", UPLOAD_PRESET);
         const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { method: "POST", body: formData });
         const data = await res.json();
         imageUrl = data.secure_url;
       }
-
       let checklist = null;
       if (showChecklistCreator) {
-        const validTasks = tempTasks.filter(t => t.trim() !== '');
-        if (validTasks.length > 0) checklist = validTasks.map(t => ({ text: t, completed: false }));
+        const tasks = tempTasks.filter(t => t.trim() !== '');
+        if (tasks.length > 0) checklist = tasks.map(t => ({ text: t, completed: false }));
       }
-
-      const textToStore = newMessage;
+      const txt = newMessage;
       await addDoc(collection(db, `events/${id}/notes`), {
-        text: textToStore, image: imageUrl, checklist: checklist,
+        text: txt, image: imageUrl, checklist: checklist,
         sender: currentUser.displayName, uid: currentUser.uid,
         createdAt: serverTimestamp(), readBy: [currentUser.uid], isPinned: false
       });
-
-      sendChatNotification(textToStore, !!imageUrl, !!checklist);
+      sendChatNotification(txt, !!imageUrl, !!checklist);
       setNewMessage(''); setSelectedFile(null); setImagePreview(null);
       setShowChecklistCreator(false); setTempTasks(['']);
-    } catch (e) { alert("Error al enviar"); } finally { setIsSending(false); }
+    } catch (e) { console.error(e); } finally { setIsSending(false); }
   };
 
   const togglePin = async (msgId, currentState) => {
     if (userRole !== 'pastor') return;
-    for (const m of messages) {
-      if (m.isPinned) await updateDoc(doc(db, `events/${id}/notes`, m.id), { isPinned: false });
-    }
+    messages.forEach(async (m) => { if (m.isPinned) await updateDoc(doc(db, `events/${id}/notes`, m.id), { isPinned: false }); });
     await updateDoc(doc(db, `events/${id}/notes`, msgId), { isPinned: !currentState });
   };
 
@@ -182,11 +158,7 @@ export default function ServiceDetails() {
     await updateDoc(doc(db, `events/${id}/notes`, msgId), { checklist: newChecklist });
   };
 
-  const deleteMessage = async (msgId) => {
-    if (window.confirm("¿Eliminar este mensaje?")) await deleteDoc(doc(db, `events/${id}/notes`, msgId));
-  };
-
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-white"><Loader2 className="animate-spin text-brand-600" size={40} /></div>;
+  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-brand-600" /></div>;
 
   const myRole = Object.keys(event.assignments || {}).find(role => event.assignments[role].includes(currentUser.displayName));
   const myStatus = event.confirmations?.[currentUser.displayName];
@@ -196,103 +168,92 @@ export default function ServiceDetails() {
     const isMyMessage = m.uid === currentUser.uid;
     return (
       <div className={`${isPinnedView ? '' : 'p-1 rounded-[22px] shadow-sm relative group'} ${!isPinnedView && (isMyMessage ? 'bg-amber-600 text-white rounded-tr-none' : 'bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200/40')}`}>
-        {m.image && (
-          <div className={`${isPinnedView ? 'w-16 h-16 flex-shrink-0' : 'w-full'} relative cursor-zoom-in`} onClick={() => setViewingImage(m.image)}>
-            <img src={m.image} className={`${isPinnedView ? 'w-full h-full object-cover rounded-lg' : 'w-full h-auto rounded-[18px]'}`} alt="Adjunto" />
-          </div>
-        )}
+        {m.image && <img src={m.image} onClick={() => setViewingImage(m.image)} className={`${isPinnedView ? 'w-12 h-12 rounded-lg' : 'w-full h-auto rounded-[18px]'} object-cover`} />}
         {m.checklist && (
-          <div className={`${isPinnedView ? 'mt-1' : 'p-3'} space-y-1.5`}>
-            {m.checklist.map((task, tidx) => (
-              <button key={tidx} onClick={() => toggleChecklistTask(m.id, tidx)} className="flex items-center gap-2.5 w-full text-left">
-                {task.completed ? <CheckSquare size={isPinnedView ? 14 : 16} className={isPinnedView ? "text-white/80" : (isMyMessage ? "text-white" : "text-brand-600")}/> : <Square size={isPinnedView ? 14 : 16} className="opacity-40"/>}
-                <span className={`${isPinnedView ? 'text-xs' : 'text-sm'} font-bold ${task.completed ? 'opacity-40 line-through' : ''}`}>{task.text}</span>
+          <div className="p-3 space-y-1">
+            {m.checklist.map((task, i) => (
+              <button key={i} onClick={() => toggleChecklistTask(m.id, i)} className="flex items-center gap-2 w-full text-left">
+                {task.completed ? <CheckSquare size={16} className={isPinnedView ? "text-white/60" : "text-white"}/> : <Square size={16} className="opacity-40"/>}
+                <span className={`text-xs font-bold ${task.completed ? 'opacity-40 line-through' : ''}`}>{task.text}</span>
               </button>
             ))}
           </div>
         )}
-        {m.text && <p className={`font-semibold leading-snug whitespace-pre-wrap ${isPinnedView ? 'text-xs line-clamp-2' : 'px-4 py-2.5 text-sm'}`}>{m.text}</p>}
+        {m.text && <p className={`font-semibold leading-snug px-4 py-2 ${isPinnedView ? 'text-xs truncate' : 'text-sm'}`}>{m.text}</p>}
       </div>
     );
   };
 
   return (
-    <div className="h-screen bg-slate-50 animate-fade-in flex flex-col overflow-hidden">
+    <div className="h-screen w-full bg-slate-50 flex flex-col overflow-hidden animate-fade-in">
       
-      {/* 🚀 1. CABECERA FIJA SUPERIOR */}
-      <div className="bg-slate-900 text-white pt-10 pb-4 px-5 rounded-b-[40px] shadow-lg relative flex-shrink-0 z-50">
-        <button onClick={() => navigate('/servicios')} className="absolute top-10 left-4 p-1.5 bg-white/10 rounded-full text-white"><ChevronLeft size={22} /></button>
-        <div className="text-center">
-          <h1 className="text-xl font-black">{event.title}</h1>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-             {format(new Date(event.date + 'T00:00:00'), "d MMMM", { locale: es })} • {event.time} hs
-          </p>
+      {/* 🚀 1. CABECERA INTEGRADA FIJA */}
+      <header className="bg-slate-900 text-white pt-10 pb-4 px-5 rounded-b-[40px] shadow-xl z-50 flex-shrink-0">
+        <div className="flex items-center justify-between mb-4">
+          <button onClick={() => navigate('/servicios')} className="p-2 bg-white/10 rounded-full"><ChevronLeft size={22} /></button>
+          <div className="text-center">
+            <h1 className="text-xl font-black">{event.title}</h1>
+            <p className="text-[10px] font-bold text-slate-400 uppercase">{format(new Date(event.date + 'T00:00:00'), "d MMMM", { locale: es })} • {event.time} hs</p>
+          </div>
+          <div className="w-10"></div>
         </div>
 
-        {/* Card de Función Compacta dentro del Header Fijo */}
-        <div className="mt-4 bg-white/5 border border-white/10 rounded-2xl p-3 flex items-center justify-between">
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-3 flex items-center justify-between">
            <div className="flex items-center gap-3">
-              <div className="bg-brand-500/20 p-2 rounded-lg text-brand-400"><Users size={18} /></div>
-              <div className="min-w-0">
-                  <p className="text-[8px] font-black text-white/40 uppercase">Tu función</p>
-                  <p className="text-sm font-bold text-white capitalize truncate">{myRole?.replace(/_/g, ' ')}</p>
-              </div>
+              <div className="bg-brand-500/20 p-2 rounded-xl text-brand-400"><Users size={18} /></div>
+              <div><p className="text-[8px] font-black text-white/40 uppercase">Tu función</p><p className="text-sm font-bold text-white capitalize">{myRole?.replace(/_/g, ' ')}</p></div>
            </div>
-           <button onClick={() => navigate(`/calendario/${id}`)} className="text-[9px] font-black bg-brand-600 text-white px-3 py-1.5 rounded-full shadow-lg active:scale-95 flex items-center gap-1">
-              EQUIPO <ExternalLink size={10}/>
-           </button>
+           <button onClick={() => navigate(`/calendario/${id}`)} className="text-[9px] font-black bg-brand-600 px-3 py-1.5 rounded-full flex items-center gap-1 shadow-lg active:scale-95 transition-all">EQUIPO <ExternalLink size={10}/></button>
         </div>
-      </div>
+      </header>
 
-      {/* 💬 2. CUERPO DE CHAT SCROLLEABLE */}
-      <div className="flex-1 overflow-y-auto relative flex flex-col">
+      {/* 💬 2. CUERPO DE CHAT (UNICO SCROLLABLE) */}
+      <main className="flex-1 overflow-hidden flex flex-col relative">
         
-        {/* Título de Notas y Mensaje Anclado (Sticky dentro del scroll) */}
-        <div className="sticky top-0 z-40 bg-slate-50/95 backdrop-blur-md border-b border-slate-100">
+        {/* Título de notas fijo abajo del header */}
+        <div className="bg-slate-50/95 backdrop-blur-md z-40 border-b border-slate-200">
             <div className="p-4 flex items-center justify-between">
-              <h3 className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-2 tracking-widest"><MessageSquare size={14} className="text-brand-500"/> Notas de Equipo</h3>
+              <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><MessageSquare size={14} className="text-brand-500"/> Notas de Equipo</h3>
               <button onClick={() => setHideReceipts(!hideReceipts)} className="p-1.5 text-slate-400">{hideReceipts ? <Eye size={16} /> : <EyeOff size={16} />}</button>
             </div>
             {pinnedMessage && (
-              <div className="bg-brand-600 text-white p-3 shadow-md flex items-start gap-3 animate-slide-down">
-                <Pin size={16} className="flex-shrink-0 mt-1 opacity-60"/>
-                <div className="flex-1 flex gap-2 overflow-hidden items-center"><MessageContent m={pinnedMessage} isPinnedView={true} /></div>
+              <div className="bg-brand-600 text-white p-3 shadow-lg flex items-center gap-3 animate-slide-down">
+                <Pin size={16} className="opacity-60"/><div className="flex-1 overflow-hidden"><MessageContent m={pinnedMessage} isPinnedView={true} /></div>
                 {userRole === 'pastor' && <button onClick={() => togglePin(pinnedMessage.id, true)} className="p-1"><X size={16}/></button>}
               </div>
             )}
         </div>
 
-        <div className="flex-1 p-5 space-y-6">
+        {/* Scroll real de mensajes */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-6">
           {messages.map((m) => {
-              const isMyMessage = m.uid === currentUser.uid;
+              const isMy = m.uid === currentUser.uid;
               const readers = allUsers.filter(u => m.readBy?.includes(u.id) && u.id !== m.uid).map(u => u.displayName?.split(' ')[0]);
               return (
-                <div key={m.id} className={`flex flex-col ${isMyMessage ? 'items-end' : 'items-start'}`}>
+                <div key={m.id} className={`flex flex-col ${isMy ? 'items-end' : 'items-start'}`}>
                     <div className="relative group max-w-[85%]">
                       <MessageContent m={m} />
-                      <div className={`absolute top-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity ${isMyMessage ? '-left-14' : '-right-14'}`}>
-                         {(userRole === 'pastor' || isMyMessage) && <button onClick={() => deleteMessage(m.id)} className="p-1.5 bg-red-50 text-red-500 rounded-full shadow-sm"><Trash2 size={12}/></button>}
+                      <div className={`absolute top-0 flex gap-1 opacity-0 group-hover:opacity-100 ${isMy ? '-left-14' : '-right-14'}`}>
+                         {(userRole === 'pastor' || isMy) && <button onClick={() => deleteMessage(m.id)} className="p-1.5 bg-red-50 text-red-500 rounded-full shadow-sm"><Trash2 size={12}/></button>}
                          {userRole === 'pastor' && <button onClick={() => togglePin(m.id, m.isPinned)} className={`p-1.5 rounded-full ${m.isPinned ? 'bg-brand-600 text-white' : 'bg-brand-50 text-brand-600'}`}><Pin size={12}/></button>}
                       </div>
                     </div>
-                    <div className={`flex flex-col mt-1 px-1 ${isMyMessage ? 'items-end' : 'items-start'}`}>
+                    <div className={`flex flex-col mt-1 px-1 ${isMy ? 'items-end' : 'items-start'}`}>
                       <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{m.sender?.split(' ')[0]}</span>
-                      {!hideReceipts && readers.length > 0 && <button onClick={() => setShowReadersId(m.id)} className="flex items-center gap-1 text-[7px] font-bold text-slate-300 mt-0.5"><Eye size={8} /> Visto por {readers.length}</button>}
+                      {!hideReceipts && readers.length > 0 && <button onClick={() => setShowReadersId(m.id)} className="text-[7px] font-bold text-slate-300 mt-0.5 flex items-center gap-1"><Eye size={8} /> Visto por {readers.length}</button>}
                     </div>
                 </div>
               );
           })}
           <div ref={scrollRef} />
         </div>
-      </div>
+      </main>
 
-      {/* 🛠 3. BARRA DE HERRAMIENTAS INFERIOR FIJA */}
-      <div className="flex-shrink-0 bg-white border-t border-slate-100 p-4 shadow-[0_-10px_25px_-5px_rgba(0,0,0,0.05)] z-50">
-        
-        {/* Previews Flotantes */}
+      {/* 🛠 3. BARRA DE HERRAMIENTAS FIJA INFERIOR */}
+      <footer className="bg-white border-t border-slate-100 p-4 pb-8 z-50 flex-shrink-0">
         {imagePreview && (
           <div className="relative inline-block mb-3 animate-scale-in">
-            <img src={imagePreview} className="w-16 h-16 object-cover rounded-xl border-2 border-white shadow-md" />
+            <img src={imagePreview} className="w-16 h-16 object-cover rounded-xl border-2 border-white shadow-lg" />
             <button onClick={() => { setSelectedFile(null); setImagePreview(null); }} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white p-1 rounded-full"><X size={10}/></button>
           </div>
         )}
@@ -304,41 +265,20 @@ export default function ServiceDetails() {
                 const newT = [...tempTasks]; newT[i] = e.target.value; 
                 if (i === tempTasks.length - 1 && e.target.value !== '') newT.push('');
                 setTempTasks(newT);
-              }} placeholder="Añadir tarea..." className="w-full text-xs p-1 bg-transparent outline-none border-b border-slate-200 focus:border-brand-500" />
+              }} placeholder="Tarea..." className="w-full text-xs p-1 bg-transparent outline-none border-b border-slate-200 focus:border-brand-500 font-bold" />
             ))}
           </div>
         )}
 
-        {/* Fila de Input */}
         <div className="flex items-end gap-2">
           <div className="flex gap-1.5">
-            <label className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-slate-400 cursor-pointer active:scale-90 transition-transform">
-                <ImageIcon size={18}/>
-                <input type="file" className="hidden" accept="image/*" onChange={handleFileSelect} disabled={isSending}/>
-            </label>
-            <button onClick={() => setShowChecklistCreator(!showChecklistCreator)} className={`p-3 border rounded-xl active:scale-90 transition-transform ${showChecklistCreator ? 'bg-brand-600 text-white border-brand-600' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
-                <ListPlus size={18}/>
-            </button>
+            <label className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-slate-400 cursor-pointer active:scale-90 transition-transform"><ImageIcon size={18}/><input type="file" className="hidden" accept="image/*" onChange={handleFileSelect} /></label>
+            <button onClick={() => setShowChecklistCreator(!showChecklistCreator)} className={`p-3 border rounded-xl active:scale-90 transition-transform ${showChecklistCreator ? 'bg-brand-600 text-white border-brand-600' : 'bg-slate-50 text-slate-400 border-slate-100'}`}><ListPlus size={18}/></button>
           </div>
-          
-          <textarea 
-            ref={textareaRef} 
-            rows="1" 
-            value={newMessage} 
-            onChange={(e) => setNewMessage(e.target.value)} 
-            placeholder="Escribir..." 
-            className="flex-1 bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-500/20 outline-none resize-none max-h-32 transition-all shadow-inner" 
-          />
-          
-          <button 
-            onClick={handleSendMessage} 
-            disabled={isSending || (!newMessage.trim() && !selectedFile && !showChecklistCreator)} 
-            className="bg-brand-600 text-white p-3.5 rounded-xl shadow-lg active:scale-90 disabled:opacity-50 transition-all"
-          >
-            {isSending ? <Loader2 size={18} className="animate-spin"/> : <Send size={18}/>}
-          </button>
+          <textarea ref={textareaRef} rows="1" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Escribir..." className="flex-1 bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-500/20 outline-none resize-none max-h-32 shadow-inner" />
+          <button onClick={handleSendMessage} disabled={isSending || (!newMessage.trim() && !selectedFile && !showChecklistCreator)} className="bg-brand-600 text-white p-3.5 rounded-xl shadow-lg active:scale-90 disabled:opacity-50">{isSending ? <Loader2 size={18} className="animate-spin"/> : <Send size={18}/>}</button>
         </div>
-      </div>
+      </footer>
 
       {/* MODALES: IMAGEN Y LECTORES */}
       {viewingImage && (
@@ -351,11 +291,9 @@ export default function ServiceDetails() {
         <div className="fixed inset-0 z-[120] bg-black/40 flex items-center justify-center p-6 animate-fade-in" onClick={() => setShowReadersId(null)}>
           <div className="bg-white w-full max-w-xs rounded-[32px] p-6 shadow-2xl animate-scale-in" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4 pb-2 border-b"><h4 className="font-black text-slate-800 text-[11px] uppercase tracking-widest">Visto por</h4><button onClick={() => setShowReadersId(null)}><X size={16}/></button></div>
-            <div className="space-y-3 max-h-60 overflow-y-auto">
-              {allUsers.filter(u => messages.find(m => m.id === showReadersId)?.readBy?.includes(u.id) && u.id !== messages.find(m => m.id === showReadersId)?.uid).map(u => (
+            <div className="space-y-3 max-h-60 overflow-y-auto">{allUsers.filter(u => messages.find(m => m.id === showReadersId)?.readBy?.includes(u.id) && u.id !== messages.find(m => m.id === showReadersId)?.uid).map(u => (
                 <div key={u.id} className="flex items-center gap-3"><img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}`} className="w-7 h-7 rounded-full" /><span className="text-xs font-bold text-slate-600">{u.displayName}</span></div>
-              ))}
-            </div>
+            ))}</div>
           </div>
         </div>
       )}
