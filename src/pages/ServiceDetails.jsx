@@ -18,11 +18,11 @@ export default function ServiceDetails() {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const scrollRef = useRef();
-  const textareaRef = useRef(); // Para el auto-resize
+  const textareaRef = useRef(); 
   
   const currentUser = auth.currentUser;
 
-  // Lógica de carga y mensajes se mantiene igual para estabilidad
+  // Carga de datos estable
   useEffect(() => {
     const fetchService = async () => {
       try {
@@ -44,11 +44,12 @@ export default function ServiceDetails() {
     return () => unsubscribe();
   }, [id]);
 
-  // ✅ AUTO-RESIZE DEL TEXTAREA
+  // Lógica de auto-ajuste de altura del input
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = 'inherit';
-      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+      textareaRef.current.style.height = '44px'; // Altura base
+      const scrollHeight = textareaRef.current.scrollHeight;
+      textareaRef.current.style.height = scrollHeight + 'px';
     }
   }, [newMessage]);
 
@@ -81,13 +82,13 @@ export default function ServiceDetails() {
   const myStatus = event.confirmations?.[currentUser.displayName];
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-10 animate-fade-in flex flex-col">
-      {/* 🎨 HEADER: Reducimos padding para que no se corte arriba */}
-      <div className="bg-slate-900 text-white pt-10 pb-10 px-6 rounded-b-[35px] shadow-lg relative flex-shrink-0">
+    <div className="min-h-screen bg-slate-50 pb-12 animate-fade-in flex flex-col">
+      {/* 🎨 HEADER: Corregido para evitar el corte superior */}
+      <div className="bg-slate-900 text-white pt-10 pb-16 px-6 rounded-b-[45px] shadow-lg relative flex-shrink-0">
         <button onClick={() => navigate('/servicios')} className="absolute top-4 left-4 p-2 bg-white/10 rounded-full text-white"><ChevronLeft size={24} /></button>
         <div className="mt-4">
-          <span className="text-[9px] font-black uppercase tracking-[0.2em] text-brand-400">Panel de Servicio</span>
-          <h1 className="text-2xl font-black mt-1 leading-tight break-words">{event.title}</h1>
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-400">Panel de Servicio</span>
+          <h1 className="text-3xl font-black mt-1 leading-tight">{event.title}</h1>
           <div className="flex gap-4 mt-3 text-slate-400">
             <div className="flex items-center gap-1.5 text-[11px] font-bold"><Calendar size={13} /> {format(new Date(event.date + 'T00:00:00'), "d 'de' MMMM", { locale: es })}</div>
             <div className="flex items-center gap-1.5 text-[11px] font-bold"><Clock size={13} /> {event.time} hs</div>
@@ -95,68 +96,81 @@ export default function ServiceDetails() {
         </div>
       </div>
 
-      <div className="max-w-md mx-auto w-full px-5 -mt-6 space-y-5 flex-1 overflow-y-auto">
+      <div className="max-w-md mx-auto w-full px-5 -mt-10 space-y-6 flex-1 overflow-y-auto">
         
-        {/* 🛠 CARD DE FUNCIÓN: Reparada para evitar cortes */}
-        <div className="bg-white rounded-[28px] p-5 shadow-xl border border-slate-100">
-          <div className="flex items-start gap-4 mb-5">
-            <div className="bg-brand-50 p-3 rounded-2xl text-brand-600 flex-shrink-0"><Users size={22} /></div>
+        {/* 🛠 CARD DE FUNCIÓN: Flexibilidad para nombres largos */}
+        <div className="bg-white rounded-[32px] p-6 shadow-xl border border-slate-100">
+          <div className="flex items-start gap-4 mb-6">
+            <div className="bg-brand-50 p-3.5 rounded-2xl text-brand-600 flex-shrink-0"><Users size={24} /></div>
             <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Tu función hoy</p>
-              {/* break-words evita que nombres largos se corten */}
-              <p className="text-lg font-black text-slate-800 capitalize leading-tight break-words">{myRole?.replace(/_/g, ' ')}</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Función asignada</p>
+              <p className="text-xl font-black text-slate-800 capitalize leading-tight break-words">
+                {myRole?.replace(/_/g, ' ')}
+              </p>
             </div>
           </div>
 
           {!myStatus ? (
             <div className="flex gap-2">
-              <button onClick={() => handleResponse('confirmed')} className="flex-1 bg-brand-600 text-white py-3 rounded-2xl font-bold text-xs shadow-lg shadow-brand-200 active:scale-95 transition-transform">Confirmar ✓</button>
-              <button onClick={() => handleResponse('declined')} className="flex-1 bg-slate-100 text-slate-500 py-3 rounded-2xl font-bold text-xs active:scale-95 transition-transform">No puedo</button>
+              <button onClick={() => handleResponse('confirmed')} className="flex-1 bg-brand-600 text-white py-3.5 rounded-2xl font-bold text-xs shadow-lg shadow-brand-200 active:scale-95 transition-transform">Confirmar ✓</button>
+              <button onClick={() => handleResponse('declined')} className="flex-1 bg-slate-100 text-slate-500 py-3.5 rounded-2xl font-bold text-xs active:scale-95 transition-transform">No puedo</button>
             </div>
           ) : (
-            <div className={`p-4 rounded-2xl flex items-center justify-between ${myStatus === 'confirmed' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-              <span className="text-xs font-black flex items-center gap-2">{myStatus === 'confirmed' ? <CheckCircle size={16}/> : <XCircle size={16}/>} {myStatus === 'confirmed' ? 'LISTO PARA SERVIR' : 'AUSENCIA NOTIFICADA'}</span>
+            <div className={`p-4 rounded-2xl flex items-center justify-between ${myStatus === 'confirmed' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'}`}>
+              <span className="text-xs font-black flex items-center gap-2">
+                {myStatus === 'confirmed' ? <CheckCircle size={18}/> : <XCircle size={18}/>} 
+                {myStatus === 'confirmed' ? 'LISTO PARA SERVIR' : 'AUSENCIA NOTIFICADA'}
+              </span>
               <button onClick={() => handleResponse(null)} className="text-[10px] font-black uppercase underline decoration-2">Cambiar</button>
             </div>
           )}
         </div>
 
-        {/* 💬 MURO DE NOTAS: Corregido el input y las burbujas */}
-        <div className="bg-white rounded-[28px] shadow-sm border border-slate-100 flex flex-col h-[380px] overflow-hidden mb-6">
-          <div className="p-4 border-b border-slate-50 flex items-center justify-between bg-slate-50/30">
-            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><MessageSquare size={14} className="text-brand-500"/> Notas de Equipo</h3>
+        {/* 💬 MURO DE NOTAS: Altura expandida para mejor lectura */}
+        <div className="bg-white rounded-[32px] shadow-sm border border-slate-100 flex flex-col h-[480px] overflow-hidden mb-8">
+          <div className="p-5 border-b border-slate-50 flex items-center justify-between bg-slate-50/40">
+            <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.15em] flex items-center gap-2">
+              <MessageSquare size={14} className="text-brand-500"/> Notas de Equipo
+            </h3>
           </div>
           
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white">
+          <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-white">
             {messages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-slate-300 text-center px-6">
-                    <Info size={24} className="mb-2 opacity-20"/>
-                    <p className="text-[11px] font-medium leading-relaxed italic">Espacio para instrucciones del Pastor o avisos del equipo.</p>
+                <div className="h-full flex flex-col items-center justify-center text-slate-300 text-center px-8">
+                    <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mb-3">
+                        <Info size={24} className="opacity-20"/>
+                    </div>
+                    <p className="text-[11px] font-semibold leading-relaxed italic">Espacio para instrucciones del Pastor o avisos del equipo.</p>
                 </div>
             ) : messages.map((m) => (
                 <div key={m.id} className={`flex flex-col ${m.uid === currentUser.uid ? 'items-end' : 'items-start'}`}>
-                    <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${m.uid === currentUser.uid ? 'bg-amber-600 text-white rounded-tr-none' : 'bg-slate-100 text-slate-800 rounded-tl-none'}`}>
-                        <p className="font-medium leading-snug">{m.text}</p>
+                    <div className={`max-w-[88%] px-4 py-3 rounded-2xl text-sm shadow-sm ${
+                        m.uid === currentUser.uid 
+                        ? 'bg-amber-600 text-white rounded-tr-none' 
+                        : 'bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200/50'
+                    }`}>
+                        <p className="font-medium leading-relaxed">{m.text}</p>
                     </div>
-                    {/* Nombre más pegado a la burbuja y sutil */}
-                    <span className="text-[9px] font-bold text-slate-300 mt-1 px-1 uppercase tracking-tighter">{m.sender?.split(' ')[0]}</span>
+                    <span className="text-[8px] font-black text-slate-400 mt-1.5 px-1 uppercase tracking-tighter">
+                        {m.sender?.split(' ')[0]}
+                    </span>
                 </div>
             ))}
             <div ref={scrollRef} />
           </div>
 
-          {/* ✅ FORMULARIO CON TEXTAREA AUTO-AJUSTABLE */}
-          <form onSubmit={handleSendMessage} className="p-3 border-t border-slate-50 flex items-end gap-2 bg-slate-50/50">
+          {/* FORMULARIO CON TEXTAREA INTELIGENTE */}
+          <form onSubmit={handleSendMessage} className="p-4 border-t border-slate-100 flex items-end gap-2 bg-slate-50/30">
             <textarea 
                 ref={textareaRef}
                 rows="1"
                 value={newMessage} 
                 onChange={(e) => setNewMessage(e.target.value)} 
                 placeholder="Escribir nota..." 
-                className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none resize-none max-h-32 transition-all"
+                className="flex-1 bg-white border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:ring-4 focus:ring-brand-500/5 focus:border-brand-500 outline-none resize-none max-h-32 transition-all leading-snug"
             />
-            <button type="submit" className="bg-brand-600 text-white p-3 rounded-xl shadow-md active:scale-90 transition-transform flex-shrink-0">
-                <Send size={18}/>
+            <button type="submit" className="bg-brand-600 text-white p-3.5 rounded-2xl shadow-lg active:scale-90 transition-transform flex-shrink-0">
+                <Send size={20}/>
             </button>
           </form>
         </div>
