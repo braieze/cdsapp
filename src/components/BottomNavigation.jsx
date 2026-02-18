@@ -9,76 +9,60 @@ export default function BottomNavigation({ dbUser }) {
   const path = location.pathname;
   const currentUser = auth.currentUser;
 
-  // Estados para los globitos
-  const [badges, setBadges] = useState({
-    agenda: 0,
-    servicios: 0,
-    apps: 0,
-    perfil: 0
-  });
+  const [badges, setBadges] = useState({ agenda: 0, servicios: 0, apps: 0, perfil: 0 });
 
-  // ✅ 1. DETECCIÓN DE ACTUALIZACIÓN DE APP (PWA)
+  // 1. DETECCIÓN PWA
   useEffect(() => {
-    const checkUpdate = () => {
-      if (window.swUpdateAvailable) {
-        setBadges(prev => ({ ...prev, apps: 1 }));
-      }
-    };
-
+    const checkUpdate = () => { if (window.swUpdateAvailable) setBadges(prev => ({ ...prev, apps: 1 })); };
     window.addEventListener('swUpdated', checkUpdate);
-    checkUpdate(); // Verificar al montar
-
+    checkUpdate();
     return () => window.removeEventListener('swUpdated', checkUpdate);
   }, []);
 
+  // 2. LÓGICA DE SERVICIOS Y AGENDA (SINCRO TOTAL)
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || !dbUser) return;
 
     const unsubscribes = [];
+    // Obtenemos los IDs de lo que el usuario ya leyó desde el prop dbUser (que viene en vivo)
+    const readIds = dbUser.readNotifications || [];
 
-    // --- 2. LÓGICA DE SERVICIOS Y AGENDA ---
     const qEvents = query(collection(db, 'events'), orderBy('date', 'asc'));
     const unsubEvents = onSnapshot(qEvents, (snapshot) => {
       let pendingTasks = 0;
       let teamIssues = 0;
       let agendaAlerts = 0; 
       const now = new Date();
-      const readIds = dbUser?.readNotifications || [];
 
       snapshot.docs.forEach(docSnap => {
         const event = docSnap.data();
         const eventId = docSnap.id;
         const eventDate = new Date(event.date + 'T00:00:00');
         
-        // 📅 LÓGICA DE AGENDA EXIGENTE (Punto solicitado)
+        // 📅 LÓGICA EXIGENTE: ¿Se leyó este evento?
         if (eventDate >= now) {
-          // A. Líderes: Borradores
-          if ((dbUser?.role === 'pastor' || dbUser?.role === 'lider') && event.published === false) {
+          if ((dbUser.role === 'pastor' || dbUser.role === 'lider') && event.published === false) {
             agendaAlerts++;
           }
 
-          // B. Servidores: No abiertos
           const isPublished = event.published !== false;
-          const hasNotReadEv = !readIds.includes(`ev-${eventId}`);
-          const hasNotReadAsg = !readIds.includes(`asg-${eventId}`);
-          
-          if (isPublished && (hasNotReadEv && hasNotReadAsg)) {
+          // Si está publicado y NO está en la lista de IDs leídos del usuario
+          if (isPublished && !readIds.includes(`ev-${eventId}`) && !readIds.includes(`asg-${eventId}`)) {
             agendaAlerts++;
           }
         }
 
-        // 💼 LÓGICA DE SERVICIOS
+        // 💼 SERVICIOS (Tareas + Bajas)
         if (eventDate >= now) {
           const isAssigned = event.assignments && Object.values(event.assignments).some(arr => Array.isArray(arr) && arr.includes(currentUser.displayName));
           const myStatus = event.confirmations?.[currentUser.displayName];
           
           if (isAssigned && !myStatus) pendingTasks++;
-          
-          if ((dbUser?.role === 'lider' || dbUser?.role === 'pastor') && event.confirmations) {
+          if ((dbUser.role === 'lider' || dbUser.role === 'pastor') && event.confirmations) {
             teamIssues += Object.values(event.confirmations).filter(s => s === 'declined').length;
           }
 
-          // 💬 CHATS SIN LEER
+          // CHATS SIN LEER (Sincro en vivo)
           if (isAssigned) {
             const unsubChat = onSnapshot(collection(db, `events/${eventId}/notes`), (chatSnap) => {
               const unreadMsg = chatSnap.docs.filter(d => !d.data().readBy?.includes(currentUser.uid)).length;
@@ -100,14 +84,12 @@ export default function BottomNavigation({ dbUser }) {
     });
     unsubscribes.push(unsubEvents);
 
-    // --- 3. LÓGICA DE PERFIL (Datos faltantes) ---
-    if (dbUser) {
-      const isIncomplete = !dbUser.photoURL || !dbUser.phone || !dbUser.ministerio ? 1 : 0;
-      setBadges(prev => ({ ...prev, perfil: isIncomplete }));
-    }
+    // 3. PERFIL INCOMPLETO
+    const isIncomplete = !dbUser.photoURL || !dbUser.phone || !dbUser.ministerio ? 1 : 0;
+    setBadges(prev => ({ ...prev, perfil: isIncomplete }));
 
     return () => unsubscribes.forEach(unsub => unsub());
-  }, [currentUser, dbUser]);
+  }, [currentUser, dbUser]); // Importante: dbUser aquí garantiza la reacción al leer notis
 
   const navItems = [
     { path: '/', icon: Home, label: 'Inicio' },
@@ -124,20 +106,10 @@ export default function BottomNavigation({ dbUser }) {
           const Icon = item.icon;
           const isActive = path === item.path;
           return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className="flex-1 flex flex-col items-center justify-center transition-transform active:scale-95 relative group"
-            >
+            <Link key={item.path} to={item.path} className="flex-1 flex flex-col items-center justify-center transition-transform active:scale-95 relative group">
               {isActive && <div className="absolute -top-5 w-12 h-1.5 bg-brand-600 rounded-b-full shadow-sm"></div>}
-              
               <div className="relative p-1.5">
-                <Icon 
-                  size={30} 
-                  strokeWidth={isActive ? 2.5 : 2} 
-                  className={`transition-all duration-300 ${isActive ? 'text-brand-600 -translate-y-1' : 'text-slate-400'}`} 
-                />
-                {/* 🔴 GLOBITO ROJO ANIMADO */}
+                <Icon size={30} strokeWidth={isActive ? 2.5 : 2} className={`transition-all duration-300 ${isActive ? 'text-brand-600 -translate-y-1' : 'text-slate-400'}`} />
                 {item.badge > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-black px-1.5 h-5 min-w-[20px] flex items-center justify-center rounded-full border-2 border-white animate-bounce shadow-md">
                     {item.badge}

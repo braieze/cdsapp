@@ -1,43 +1,40 @@
 import { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { auth, db } from '../firebase';
-import { doc, getDoc } from 'firebase/firestore';
-import BottomNavigation from '../components/BottomNavigation'; // Importamos el nuevo componente
+import { doc, onSnapshot } from 'firebase/firestore'; // ✅ Cambiamos getDoc por onSnapshot
+import BottomNavigation from '../components/BottomNavigation';
 
 export default function MainLayout() {
   const [dbUser, setDbUser] = useState(null); 
   const user = auth.currentUser;
 
-  // Este efecto busca tu rol en la base de datos apenas entras
+  // ✅ ESCUCHA EN TIEMPO REAL DEL PERFIL DE USUARIO
   useEffect(() => {
-    const fetchUserRole = async () => {
-      if (user) {
-        const userRef = doc(db, 'users', user.uid);
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-          setDbUser(userSnap.data());
-        }
+    if (!user) return;
+
+    const userRef = doc(db, 'users', user.uid);
+    
+    // onSnapshot detecta cambios en readNotifications, role, etc., al instante
+    const unsubscribe = onSnapshot(userRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setDbUser(docSnap.data());
       }
-    };
-    fetchUserRole();
+    }, (error) => {
+      console.error("Error escuchando usuario:", error);
+    });
+
+    return () => unsubscribe();
   }, [user]);
 
   return (
     <div className="min-h-[100dvh] bg-slate-50 pb-20 font-outfit text-slate-800">
-      
-      {/* 🔥 IMPORTANTE: 
-          Hemos eliminado el <header> viejo de aquí.
-          Ahora cada página (Home, Calendar, etc.) usará <TopBar /> si lo necesita.
-          Esto elimina el "doble navbar".
-      */}
-
       <main className="max-w-md mx-auto animate-fade-in relative bg-slate-50">
+        {/* Pasamos dbUser a las páginas hijas por si lo necesitan */}
         <Outlet context={{ dbUser }} /> 
       </main>
 
-      {/* ✅ CAMBIO: Pasamos el usuario a la navegación */}
+      {/* ✅ La navegación ahora recibe datos que cambian en vivo */}
       <BottomNavigation dbUser={dbUser} />
-      
     </div>
   );
 }
