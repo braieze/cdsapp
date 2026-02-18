@@ -1,18 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase';
-import { doc, getDoc, updateDoc, collection, getDocs, deleteDoc, serverTimestamp } from 'firebase/firestore'; 
-import { X, Calendar, Clock, MapPin, Save, Trash2, Plus, ChevronDown, Users, CheckCircle, Edit3, CheckSquare, Search, Download, HelpCircle, Loader2, UserCheck, ChevronRight } from 'lucide-react';
+import { doc, getDoc, updateDoc, collection, getDocs, deleteDoc } from 'firebase/firestore'; 
+import { X, Calendar, Clock, MapPin, Save, Trash2, Plus, ChevronDown, Users, CheckCircle, Edit3, CheckSquare, Search, Download, HelpCircle, Loader2, UserCheck, Check, Info, AlertCircle } from 'lucide-react';
 import { EVENT_TYPES } from '../utils/eventTypes';
 import { format, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
-import html2canvas from 'html2canvas'; // ✅ Para captura de PDF
-import jsPDF from 'jspdf'; // ✅ Para generación de PDF
+import html2canvas from 'html2canvas'; 
+import jsPDF from 'jspdf'; 
 
 export default function EventDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const reportRef = useRef(); // Referencia para el PDF
+  const reportRef = useRef(); 
   const [event, setEvent] = useState(null);
   const [users, setUsers] = useState([]); 
   const [loading, setLoading] = useState(true);
@@ -26,12 +26,14 @@ export default function EventDetails() {
   const [personSearchTerm, setPersonSearchTerm] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [toast, setToast] = useState(null); // ✅ Estado de Toast corregido
+
+  // ✅ ESTADO DE TOAST DECLARADO CORRECTAMENTE
+  const [toast, setToast] = useState(null);
 
   const currentUser = auth.currentUser;
   const myUid = currentUser?.uid;
 
-  // Limpiador de Toasts
+  // ✅ LIMPIADOR DE TOASTS (Evita fugas de memoria y errores de referencia)
   useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => setToast(null), 3000);
@@ -62,13 +64,16 @@ export default function EventDetails() {
         } else {
           navigate('/calendario');
         }
-      } catch (error) { console.error(error); } finally { setLoading(false); }
+      } catch (error) { 
+        console.error(error); 
+        setToast({ message: "Error al cargar datos", type: "error" });
+      } finally { setLoading(false); }
     };
     fetchData();
   }, [id, navigate, currentUser]);
 
-  // ✅ DESCARGA DE PDF DIRECTA (ESTILO CREDENCIAL)
-  const handleDownloadPDF = async () => {
+  // ✅ FUNCIONALIDAD: DESCARGA DE PDF DIRECTA
+  const downloadPDF = async () => {
     if (!reportRef.current) return;
     setIsDownloading(true);
     try {
@@ -78,15 +83,14 @@ export default function EventDetails() {
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`Cronograma-${event.title}.pdf`);
+      pdf.save(`Agenda-${event.title}-${format(new Date(), 'dd-MM')}.pdf`);
       setToast({ message: "PDF Descargado", type: "success" });
     } catch (e) { 
-      console.error(e); 
       setToast({ message: "Error al generar PDF", type: "error" });
     } finally { setIsDownloading(false); }
   };
 
-  // ✅ BLINDAJE: REVISAR DISPONIBILIDAD
+  // ✅ BLINDAJE: ¿ESTÁ YA SELECCIONADO EN ESTE EVENTO?
   const isUserTaken = (name) => {
     return Object.values(assignments).flat().includes(name);
   };
@@ -97,14 +101,22 @@ export default function EventDetails() {
       const currentAssigned = Object.values(newAssignments).flat();
       const newlyAdded = currentAssigned.filter(name => !oldAssigned.includes(name));
       if (newlyAdded.length === 0) return;
-      const targetTokens = users.filter(u => newlyAdded.includes(u.displayName) && u.fcmTokens).flatMap(u => u.fcmTokens);
+      const targetTokens = users
+        .filter(u => newlyAdded.includes(u.displayName) && u.fcmTokens)
+        .flatMap(u => u.fcmTokens);
       if (targetTokens.length === 0) return;
       const BACKEND_URL = "https://backend-notificaciones-mceh.onrender.com/send-notification";
       await fetch(BACKEND_URL, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "📍 Nueva tarea asignada", body: `Se te asignó un servicio en: ${event.title}`, tokens: [...new Set(targetTokens)], url: "/servicios" })
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "📍 Nueva tarea asignada",
+          body: `Se te asignó un servicio en: ${event.title}`,
+          tokens: [...new Set(targetTokens)],
+          url: "/servicios"
+        })
       });
-    } catch (error) { console.error(error); }
+    } catch (error) { console.error("Error notificando equipo:", error); }
   };
 
   const handleSaveAssignments = async () => {
@@ -113,9 +125,13 @@ export default function EventDetails() {
       await updateDoc(doc(db, 'events', id), { assignments });
       notifyNewAssignments(assignments);
       setEvent(prev => ({ ...prev, assignments }));
-      setIsEditing(false);
       setToast({ message: "Equipo guardado y notificado", type: "success" });
-    } catch (error) { setToast({ message: "Error al guardar", type: "error" }); } finally { setIsSaving(false); }
+      setIsEditing(false);
+    } catch (error) { 
+      setToast({ message: "Error al guardar cambios", type: "error" });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleToggleTask = async (taskIndex) => {
@@ -124,6 +140,14 @@ export default function EventDetails() {
     newTasks[taskIndex].completedBy = newTasks[taskIndex].completed ? currentUser?.displayName : null;
     await updateDoc(doc(db, 'events', id), { checklist: newTasks });
     setEvent(prev => ({ ...prev, checklist: newTasks }));
+  };
+
+  const handleToggleFastingDate = async (dateStr) => {
+    const currentFasters = assignments[dateStr] || [];
+    const newFasters = currentFasters.includes(myUid) ? currentFasters.filter(uid => uid !== myUid) : [...currentFasters, myUid];
+    const newAssignments = { ...assignments, [dateStr]: newFasters };
+    setAssignments(newAssignments);
+    await updateDoc(doc(db, 'events', id), { assignments: newAssignments });
   };
 
   const handleDelete = async () => {
@@ -182,12 +206,11 @@ export default function EventDetails() {
   return (
     <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-fade-in overflow-hidden font-outfit">
       
-      {/* BANNER SUPERIOR */}
       <div className={`relative pt-12 pb-24 px-6 ${isAyuno ? 'bg-rose-500' : 'bg-slate-900'} print:hidden flex-shrink-0`}>
         <div className="absolute top-4 left-4 right-4 flex justify-between items-center">
             <button onClick={() => navigate('/calendario')} className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white"><X size={24} /></button>
             <div className="flex gap-2">
-                <button onClick={handleDownloadPDF} disabled={isDownloading} className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white">
+                <button onClick={downloadPDF} disabled={isDownloading} className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white">
                   {isDownloading ? <Loader2 size={20} className="animate-spin" /> : <Download size={20}/>}
                 </button>
                 {canEdit && (
@@ -207,7 +230,6 @@ export default function EventDetails() {
         <div className="absolute -bottom-1 left-0 right-0 h-12 bg-white rounded-t-[40px]"></div>
       </div>
 
-      {/* CUERPO - Capturado por referencia para el PDF */}
       <div ref={reportRef} className="flex-1 overflow-y-auto bg-white px-6 pb-24">
         <div className="max-w-xl mx-auto space-y-6">
             <div className="flex flex-wrap gap-2 justify-center mt-4">
@@ -222,46 +244,109 @@ export default function EventDetails() {
                 )}
             </div>
 
-            {/* SECCIONES SEGÚN IMÁGENES 2, 3, 4, 5 */}
-            <div className="space-y-6 pb-20">
-              {getStructure(event.type).map((section, idx) => (
-                  <div key={idx} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-                      <div className="bg-slate-50/50 px-5 py-3 border-b border-slate-100 flex items-center justify-between">
-                          <h3 className="font-black text-slate-700 text-[11px] uppercase tracking-widest">{section.section}</h3>
-                          <div className="w-1.5 h-1.5 rounded-full bg-brand-500"></div>
-                      </div>
-                      <div className="p-5 space-y-5">
-                          {section.roles.map(role => {
-                              const assigned = assignments[role.key] || [];
-                              const RoleIcon = role.icon;
-                              return (
-                                  <div key={role.key}>
-                                      <label className="text-[10px] font-black text-slate-400 uppercase mb-3 flex items-center gap-2 tracking-tighter">
-                                          <RoleIcon size={12} className="text-brand-500"/> {role.label}
-                                      </label>
-                                      <div className="flex flex-wrap gap-2">
-                                          {assigned.length > 0 ? assigned.map((p, i) => (
-                                              <span key={i} className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${isEditing ? 'bg-brand-50 border-brand-200 text-brand-700' : 'bg-slate-50 border-slate-100 text-slate-700'}`}>
-                                                  {p}
-                                                  {!isEditing && <span>{getStatusIcon(p)}</span>}
-                                                  {isEditing && <button onClick={() => handleRemovePersonRole(role.key, p)} className="p-0.5 bg-brand-200 rounded-full"><X size={12}/></button>}
-                                              </span>
-                                          )) : <p className="text-[10px] text-slate-300 italic font-bold ml-2">Vacante</p>}
-                                          {isEditing && (role.type === 'multi' || assigned.length === 0) && (
-                                              <button onClick={() => openPersonSelector(role.key, role)} className="w-full mt-2 py-3 border-2 border-dashed border-slate-200 rounded-2xl text-[10px] font-black text-slate-400 hover:bg-slate-50 transition-all uppercase">+ Añadir</button>
-                                          )}
+            {event.description && (
+                <div className="bg-slate-50/50 p-6 rounded-3xl border border-slate-100">
+                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                        <MapPin size={14} className="text-brand-500"/> Información adicional
+                    </h3>
+                    <p className="text-slate-800 text-sm leading-relaxed whitespace-pre-wrap font-medium">{event.description}</p>
+                </div>
+            )}
+            
+            {isAyuno ? (
+                <div className="space-y-3 pb-10">
+                    <h3 className="font-black text-slate-800 text-lg flex items-center gap-2">📅 Calendario de Ayuno</h3>
+                    {getAyunoDays().map((day) => {
+                        const dateStr = format(day, 'yyyy-MM-dd');
+                        const fasters = assignments[dateStr] || [];
+                        const isJoined = fasters.includes(myUid);
+                        const isExpanded = expandedDay === dateStr;
+                        return (
+                            <div key={dateStr} className="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+                                <div className="p-4 flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center border ${isJoined ? 'bg-rose-500 border-rose-600 text-white' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>
+                                            <span className="text-[8px] font-bold uppercase">{format(day, 'MMM', {locale: es})}</span>
+                                            <span className="text-sm font-black">{format(day, 'dd')}</span>
+                                        </div>
+                                        <div>
+                                            <h4 className="font-bold text-slate-700 text-sm capitalize">{format(day, 'EEEE', {locale: es})}</h4>
+                                            <button onClick={() => setExpandedDay(isExpanded ? null : dateStr)} className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                                                <Users size={12}/> {fasters.length} hermanos <ChevronDown size={10} className={isExpanded ? 'rotate-180' : ''}/>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => handleToggleFastingDate(dateStr)} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${isJoined ? 'bg-rose-100 text-rose-600' : 'bg-white border border-slate-200 text-slate-500'}`}>{isJoined ? 'Anotado ✓' : 'Sumarme'}</button>
+                                </div>
+                                {isExpanded && fasters.length > 0 && (
+                                    <div className="bg-slate-50 px-4 py-3 border-t border-slate-100 flex flex-wrap gap-2">
+                                        {fasters.map(uid => {
+                                            const u = users.find(user => user.id === uid);
+                                            return <span key={uid} className="text-[10px] bg-white border border-slate-200 px-2 py-1 rounded-lg text-slate-600 font-bold shadow-sm">{u?.displayName || 'Hermano'}</span>
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        )
+                    })}
+                </div>
+            ) : hasChecklist ? (
+                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden mb-10">
+                    <div className="bg-cyan-50 px-5 py-3 border-b border-cyan-100 flex items-center gap-2">
+                        <h3 className="font-black text-cyan-700 text-[11px] uppercase tracking-widest">Lista de Tareas</h3>
+                    </div>
+                    {event.checklist?.map((task, idx) => (
+                        <div key={idx} onClick={() => handleToggleTask(idx)} className="p-4 flex items-start gap-3 cursor-pointer hover:bg-slate-50 border-b border-slate-50 last:border-0">
+                            <div className={`mt-0.5 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${task.completed ? 'bg-cyan-500 border-cyan-500' : 'border-slate-300'}`}>
+                                {task.completed && <CheckSquare size={16} className="text-white" />}
+                            </div>
+                            <div className="flex-1">
+                                <p className={`text-sm font-bold ${task.completed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{task.text}</p>
+                                {task.completed && task.completedBy && <p className="text-[10px] text-cyan-600 font-bold mt-1 uppercase">✓ {task.completedBy}</p>}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div className="space-y-6 pb-20">
+                  {getStructure(event.type).map((section, idx) => (
+                      <div key={idx} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                          <div className="bg-slate-50/50 px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+                              <h3 className="font-black text-slate-700 text-[11px] uppercase tracking-widest">{section.section}</h3>
+                              <div className="w-1.5 h-1.5 rounded-full bg-brand-500"></div>
+                          </div>
+                          <div className="p-5 space-y-5">
+                              {section.roles.map(role => {
+                                  const assigned = assignments[role.key] || [];
+                                  const RoleIcon = role.icon;
+                                  return (
+                                      <div key={role.key}>
+                                          <label className="text-[10px] font-black text-slate-400 uppercase mb-3 flex items-center gap-2 tracking-tighter">
+                                              <RoleIcon size={12} className="text-brand-500"/> {role.label}
+                                          </label>
+                                          <div className="flex flex-wrap gap-2">
+                                              {assigned.length > 0 ? assigned.map((p, i) => (
+                                                  <span key={i} className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${isEditing ? 'bg-brand-50 border-brand-200 text-brand-700' : 'bg-slate-50 border-slate-100 text-slate-700'}`}>
+                                                      {p}
+                                                      {!isEditing && <span>{getStatusIcon(p)}</span>}
+                                                      {isEditing && <button onClick={() => handleRemovePersonRole(role.key, p)} className="p-0.5 bg-brand-200 rounded-full"><X size={12}/></button>}
+                                                  </span>
+                                              )) : <p className="text-[10px] text-slate-300 italic font-bold">Vacante</p>}
+                                              {isEditing && (role.type === 'multi' || assigned.length === 0) && (
+                                                  <button onClick={() => openPersonSelector(role.key, role)} className="w-full mt-2 py-3 border-2 border-dashed border-slate-200 rounded-2xl text-[10px] font-black text-slate-400 hover:bg-slate-50 transition-all uppercase">+ Añadir</button>
+                                              )}
+                                          </div>
                                       </div>
-                                  </div>
-                              );
-                          })}
+                                  );
+                              })}
+                          </div>
                       </div>
-                  </div>
-              ))}
-            </div>
+                  ))}
+                </div>
+            )}
         </div>
       </div>
 
-      {/* FOOTER EDICIÓN */}
       {isEditing && (
           <div className="p-4 bg-white border-t border-slate-100 absolute bottom-0 w-full shadow-2xl flex gap-3 z-50 animate-slide-up">
               <button onClick={handleDelete} className="p-4 bg-red-50 text-red-500 rounded-2xl"><Trash2 size={24}/></button>
@@ -272,7 +357,6 @@ export default function EventDetails() {
           </div>
       )}
 
-      {/* ✅ MODAL SELECTOR CON BLINDAJE Y LISTA COMPLETA */}
       {isSelectorOpen && (
           <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in" onClick={() => setIsSelectorOpen(false)}>
               <div className="bg-white w-full sm:max-w-sm rounded-t-[40px] sm:rounded-[40px] max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
@@ -288,25 +372,28 @@ export default function EventDetails() {
                   <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-white">
                       {users.filter(u => {
                           const matchesSearch = (u.displayName || '').toLowerCase().includes(personSearchTerm.toLowerCase());
-                          return matchesSearch; // ✅ Siempre muestra lista completa, no vacía
+                          const userArea = (u.area || u.ministerio || '').toLowerCase();
+                          const roleLabel = (activeRoleConfig?.label || '').toLowerCase();
+                          const ministryMatches = roleLabel.includes(userArea) && userArea !== 'ninguna';
+                          return personSearchTerm ? matchesSearch : (matchesSearch && ministryMatches || true);
                       }).map(u => {
-                          const isTaken = isUserTaken(u.displayName);
-                          const isHere = (assignments[activeRoleKey] || []).includes(u.displayName);
+                          const isTaken = isUserAlreadyAssigned(u.displayName);
+                          const isAlreadySelectedInThisRole = (assignments[activeRoleKey] || []).includes(u.displayName);
 
                           return (
                               <button 
                                 key={u.id} 
-                                disabled={isTaken && !isHere}
+                                disabled={isTaken && !isAlreadySelectedInThisRole}
                                 onClick={() => handleSelectPersonFromModal(u.displayName)} 
-                                className={`w-full flex items-center gap-4 p-4 rounded-[28px] border-2 transition-all text-left relative ${isHere ? 'bg-brand-50 border-brand-500' : isTaken ? 'bg-slate-50 border-transparent opacity-40 grayscale cursor-not-allowed' : 'bg-white border-slate-50 hover:border-brand-100 active:scale-95'}`}
+                                className={`w-full flex items-center gap-4 p-4 rounded-[28px] border-2 transition-all text-left relative ${isAlreadySelectedInThisRole ? 'bg-brand-50 border-brand-500 shadow-md' : isTaken ? 'bg-slate-50 border-transparent opacity-40 grayscale cursor-not-allowed' : 'bg-white border-slate-50 hover:border-brand-100 active:scale-95 shadow-sm'}`}
                               >
                                   <div className="w-14 h-14 rounded-[22px] bg-slate-100 overflow-hidden border-2 border-white shadow-sm flex items-center justify-center font-black text-slate-400 relative">
                                       {u.photoURL ? <img src={u.photoURL} className="w-full h-full object-cover" alt="User"/> : (u.displayName || '?')[0].toUpperCase()}
-                                      {isHere && <div className="absolute inset-0 bg-brand-500/20 flex items-center justify-center"><UserCheck size={24} className="text-brand-600 animate-scale-in"/></div>}
+                                      {isAlreadySelectedInThisRole && <div className="absolute inset-0 bg-brand-500/20 flex items-center justify-center"><UserCheck size={24} className="text-brand-600 animate-scale-in"/></div>}
                                   </div>
                                   <div className="flex-1">
                                       <p className="font-black text-slate-800 text-sm uppercase tracking-tight leading-none">{u.displayName}</p>
-                                      {isTaken && !isHere ? (
+                                      {isTaken && !isAlreadySelectedInThisRole ? (
                                           <p className="text-[8px] text-rose-600 font-black uppercase tracking-widest mt-1.5 animate-pulse">YA TIENE UN SERVICIO ASIGNADO</p>
                                       ) : (
                                           <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1.5">{u.area || u.ministerio || 'Miembro'}</p>
@@ -317,22 +404,27 @@ export default function EventDetails() {
                           );
                       })}
                   </div>
-                  <div className="p-4 bg-white border-t shrink-0">
-                      <button onClick={() => setIsSelectorOpen(false)} className="w-full bg-slate-900 text-white py-4 rounded-[25px] font-black text-xs uppercase tracking-widest shadow-xl">Confirmar</button>
+                  <div className="p-6 bg-white border-t shrink-0">
+                      <button onClick={() => setIsSelectorOpen(false)} className="w-full bg-slate-900 text-white py-4 rounded-[28px] font-black text-[10px] uppercase tracking-[0.2em] shadow-xl active:scale-95 transition-all">Confirmar Selección</button>
                   </div>
               </div>
           </div>
       )}
 
-      {/* SISTEMA DE TOASTS CORREGIDO */}
+      {/* ✅ RENDERIZADO DEL TOAST (Usa variables declaradas en el estado) */}
       {toast && (
         <div className="fixed bottom-24 left-6 right-6 z-[400] animate-slide-up">
-          <div className={`flex items-center gap-3 px-6 py-4 rounded-[25px] shadow-2xl border ${toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-400' : toast.type === 'error' ? 'bg-rose-600 text-white border-rose-400' : 'bg-slate-900 text-white border-slate-700'}`}>
-            {toast.type === 'success' ? <Check size={18}/> : <Info size={18}/>}
-            <span className="text-[10px] font-black uppercase tracking-widest">{toast.message}</span>
+          <div className={`flex items-center gap-4 px-8 py-5 rounded-[30px] shadow-2xl border-2 ${toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-400' : 'bg-slate-900 text-white border-slate-700'}`}>
+            {toast.type === 'success' ? <CheckCircle size={24}/> : <AlertCircle size={24}/>}
+            <span className="text-[11px] font-black uppercase tracking-widest">{toast.message}</span>
           </div>
         </div>
       )}
     </div>
   );
+}
+
+// Helper para validar duplicados
+function isUserAlreadyAssigned(name, assignments) {
+  return Object.values(assignments).flat().includes(name);
 }
