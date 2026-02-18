@@ -18,7 +18,7 @@ export default function EventDetails() {
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState(null); 
   const [isEditing, setIsEditing] = useState(false); 
-  const [assignments, setAssignments] = useState({}); // Inicializado como objeto vacío
+  const [assignments, setAssignments] = useState({}); 
   const [expandedDay, setExpandedDay] = useState(null);
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const [activeRoleKey, setActiveRoleKey] = useState(null); 
@@ -26,11 +26,14 @@ export default function EventDetails() {
   const [personSearchTerm, setPersonSearchTerm] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+
+  // ✅ ESTADO DE TOAST DECLARADO CORRECTAMENTE
   const [toast, setToast] = useState(null);
 
   const currentUser = auth.currentUser;
   const myUid = currentUser?.uid;
 
+  // ✅ LIMPIADOR DE TOASTS
   useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => setToast(null), 3000);
@@ -57,12 +60,13 @@ export default function EventDetails() {
         if (eventSnap.exists()) {
           const data = eventSnap.data();
           setEvent({ id: eventSnap.id, ...data });
-          setAssignments(data.assignments || {}); // Asegura que assignments no sea null
+          setAssignments(data.assignments || {});
         } else {
           navigate('/calendario');
         }
       } catch (error) { 
         console.error(error); 
+        setToast({ message: "Error al cargar datos", type: "error" });
       } finally { setLoading(false); }
     };
     fetchData();
@@ -80,15 +84,15 @@ export default function EventDetails() {
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
       pdf.save(`Agenda-${event.title}-${format(new Date(), 'dd-MM')}.pdf`);
-      setToast({ message: "PDF Generado con éxito", type: "success" });
+      setToast({ message: "PDF Descargado", type: "success" });
     } catch (e) { 
-      setToast({ message: "Error al crear PDF", type: "error" });
+      setToast({ message: "Error al generar PDF", type: "error" });
     } finally { setIsDownloading(false); }
   };
 
-  // ✅ BLINDAJE CORREGIDO: Evita el error "Cannot convert undefined or null to object"
+  // ✅ BLINDAJE CORREGIDO (Protección contra null/undefined para evitar TypeError)
   const isUserTaken = (name) => {
-    if (!assignments) return false; // Protección contra nulos
+    if (!assignments) return false;
     return Object.values(assignments).flat().includes(name);
   };
 
@@ -100,7 +104,8 @@ export default function EventDetails() {
       if (newlyAdded.length === 0) return;
       const targetTokens = users.filter(u => newlyAdded.includes(u.displayName) && u.fcmTokens).flatMap(u => u.fcmTokens);
       if (targetTokens.length === 0) return;
-      await fetch("https://backend-notificaciones-mceh.onrender.com/send-notification", {
+      const BACKEND_URL = "https://backend-notificaciones-mceh.onrender.com/send-notification";
+      await fetch(BACKEND_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -110,7 +115,7 @@ export default function EventDetails() {
           url: "/servicios"
         })
       });
-    } catch (error) { console.error(error); }
+    } catch (error) { console.error("Error notificando equipo:", error); }
   };
 
   const handleSaveAssignments = async () => {
@@ -119,7 +124,7 @@ export default function EventDetails() {
       await updateDoc(doc(db, 'events', id), { assignments });
       notifyNewAssignments(assignments);
       setEvent(prev => ({ ...prev, assignments }));
-      setToast({ message: "Asignaciones guardadas", type: "success" });
+      setToast({ message: "Cambios guardados con éxito", type: "success" });
       setIsEditing(false);
     } catch (error) { 
       setToast({ message: "Error al guardar", type: "error" });
@@ -211,12 +216,12 @@ export default function EventDetails() {
                 <TypeConfig.icon size={40} className={isAyuno ? 'text-rose-500' : 'text-slate-800'} />
             </div>
             <span className="text-[10px] font-black tracking-widest uppercase text-white/60 mb-1">{TypeConfig.label}</span>
-            <h1 className="text-2xl font-black text-white leading-tight px-4">{event.title}</h1>
+            <h1 className="text-2xl font-black text-white leading-tight px-4 uppercase">{event.title}</h1>
         </div>
         <div className="absolute -bottom-1 left-0 right-0 h-12 bg-white rounded-t-[40px]"></div>
       </div>
 
-      {/* CUERPO */}
+      {/* CUERPO - CAPTURADO PARA PDF */}
       <div ref={reportRef} className="flex-1 overflow-y-auto bg-white px-6 pb-24">
         <div className="max-w-xl mx-auto space-y-6">
             <div className="flex flex-wrap gap-2 justify-center mt-4">
@@ -304,12 +309,12 @@ export default function EventDetails() {
                                           </label>
                                           <div className="flex flex-wrap gap-2">
                                               {assigned.length > 0 ? assigned.map((p, i) => (
-                                                  <span key={i} className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border ${isEditing ? 'bg-brand-50 border-brand-200 text-brand-700' : 'bg-slate-50 border-slate-100 text-slate-700'}`}>
+                                                  <span key={i} className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${isEditing ? 'bg-brand-50 border-brand-200 text-brand-700' : 'bg-slate-50 border-slate-100 text-slate-700'}`}>
                                                       {p}
                                                       {!isEditing && <span>{getStatusIcon(p)}</span>}
-                                                      {isEditing && <button onClick={() => handleRemovePersonRole(role.key, p)} className="p-0.5 bg-brand-200 rounded-full"><X size={12}/></button>}
+                                                      {isEditing && <button onClick={() => handleRemovePersonRole(role.key, p)} className="p-0.5 bg-brand-200 rounded-full hover:bg-brand-300"><X size={12}/></button>}
                                                   </span>
-                                              )) : <p className="text-[10px] text-slate-300 italic font-bold">Vacante</p>}
+                                              )) : <p className="text-[10px] text-slate-300 italic font-bold ml-2">Vacante</p>}
                                               {isEditing && (role.type === 'multi' || assigned.length === 0) && (
                                                   <button onClick={() => openPersonSelector(role.key, role)} className="w-full mt-2 py-3 border-2 border-dashed border-slate-200 rounded-2xl text-[10px] font-black text-slate-400 hover:bg-slate-50 transition-all uppercase">+ Añadir</button>
                                               )}
@@ -328,70 +333,91 @@ export default function EventDetails() {
       {/* FOOTER EDICIÓN */}
       {isEditing && (
           <div className="p-4 bg-white border-t border-slate-100 absolute bottom-0 w-full shadow-2xl flex gap-3 z-50 animate-slide-up">
-              <button onClick={async () => { if(window.confirm("¿Eliminar?")) { await deleteDoc(doc(db, 'events', id)); navigate('/calendario'); } }} className="p-4 bg-red-50 text-red-500 rounded-2xl"><Trash2 size={24}/></button>
-              <button onClick={handleSaveAssignments} disabled={isSaving} className="flex-1 bg-slate-900 text-white font-black py-4 rounded-2xl shadow-xl flex items-center justify-center gap-2 uppercase text-xs">
+              <button onClick={async () => { if(window.confirm("¿Eliminar?")) { await deleteDoc(doc(db, 'events', id)); navigate('/calendario'); } }} className="p-4 bg-red-50 text-red-500 rounded-2xl hover:bg-red-100 transition-colors"><Trash2 size={24}/></button>
+              <button onClick={handleSaveAssignments} disabled={isSaving} className="flex-1 bg-slate-900 text-white font-black py-4 rounded-2xl shadow-xl flex items-center justify-center gap-2 uppercase text-xs active:scale-95 transition-all">
                   {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18}/>}
                   {isSaving ? 'Guardando...' : 'Guardar Equipo'}
               </button>
           </div>
       )}
 
-      {/* ✅ MODAL SELECTOR CON BLINDAJE Y FILTRO */}
+      {/* ✅ MODAL SELECTOR CON BLINDAJE Y FILTRO POR MINISTERIO */}
       {isSelectorOpen && (
           <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in" onClick={() => setIsSelectorOpen(false)}>
               <div className="bg-white w-full sm:max-w-sm rounded-t-[40px] sm:rounded-[40px] max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
                   <div className="p-6 border-b flex justify-between items-center bg-white shrink-0">
-                      <h3 className="font-black text-slate-800 text-sm uppercase">Asignar a {activeRoleConfig?.label}</h3>
-                      <button onClick={() => setIsSelectorOpen(false)} className="p-2 bg-slate-100 rounded-full"><X size={20}/></button>
+                      <h3 className="font-black text-slate-800 text-sm uppercase tracking-widest">Asignar a {activeRoleConfig?.label}</h3>
+                      <button onClick={() => setIsSelectorOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-400 hover:bg-slate-200 transition-colors"><X size={20}/></button>
                   </div>
                   <div className="p-4 bg-slate-50 shrink-0">
-                      <div className="bg-white border rounded-2xl px-4 py-3 flex items-center gap-2 shadow-sm">
+                      <div className="bg-white border rounded-2xl px-4 py-3 flex items-center gap-2 shadow-sm focus-within:border-brand-500 transition-all">
                           <Search size={18} className="text-slate-400"/><input type="text" placeholder="Buscar hermano..." className="w-full text-sm font-bold outline-none" value={personSearchTerm} onChange={e => setPersonSearchTerm(e.target.value)}/>
                       </div>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-white">
+                  <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-white no-scrollbar">
                       {users.filter(u => {
                           const matchesSearch = (u.displayName || '').toLowerCase().includes(personSearchTerm.toLowerCase());
-                          const userArea = (u.area || u.ministerio || '').toLowerCase();
+                          if (personSearchTerm) return matchesSearch;
+
+                          // ✅ FILTROS SOLICITADOS POR MINISTERIO
                           const roleLabel = (activeRoleConfig?.label || '').toLowerCase();
-                          const ministryMatches = roleLabel.includes(userArea) && userArea !== 'ninguna';
-                          return personSearchTerm ? matchesSearch : (matchesSearch && ministryMatches || true);
+                          const userArea = (u.area || u.ministerio || '').toLowerCase();
+                          const userRoleType = (u.role || '').toLowerCase();
+
+                          // Pastoral: Pastores y Líderes
+                          if (roleLabel.includes('predica') || roleLabel.includes('oración') || roleLabel.includes('ofrenda')) {
+                              return userRoleType === 'pastor' || userRoleType === 'lider';
+                          }
+                          // Alabanza: Área Alabanza
+                          if (roleLabel.includes('alabanza') || roleLabel.includes('voces') || roleLabel.includes('teclado') || roleLabel.includes('guitarra') || roleLabel.includes('bajo') || roleLabel.includes('batería')) {
+                              return userArea === 'alabanza';
+                          }
+                          // Operativo: Servidores, Pastores y Líderes
+                          if (roleLabel.includes('bienvenida') || roleLabel.includes('pasillo') || roleLabel.includes('seguridad') || roleLabel.includes('baños') || roleLabel.includes('altar') || roleLabel.includes('asistencia')) {
+                              return userRoleType === 'servidor' || userRoleType === 'pastor' || userRoleType === 'lider';
+                          }
+                          // Multimedia: Área Multimedia
+                          if (roleLabel.includes('multimedia') || roleLabel.includes('proyección') || roleLabel.includes('transmisión')) {
+                              return userArea === 'multimedia';
+                          }
+
+                          return true; // Fallback para mostrar todos
                       }).map(u => {
                           const isTaken = isUserTaken(u.displayName);
-                          const isAlreadySelected = (assignments[activeRoleKey] || []).includes(u.displayName);
+                          const isAlreadyInThisRole = (assignments[activeRoleKey] || []).includes(u.displayName);
 
                           return (
                               <button 
                                 key={u.id} 
-                                disabled={isTaken && !isAlreadySelected}
+                                disabled={isTaken && !isAlreadyInThisRole}
                                 onClick={() => handleSelectPersonFromModal(u.displayName)} 
-                                className={`w-full flex items-center gap-4 p-4 rounded-[28px] border-2 transition-all text-left relative ${isAlreadySelected ? 'bg-brand-50 border-brand-500' : isTaken ? 'bg-slate-50 border-transparent opacity-40 grayscale cursor-not-allowed' : 'bg-white border-slate-50 hover:border-brand-100'}`}
+                                className={`w-full flex items-center gap-4 p-4 rounded-[28px] border-2 transition-all text-left relative ${isAlreadyInThisRole ? 'bg-brand-50 border-brand-500 shadow-md' : isTaken ? 'bg-slate-50 border-transparent opacity-40 grayscale cursor-not-allowed' : 'bg-white border-slate-100 hover:border-brand-200'}`}
                               >
-                                  <div className="w-14 h-14 rounded-[22px] bg-slate-100 overflow-hidden border-2 border-white shadow-sm flex items-center justify-center font-black text-slate-400 relative">
+                                  <div className="w-14 h-14 rounded-[22px] bg-slate-100 overflow-hidden border-2 border-white shadow-sm flex items-center justify-center font-black text-slate-400 relative shrink-0">
                                       {u.photoURL ? <img src={u.photoURL} className="w-full h-full object-cover" alt="User"/> : (u.displayName || '?')[0].toUpperCase()}
-                                      {isAlreadySelected && <div className="absolute inset-0 bg-brand-500/20 flex items-center justify-center"><UserCheck size={24} className="text-brand-600 animate-scale-in"/></div>}
+                                      {isAlreadyInThisRole && <div className="absolute inset-0 bg-brand-500/20 flex items-center justify-center"><UserCheck size={24} className="text-brand-600 animate-scale-in"/></div>}
                                   </div>
-                                  <div className="flex-1">
-                                      <p className="font-black text-slate-800 text-sm uppercase">{u.displayName}</p>
-                                      {isTaken && !isAlreadySelected ? (
-                                          <p className="text-[8px] text-rose-600 font-black uppercase tracking-widest mt-1.5">YA TIENE UN SERVICIO ASIGNADO</p>
+                                  <div className="flex-1 min-w-0">
+                                      <p className="font-black text-slate-800 text-sm uppercase truncate tracking-tight">{u.displayName}</p>
+                                      {isTaken && !isAlreadyInThisRole ? (
+                                          <p className="text-[8px] text-rose-600 font-black uppercase tracking-widest mt-1.5 animate-pulse">YA TIENE UN SERVICIO ASIGNADO</p>
                                       ) : (
-                                          <p className="text-[9px] text-slate-400 font-bold uppercase mt-1.5">{u.area || u.ministerio || 'Miembro'}</p>
+                                          <p className="text-[9px] text-slate-400 font-bold uppercase mt-1.5 truncate">{u.area || u.ministerio || 'Miembro'}</p>
                                       )}
                                   </div>
-                                  {!isTaken && <Plus size={18} className="text-slate-300"/>}
+                                  {!isTaken && <Plus size={18} className="text-slate-300 shrink-0"/>}
                               </button>
                           );
                       })}
                   </div>
                   <div className="p-4 bg-white border-t shrink-0">
-                      <button onClick={() => setIsSelectorOpen(false)} className="w-full bg-slate-900 text-white py-4 rounded-[25px] font-black text-xs uppercase shadow-xl">Confirmar</button>
+                      <button onClick={() => setIsSelectorOpen(false)} className="w-full bg-slate-900 text-white py-4 rounded-[25px] font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 transition-all">Confirmar Selección</button>
                   </div>
               </div>
           </div>
       )}
 
-      {/* ✅ TOAST RENDERIZADO */}
+      {/* ✅ TOAST RENDERIZADO (Referencia segura al estado) */}
       {toast && (
         <div className="fixed bottom-24 left-6 right-6 z-[400] animate-slide-up">
           <div className={`flex items-center gap-4 px-8 py-5 rounded-[30px] shadow-2xl border-2 ${toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-400' : 'bg-slate-900 text-white border-slate-700'}`}>
