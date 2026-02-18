@@ -26,15 +26,12 @@ export default function ServiceDetails() {
   const [userRole, setUserRole] = useState(null);
   const [allUsers, setAllUsers] = useState([]);
   
-  // Archivos y Checklist
   const [selectedFile, setSelectedFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [isSending, setIsSending] = useState(false);
   const [viewingImage, setViewingImage] = useState(null); 
   const [showChecklistCreator, setShowChecklistCreator] = useState(false);
   const [tempTasks, setTempTasks] = useState(['']);
-
-  // Interfaz
   const [showReadersId, setShowReadersId] = useState(null);
   const [hideReceipts, setHideReceipts] = useState(false);
   
@@ -45,7 +42,6 @@ export default function ServiceDetails() {
   const CLOUD_NAME = "djmkggzjp"; 
   const UPLOAD_PRESET = "ml_default";
 
-  // 1. CARGA DE DATOS
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -61,7 +57,6 @@ export default function ServiceDetails() {
     fetchData();
   }, [id, navigate, currentUser.uid]);
 
-  // 2. CHAT EN TIEMPO REAL
   useEffect(() => {
     const q = query(collection(db, `events/${id}/notes`), orderBy('createdAt', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -77,7 +72,16 @@ export default function ServiceDetails() {
     return () => unsubscribe();
   }, [id, currentUser.uid]);
 
-  // 3. FUNCIONES
+  // ✅ NAVEGACIÓN INTERNA: Ir al mensaje original
+  const scrollToMessage = (msgId) => {
+    const element = document.getElementById(`msg-${msgId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      element.classList.add('ring-4', 'ring-brand-500/30', 'transition-all');
+      setTimeout(() => element.classList.remove('ring-4', 'ring-brand-500/30'), 2000);
+    }
+  };
+
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
     if (file) { setSelectedFile(file); setImagePreview(URL.createObjectURL(file)); }
@@ -89,7 +93,7 @@ export default function ServiceDetails() {
       const blob = await response.blob();
       const link = document.createElement('a');
       link.href = window.URL.createObjectURL(blob);
-      link.download = `Nota-${event.title}.jpg`;
+      link.download = `Referencia-${event.title}.jpg`;
       link.click();
     } catch (e) { alert("Error"); }
   };
@@ -109,12 +113,12 @@ export default function ServiceDetails() {
       await fetch("https://backend-notificaciones-mceh.onrender.com/send-notification", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: userRole === 'pastor' ? `Nota del Pastor: ${event.title}` : `Mensaje de ${currentUser.displayName}`,
-          body: hasImage ? "📷 Imagen compartida" : hasChecklist ? "📋 Lista de tareas enviada" : text,
+          title: userRole === 'pastor' ? `Nota del Pastor: ${event.title}` : `${currentUser.displayName} en ${event.title}`,
+          body: hasImage ? "📷 Imagen enviada" : hasChecklist ? "📋 Lista de tareas" : text,
           tokens: unique, url: `/servicios/${id}`
         })
       });
-    } catch (e) { console.error("Error en noti:", e); }
+    } catch (e) { console.error(e); }
   };
 
   const handleSendMessage = async () => {
@@ -136,20 +140,16 @@ export default function ServiceDetails() {
         const tasks = tempTasks.filter(t => t.trim() !== '');
         if (tasks.length > 0) checklist = tasks.map(t => ({ text: t, completed: false }));
       }
-      const msgText = newMessage;
+      const txt = newMessage;
       await addDoc(collection(db, `events/${id}/notes`), {
-        text: msgText, image: imageUrl, checklist: checklist,
+        text: txt, image: imageUrl, checklist: checklist,
         sender: currentUser.displayName, uid: currentUser.uid,
         createdAt: serverTimestamp(), readBy: [currentUser.uid], isPinned: false
       });
-      sendChatNotification(msgText, !!imageUrl, !!checklist);
+      sendChatNotification(txt, !!imageUrl, !!checklist);
       setNewMessage(''); setSelectedFile(null); setImagePreview(null);
       setShowChecklistCreator(false); setTempTasks(['']);
     } catch (e) { console.error(e); } finally { setIsSending(false); }
-  };
-
-  const deleteMessage = async (msgId) => {
-    if (window.confirm("¿Eliminar este mensaje?")) await deleteDoc(doc(db, `events/${id}/notes`, msgId));
   };
 
   const togglePin = async (msgId, currentState) => {
@@ -165,13 +165,17 @@ export default function ServiceDetails() {
     await updateDoc(doc(db, `events/${id}/notes`, msgId), { checklist: newChecklist });
   };
 
+  const deleteMessage = async (msgId) => {
+    if (window.confirm("¿Eliminar este mensaje?")) await deleteDoc(doc(db, `events/${id}/notes`, msgId));
+  };
+
   const handleResponse = async (status) => {
     const eventRef = doc(db, 'events', id);
     await updateDoc(eventRef, { [`confirmations.${currentUser.displayName}`]: status, updatedAt: serverTimestamp() });
     setEvent(prev => ({ ...prev, confirmations: { ...prev.confirmations, [currentUser.displayName]: status } }));
   };
 
-  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-brand-600" /></div>;
+  if (loading) return <div className="h-screen flex items-center justify-center bg-white"><Loader2 className="animate-spin text-brand-600" /></div>;
 
   const myRole = Object.keys(event.assignments || {}).find(role => event.assignments[role].includes(currentUser.displayName));
   const myStatus = event.confirmations?.[currentUser.displayName];
@@ -180,19 +184,19 @@ export default function ServiceDetails() {
   const MessageContent = ({ m, isPinnedView = false }) => {
     const isMyMessage = m.uid === currentUser.uid;
     return (
-      <div className={`${isPinnedView ? '' : 'p-1 rounded-[22px] shadow-sm relative group'} ${!isPinnedView && (isMyMessage ? 'bg-amber-600 text-white rounded-tr-none' : 'bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200/40')}`}>
-        {m.image && <img src={m.image} onClick={() => setViewingImage(m.image)} className={`${isPinnedView ? 'w-12 h-12 rounded-lg' : 'w-full h-auto rounded-[18px]'} object-cover`} />}
+      <div className={`${isPinnedView ? 'w-full' : 'p-1 rounded-[22px] shadow-sm relative group'} ${!isPinnedView && (isMyMessage ? 'bg-amber-600 text-white rounded-tr-none' : 'bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200/40')}`}>
+        {m.image && <img src={m.image} onClick={(e) => { e.stopPropagation(); setViewingImage(m.image); }} className={`${isPinnedView ? 'w-16 h-16 rounded-lg float-right ml-2' : 'w-full h-auto rounded-[18px]'} object-cover`} />}
         {m.checklist && (
-          <div className="p-3 space-y-1">
+          <div className={`${isPinnedView ? 'mt-1' : 'p-3'} space-y-1.5`}>
             {m.checklist.map((task, i) => (
-              <button key={i} onClick={() => toggleChecklistTask(m.id, i)} className="flex items-center gap-2 w-full text-left">
-                {task.completed ? <CheckSquare size={16} className={isPinnedView ? "text-white/60" : "text-white"}/> : <Square size={16} className="opacity-40"/>}
+              <button key={i} onClick={(e) => { e.stopPropagation(); toggleChecklistTask(m.id, i); }} className="flex items-center gap-2.5 w-full text-left">
+                {task.completed ? <CheckSquare size={isPinnedView ? 14 : 16} className={isPinnedView ? "text-white/60" : "text-white"}/> : <Square size={16} className="opacity-40"/>}
                 <span className={`${isPinnedView ? 'text-xs' : 'text-sm'} font-bold ${task.completed ? 'opacity-40 line-through' : ''}`}>{task.text}</span>
               </button>
             ))}
           </div>
         )}
-        {m.text && <p className={`font-semibold leading-snug px-4 py-2 ${isPinnedView ? 'text-xs truncate' : 'text-sm'}`}>{m.text}</p>}
+        {m.text && <p className={`font-semibold leading-snug whitespace-pre-wrap ${isPinnedView ? 'text-xs' : 'px-4 py-2.5 text-sm'}`}>{m.text}</p>}
       </div>
     );
   };
@@ -200,27 +204,25 @@ export default function ServiceDetails() {
   return (
     <div className="h-screen w-full bg-slate-50 flex flex-col overflow-hidden animate-fade-in">
       
-      {/* 🚀 CABECERA BLOQUEADA (TOP) */}
+      {/* 🚀 CABECERA FIJA SUPERIOR */}
       <header className="bg-slate-900 text-white pt-10 pb-4 px-5 rounded-b-[40px] shadow-xl z-50 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
           <button onClick={() => navigate('/servicios')} className="p-2 bg-white/10 rounded-full"><ChevronLeft size={22} /></button>
           <div className="text-center">
             <h1 className="text-xl font-black">{event.title}</h1>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{format(new Date(event.date + 'T00:00:00'), "d MMMM", { locale: es })} • {event.time} hs</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase">{format(new Date(event.date + 'T00:00:00'), "d MMMM", { locale: es })} • {event.time} hs</p>
           </div>
           <div className="w-10"></div>
         </div>
 
-        {/* Card de Función e Información de Equipo */}
         <div className="bg-white/5 border border-white/10 rounded-2xl p-3 flex items-center justify-between mb-2">
            <div className="flex items-center gap-3">
               <div className="bg-brand-500/20 p-2 rounded-xl text-brand-400"><Users size={18} /></div>
               <div><p className="text-[8px] font-black text-white/40 uppercase">Tu función</p><p className="text-sm font-bold text-white capitalize">{myRole?.replace(/_/g, ' ')}</p></div>
            </div>
-           <button onClick={() => navigate(`/calendario/${id}`)} className="text-[9px] font-black bg-brand-600 px-3 py-1.5 rounded-full flex items-center gap-1 active:scale-95 transition-all">EQUIPO <ExternalLink size={10}/></button>
+           <button onClick={() => navigate(`/calendario/${id}`)} className="text-[9px] font-black bg-brand-600 px-3 py-1.5 rounded-full flex items-center gap-1 active:scale-95 transition-all shadow-lg">EQUIPO <ExternalLink size={10}/></button>
         </div>
 
-        {/* Estado de Confirmación Rápida */}
         {!myStatus ? (
           <div className="flex gap-2"><button onClick={() => handleResponse('confirmed')} className="flex-1 bg-emerald-500 text-white py-2 rounded-xl font-black text-[9px] uppercase shadow-lg">Confirmar ✓</button><button onClick={() => handleResponse('declined')} className="flex-1 bg-white/10 text-white/60 py-2 rounded-xl font-black text-[9px] uppercase">No puedo</button></div>
         ) : (
@@ -232,32 +234,41 @@ export default function ServiceDetails() {
       </header>
 
       {/* 💬 ÁREA DE CHAT (CENTRAL SCROLLABLE) */}
-      <main className="flex-1 overflow-hidden flex flex-col relative">
+      <main className="flex-1 overflow-hidden flex flex-col relative bg-white">
         
-        {/* Título de Notas y Pinned (Fijos al inicio del scroll) */}
+        {/* Título de Notas y Pinned (Sticky) */}
         <div className="bg-slate-50/95 backdrop-blur-md z-40 border-b border-slate-200 flex-shrink-0">
             <div className="p-4 flex items-center justify-between">
               <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><MessageSquare size={14} className="text-brand-500"/> Notas de Equipo</h3>
               <button onClick={() => setHideReceipts(!hideReceipts)} className="p-1.5 text-slate-400">{hideReceipts ? <Eye size={16} /> : <EyeOff size={16} />}</button>
             </div>
+            
+            {/* ✅ PINNED STICKY: Clic para navegar y lectura completa */}
             {pinnedMessage && (
-              <div className="bg-brand-600 text-white p-3 shadow-lg flex items-center gap-3 animate-slide-down">
-                <Pin size={16} className="opacity-60"/><div className="flex-1 overflow-hidden"><MessageContent m={pinnedMessage} isPinnedView={true} /></div>
-                {userRole === 'pastor' && <button onClick={() => togglePin(pinnedMessage.id, true)} className="p-1"><X size={16}/></button>}
+              <div 
+                onClick={() => scrollToMessage(pinnedMessage.id)}
+                className="bg-brand-600 text-white p-4 shadow-lg flex items-start gap-3 animate-slide-down cursor-pointer active:bg-brand-700 transition-colors max-h-48 overflow-y-auto"
+              >
+                <Pin size={18} className="flex-shrink-0 mt-1 opacity-60"/>
+                <div className="flex-1">
+                   <p className="text-[9px] font-black uppercase opacity-40 tracking-widest mb-1">Mensaje Anclado (Toca para ir)</p>
+                   <MessageContent m={pinnedMessage} isPinnedView={true} />
+                </div>
+                {userRole === 'pastor' && <button onClick={(e) => { e.stopPropagation(); togglePin(pinnedMessage.id, true); }} className="p-1 hover:bg-white/10 rounded-full"><X size={18}/></button>}
               </div>
             )}
         </div>
 
-        {/* Mensajes del Chat */}
+        {/* Mensajes con Scroll Interno */}
         <div className="flex-1 overflow-y-auto p-5 space-y-6 scroll-smooth">
           {messages.map((m) => {
               const isMy = m.uid === currentUser.uid;
               const readers = allUsers.filter(u => m.readBy?.includes(u.id) && u.id !== m.uid).map(u => u.displayName?.split(' ')[0]);
               return (
-                <div key={m.id} className={`flex flex-col ${isMy ? 'items-end' : 'items-start'}`}>
+                <div key={m.id} id={`msg-${m.id}`} className={`flex flex-col ${isMy ? 'items-end' : 'items-start'}`}>
                     <div className="relative group max-w-[85%]">
                       <MessageContent m={m} />
-                      <div className={`absolute top-0 flex gap-1 opacity-0 group-hover:opacity-100 ${isMy ? '-left-14' : '-right-14'}`}>
+                      <div className={`absolute top-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity ${isMy ? '-left-14' : '-right-14'}`}>
                          {(userRole === 'pastor' || isMy) && <button onClick={() => deleteMessage(m.id)} className="p-1.5 bg-red-50 text-red-500 rounded-full shadow-sm"><Trash2 size={12}/></button>}
                          {userRole === 'pastor' && <button onClick={() => togglePin(m.id, m.isPinned)} className={`p-1.5 rounded-full ${m.isPinned ? 'bg-brand-600 text-white' : 'bg-brand-50 text-brand-600'}`}><Pin size={12}/></button>}
                       </div>
@@ -273,8 +284,8 @@ export default function ServiceDetails() {
         </div>
       </main>
 
-      {/* 🛠 CONSOLA DE HERRAMIENTAS BLOQUEADA (BOTTOM) */}
-      <footer className="bg-white border-t border-slate-100 p-4 pb-10 z-50 flex-shrink-0 shadow-[0_-10px_25px_-5px_rgba(0,0,0,0.05)]">
+      {/* 🛠 CONSOLA FIJA INFERIOR */}
+      <footer className="bg-white border-t border-slate-100 p-4 pb-10 z-50 flex-shrink-0 shadow-2xl">
         {imagePreview && (
           <div className="relative inline-block mb-3 animate-scale-in">
             <img src={imagePreview} className="w-16 h-16 object-cover rounded-xl border-2 border-white shadow-lg" />
@@ -283,13 +294,13 @@ export default function ServiceDetails() {
         )}
         {showChecklistCreator && (
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-3 space-y-2">
-            <div className="flex justify-between items-center"><span className="text-[9px] font-black text-slate-500 uppercase tracking-tighter">Nueva Lista</span><button onClick={() => setShowChecklistCreator(false)}><X size={12}/></button></div>
+            <div className="flex justify-between items-center"><span className="text-[9px] font-black text-slate-500 uppercase">Nueva Lista</span><button onClick={() => setShowChecklistCreator(false)}><X size={12}/></button></div>
             {tempTasks.map((t, i) => (
               <input key={i} type="text" value={t} onChange={(e) => {
                 const newT = [...tempTasks]; newT[i] = e.target.value; 
                 if (i === tempTasks.length - 1 && e.target.value !== '') newT.push('');
                 setTempTasks(newT);
-              }} placeholder="Añadir tarea..." className="w-full text-xs p-1 bg-transparent outline-none border-b border-slate-200 focus:border-brand-500 font-bold" />
+              }} placeholder="Tarea..." className="w-full text-xs p-1 bg-transparent outline-none border-b border-slate-200 focus:border-brand-500 font-bold" />
             ))}
           </div>
         )}
@@ -299,12 +310,12 @@ export default function ServiceDetails() {
             <label className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-slate-400 cursor-pointer active:scale-90 transition-transform"><ImageIcon size={18}/><input type="file" className="hidden" accept="image/*" onChange={handleFileSelect} /></label>
             <button onClick={() => setShowChecklistCreator(!showChecklistCreator)} className={`p-3 border rounded-xl active:scale-90 transition-transform ${showChecklistCreator ? 'bg-brand-600 text-white border-brand-600' : 'bg-slate-50 text-slate-400 border-slate-100'}`}><ListPlus size={18}/></button>
           </div>
-          <textarea ref={textareaRef} rows="1" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Escribir..." className="flex-1 bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-500/20 outline-none resize-none max-h-32 shadow-inner" />
+          <textarea ref={textareaRef} rows="1" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Escribir nota..." className="flex-1 bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-500/20 outline-none resize-none max-h-32 shadow-inner" />
           <button onClick={handleSendMessage} disabled={isSending || (!newMessage.trim() && !selectedFile && !showChecklistCreator)} className="bg-brand-600 text-white p-3.5 rounded-xl shadow-lg active:scale-90 disabled:opacity-50 transition-all">{isSending ? <Loader2 size={18} className="animate-spin"/> : <Send size={18}/>}</button>
         </div>
       </footer>
 
-      {/* MODALES (IMAGEN Y LECTORES) */}
+      {/* MODALES: IMAGEN Y LECTORES */}
       {viewingImage && (
         <div className="fixed inset-0 z-[150] bg-black/95 flex flex-col items-center justify-center p-4 animate-fade-in" onClick={() => setViewingImage(null)}>
           <div className="absolute top-8 right-6 flex gap-4"><button onClick={(e) => { e.stopPropagation(); handleDownload(viewingImage); }} className="p-3 bg-white/10 rounded-full text-white"><Download size={22}/></button><button onClick={() => setViewingImage(null)} className="p-3 bg-white/10 rounded-full text-white"><X size={22}/></button></div>
@@ -316,7 +327,7 @@ export default function ServiceDetails() {
           <div className="bg-white w-full max-w-xs rounded-[32px] p-6 shadow-2xl animate-scale-in" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4 pb-2 border-b"><h4 className="font-black text-slate-800 text-[11px] uppercase tracking-widest">Visto por</h4><button onClick={() => setShowReadersId(null)}><X size={16}/></button></div>
             <div className="space-y-3 max-h-60 overflow-y-auto">{allUsers.filter(u => messages.find(m => m.id === showReadersId)?.readBy?.includes(u.id) && u.id !== messages.find(m => m.id === showReadersId)?.uid).map(u => (
-                <div key={u.id} className="flex items-center gap-3"><img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}`} className="w-7 h-7 rounded-full" /><span className="text-xs font-bold text-slate-600">{u.displayName}</span></div>
+                <div key={u.id} className="flex items-center gap-3"><img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}`} className="w-7 h-7 rounded-full shadow-sm" /><span className="text-xs font-bold text-slate-600">{u.displayName}</span></div>
             ))}</div>
           </div>
         </div>
