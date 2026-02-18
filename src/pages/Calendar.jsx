@@ -1,40 +1,21 @@
-import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom'; // Se mantiene por si usas routing en otros lados, aunque aquí usaremos estado interno
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase';
 import {
   collection, query, orderBy, onSnapshot, addDoc,
   Timestamp, deleteDoc, doc, getDoc, serverTimestamp,
-  getDocs, where, writeBatch, updateDoc
+  getDocs, where, writeBatch
 } from 'firebase/firestore';
 import {
   Plus, Calendar as CalIcon, List, Clock, Trash2, X,
   ChevronLeft, ChevronRight, Loader2, Megaphone,
   Send, EyeOff, CheckCircle, XCircle, ImageIcon,
-  Check, Info, AlertCircle, UserPlus, Users, Search, Lock
+  Check, Info, AlertCircle 
 } from 'lucide-react';
 import { EVENT_TYPES } from '../utils/eventTypes';
 import { format, addMonths, subMonths, isSameMonth, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import imageCompression from 'browser-image-compression';
-
-// ✅ DEFINICIÓN DE ROLES Y CATEGORÍAS PARA FILTRADO
-// Ajusta esto según tus nombres exactos de base de datos
-const SERVICE_ROLES = {
-  'Líder de Alabanza': { category: 'Alabanza', label: 'Líder de Alabanza' },
-  'Guitarra': { category: 'Alabanza', label: 'Guitarrista' },
-  'Bajo': { category: 'Alabanza', label: 'Bajista' },
-  'Batería': { category: 'Alabanza', label: 'Baterista' },
-  'Piano': { category: 'Alabanza', label: 'Pianista' },
-  'Voz': { category: 'Alabanza', label: 'Vocalista' },
-  'Sonido': { category: 'Multimedia', label: 'Técnico de Sonido' },
-  'Proyección': { category: 'Multimedia', label: 'Proyección / Letras' },
-  'Transmisión': { category: 'Multimedia', label: 'Streaming' },
-  'Fotografía': { category: 'Multimedia', label: 'Fotógrafo' },
-  'Ujier': { category: 'Bienvenida', label: 'Ujier' },
-  'Anfitrión': { category: 'Bienvenida', label: 'Anfitrión' },
-  'Predicador': { category: 'Pastoral / Espiritual', label: 'Predicador' },
-  'Dirección': { category: 'Pastoral / Espiritual', label: 'Dirección de Culto' }
-};
 
 export default function CalendarPage() {
   const navigate = useNavigate();
@@ -42,12 +23,6 @@ export default function CalendarPage() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  
-  // ✅ ESTADOS PARA GESTIÓN Y DETALLE (Reemplaza navegación)
-  const [selectedEvent, setSelectedEvent] = useState(null); // Objeto completo del evento seleccionado
-  const [users, setUsers] = useState([]); // Lista completa de usuarios para asignar
-  const [assignmentModal, setAssignmentModal] = useState(null); // { roleKey, roleLabel, category } o null
-
   const [selectedDayEvents, setSelectedDayEvents] = useState(null);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [userRole, setUserRole] = useState(null);
@@ -57,8 +32,9 @@ export default function CalendarPage() {
   const [imagePreview, setImagePreview] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
 
+  // ✅ ESTADOS DE INTERFAZ PERSONALIZADA
   const [toast, setToast] = useState(null);
-  const [actionConfirm, setActionConfirm] = useState(null);
+  const [actionConfirm, setActionConfirm] = useState(null); // { type, id, title, message }
 
   const CLOUD_NAME = "djmkggzjp";
   const UPLOAD_PRESET = "ml_default";
@@ -76,43 +52,6 @@ export default function CalendarPage() {
     }
   }, [toast]);
 
-  // ✅ CARGA INICIAL DE DATOS (Eventos + Usuarios)
-  useEffect(() => {
-    const fetchInitialData = async () => {
-      // 1. Obtener Rol del Usuario Actual
-      const user = auth.currentUser;
-      if (user) {
-        const userSnap = await getDoc(doc(db, 'users', user.uid));
-        if (userSnap.exists()) setUserRole(userSnap.data().role);
-      }
-
-      // 2. Obtener Lista de Usuarios (Para asignaciones)
-      // Solo cargamos esto si es líder o pastor para optimizar
-      const usersQuery = query(collection(db, 'users'), orderBy('displayName'));
-      const usersSnapshot = await getDocs(usersQuery);
-      const usersList = usersSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      setUsers(usersList);
-    };
-
-    fetchInitialData();
-
-    // 3. Listener de Eventos
-    const q = query(collection(db, 'events'), orderBy('date', 'asc'));
-    const unsubscribeEvents = onSnapshot(q, (snapshot) => {
-      const loadedEvents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setEvents(loadedEvents);
-      setLoading(false);
-      
-      // Actualizar el evento seleccionado en tiempo real si está abierto
-      if (selectedEvent) {
-        const updated = loadedEvents.find(e => e.id === selectedEvent.id);
-        if (updated) setSelectedEvent(updated);
-      }
-    });
-
-    return () => unsubscribeEvents();
-  }, [selectedEvent?.id]); // Dependencia ligera para refresh
-
   // ✅ MANEJO DE IMÁGENES
   const handleImageChange = (e) => {
     const file = e.target.files[0];
@@ -122,7 +61,7 @@ export default function CalendarPage() {
     }
   };
 
-  // ✅ NOTIFICACIONES (Sin Cambios)
+  // ✅ 1. SISTEMA DE NOTIFICACIONES
   const sendEventNotification = async (eventTitle, eventDate, eventUrl, eventType) => {
     try {
       const usersSnap = await getDocs(collection(db, "users"));
@@ -169,7 +108,7 @@ export default function CalendarPage() {
     } catch (e) { console.error(e); }
   };
 
-  // ✅ ACCIONES (Borrar / Publicar)
+  // ✅ 2. EJECUCIÓN DE ACCIONES CONFIRMADAS (BORRADO/PUBLICACIÓN)
   const executeConfirmedAction = async () => {
     if (!actionConfirm) return;
     const { type, id } = actionConfirm;
@@ -187,8 +126,7 @@ export default function CalendarPage() {
         const postsSnap = await getDocs(query(collection(db, "posts"), where("eventId", "==", id)));
         postsSnap.forEach(p => batch.delete(p.ref));
         await batch.commit();
-        setToast({ message: "Evento eliminado", type: "info" });
-        if(selectedEvent?.id === id) setSelectedEvent(null); // Cerrar detalle si se borra
+        setToast({ message: "Evento y avisos eliminados", type: "info" });
       } catch (e) { setToast({ message: "Error al borrar", type: "error" }); }
     }
 
@@ -207,6 +145,24 @@ export default function CalendarPage() {
       finally { setIsPublishing(false); }
     }
   };
+
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      const user = auth.currentUser;
+      if (user) {
+        const userSnap = await getDoc(doc(db, 'users', user.uid));
+        if (userSnap.exists()) setUserRole(userSnap.data().role);
+      }
+    };
+    fetchUserRole();
+
+    const q = query(collection(db, 'events'), orderBy('date', 'asc'));
+    const unsubscribeEvents = onSnapshot(q, (snapshot) => {
+      setEvents(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setLoading(false);
+    });
+    return () => unsubscribeEvents();
+  }, []);
 
   const handleCreateEvent = async () => {
     if (!newEvent.title || !newEvent.date) return setToast({ message: "Falta título o fecha", type: "error" });
@@ -250,64 +206,15 @@ export default function CalendarPage() {
         setIsModalOpen(false);
         setNewEvent({ title: '', type: 'culto', date: '', endDate: '', time: '19:30', description: '', published: false });
         setImageFile(null); setImagePreview(null);
-        setToast({ message: "Evento guardado", type: "success" });
+        setToast({ message: "Evento guardado en agenda", type: "success" });
     } catch (error) { setToast({ message: "Error al guardar", type: "error" }); }
     finally { setIsUploading(false); }
   };
 
-  // ✅ LOGICA DE ASIGNACIÓN (Blindaje y Actualización)
-  const handleAssignUser = async (user) => {
-    if (!selectedEvent || !assignmentModal) return;
-
-    // Verificar Blindaje de nuevo por seguridad
-    const isAlreadyAssigned = Object.values(selectedEvent.assignments || {}).some(a => a.userId === user.id);
-    if (isAlreadyAssigned) {
-        setToast({ message: "Este usuario ya tiene un servicio hoy", type: "error" });
-        return;
-    }
-
-    try {
-        const newAssignment = {
-            userId: user.id,
-            userName: user.displayName || 'Usuario',
-            userPhoto: user.photoURL || null,
-            role: assignmentModal.roleLabel,
-            roleKey: assignmentModal.roleKey,
-            assignedAt: Timestamp.now()
-        };
-
-        const updatedAssignments = { ...selectedEvent.assignments, [assignmentModal.roleKey]: newAssignment };
-        
-        await updateDoc(doc(db, 'events', selectedEvent.id), {
-            assignments: updatedAssignments
-        });
-        
-        setAssignmentModal(null); // Cerrar modal de búsqueda
-        setToast({ message: "Servidor asignado", type: "success" });
-    } catch (error) {
-        console.error(error);
-        setToast({ message: "Error al asignar", type: "error" });
-    }
-  };
-
-  const handleRemoveAssignment = async (roleKey) => {
-      if (!selectedEvent) return;
-      try {
-          const updatedAssignments = { ...selectedEvent.assignments };
-          delete updatedAssignments[roleKey];
-          await updateDoc(doc(db, 'events', selectedEvent.id), { assignments: updatedAssignments });
-          setToast({ message: "Asignación eliminada", type: "info" });
-      } catch (error) {
-          setToast({ message: "Error al eliminar", type: "error" });
-      }
-  };
-
-  // --- NAVEGACIÓN Y VISTAS ---
   const nextMonth = () => setCurrentDate(addMonths(currentDate, 1));
   const prevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const filteredEvents = events.filter(e => isSameMonth(new Date(e.date + 'T00:00:00'), currentDate));
 
-  // --- COMPONENTE RENDER LISTA ---
   const renderListView = () => {
     if (filteredEvents.length === 0) return <div className="text-center py-12"><CalIcon size={48} className="mx-auto text-slate-200 mb-4"/><p className="text-slate-500 font-medium">Sin eventos.</p></div>;
     return (
@@ -315,7 +222,7 @@ export default function CalendarPage() {
           {filteredEvents.map(event => {
             const config = EVENT_TYPES[event.type] || EVENT_TYPES.culto;
             return (
-              <div key={event.id} onClick={() => setSelectedEvent(event)} className={`bg-white p-4 rounded-2xl border flex gap-4 transition-all cursor-pointer relative ${!event.published ? 'border-amber-200 bg-amber-50/30' : 'border-slate-100 shadow-sm'}`}>
+              <div key={event.id} onClick={() => navigate(`/calendario/${event.id}`)} className={`bg-white p-4 rounded-2xl border flex gap-4 transition-all cursor-pointer relative ${!event.published ? 'border-amber-200 bg-amber-50/30' : 'border-slate-100 shadow-sm'}`}>
                 <div className={`flex flex-col items-center justify-center px-3 rounded-xl border min-w-[60px] ${event.type === 'ayuno' ? 'bg-rose-50' : 'bg-slate-50'}`}>
                   <span className="text-[10px] font-bold uppercase text-slate-400">{format(new Date(event.date + 'T00:00:00'), 'MMM', { locale: es })}</span>
                   <span className="text-xl font-black text-slate-800">{format(new Date(event.date + 'T00:00:00'), 'dd')}</span>
@@ -326,6 +233,14 @@ export default function CalendarPage() {
                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase ${config.color}`}>{config.label}</span>
                        {!event.published && <span className="text-[10px] font-bold px-2 py-0.5 rounded-md uppercase bg-amber-500 text-white flex items-center gap-1"><EyeOff size={10}/> Borrador</span>}
                     </div>
+                    {['pastor', 'lider'].includes(userRole) && (
+                      <button onClick={(e) => {
+                        e.stopPropagation();
+                        setActionConfirm({ type: 'delete', id: event.id, title: '¿Borrar evento?', message: `Se eliminará "${event.title}" y todos sus avisos.` });
+                      }} className="text-slate-300 hover:text-red-500 transition-colors">
+                        <Trash2 size={16}/>
+                      </button>
+                    )}
                   </div>
                   <h4 className="font-bold text-slate-800 text-base leading-tight mt-1">{event.title}</h4>
                   <div className="flex items-center gap-1 mt-2 text-xs text-slate-500"><Clock size={14}/> {event.time} hs</div>
@@ -371,161 +286,8 @@ export default function CalendarPage() {
     );
   };
 
-  // ✅ COMPONENTE INTERNO: MODAL DE BÚSQUEDA Y BLINDAJE
-  const UserSearchModal = () => {
-    const [search, setSearch] = useState('');
-    
-    // Obtener lista de IDs ya asignados en ESTE evento
-    const assignedUserIds = useMemo(() => {
-        if (!selectedEvent?.assignments) return [];
-        return Object.values(selectedEvent.assignments).map(a => a.userId);
-    }, [selectedEvent]);
-
-    // Lógica de Filtrado (Ministerio + Búsqueda)
-    const filteredUsers = users.filter(u => {
-        const matchName = u.displayName?.toLowerCase().includes(search.toLowerCase());
-        const roleCategory = assignmentModal?.category;
-        
-        // Excepción Pastoral
-        const isPastoralRole = roleCategory === 'Pastoral / Espiritual';
-        const isUserLeader = u.role === 'pastor' || u.role === 'lider';
-
-        // Coincidencia de Ministerio
-        // Asume que user tiene campo 'ministerio' o 'area'
-        const userMinistry = u.ministerio || u.area;
-        const matchMinistry = userMinistry === roleCategory;
-
-        if (isPastoralRole) return matchName && isUserLeader;
-        return matchName && (matchMinistry || isUserLeader); // Líderes siempre visibles o filtro estricto
-    });
-
-    return (
-        <div className="fixed inset-0 z-[200] bg-white flex flex-col animate-slide-up">
-            <div className="p-4 border-b border-slate-100 flex items-center gap-3 bg-white">
-                <button onClick={() => setAssignmentModal(null)} className="p-2 rounded-full hover:bg-slate-50"><ChevronLeft size={24} className="text-slate-600"/></button>
-                <div className="flex-1">
-                    <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">{assignmentModal?.category}</p>
-                    <h3 className="text-lg font-black text-slate-800">{assignmentModal?.roleLabel}</h3>
-                </div>
-            </div>
-            
-            <div className="p-4 bg-slate-50 border-b border-slate-100">
-                <div className="flex items-center bg-white rounded-xl px-4 py-3 border border-slate-200 shadow-sm">
-                    <Search size={18} className="text-slate-400 mr-2"/>
-                    <input autoFocus type="text" placeholder="Buscar servidor..." className="flex-1 bg-transparent outline-none text-sm font-bold text-slate-700 placeholder:font-medium" value={search} onChange={e => setSearch(e.target.value)}/>
-                </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                {filteredUsers.map(user => {
-                    // BLINDAJE: Verificar si ya está asignado
-                    const isBlocked = assignedUserIds.includes(user.id);
-
-                    return (
-                        <div key={user.id} className={`flex items-center gap-3 p-3 rounded-2xl border transition-all ${isBlocked ? 'bg-slate-50 border-slate-100 opacity-60 grayscale' : 'bg-white border-slate-100 shadow-sm'}`}>
-                            <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
-                                {user.photoURL ? <img src={user.photoURL} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-slate-400"><Users size={18}/></div>}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <h4 className="font-bold text-slate-800 text-sm truncate">{user.displayName}</h4>
-                                {isBlocked ? (
-                                    <p className="text-[9px] font-black text-amber-600 uppercase flex items-center gap-1 mt-0.5"><AlertCircle size={10}/> YA TIENE UN SERVICIO ASIGNADO</p>
-                                ) : (
-                                    <p className="text-xs text-slate-400 font-medium capitalize">{user.role || 'Voluntario'}</p>
-                                )}
-                            </div>
-                            <button 
-                                onClick={() => !isBlocked && handleAssignUser(user)}
-                                disabled={isBlocked}
-                                className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isBlocked ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-slate-900 text-white hover:scale-105 active:scale-95'}`}>
-                                {isBlocked ? <Lock size={14}/> : <Plus size={16}/>}
-                            </button>
-                        </div>
-                    );
-                })}
-                {filteredUsers.length === 0 && <p className="text-center text-slate-400 text-xs font-bold py-8">No se encontraron servidores disponibles en {assignmentModal?.category}.</p>}
-            </div>
-        </div>
-    );
-  };
-
-  // ✅ COMPONENTE INTERNO: VISTA DETALLE DEL EVENTO (Sustituye navegación)
-  const EventDetailView = () => {
-    if (!selectedEvent) return null;
-    const config = EVENT_TYPES[selectedEvent.type] || EVENT_TYPES.culto;
-    
-    return (
-        <div className="fixed inset-0 z-50 bg-slate-50 overflow-y-auto animate-fade-in">
-            {/* Header Detalle */}
-            <div className="sticky top-0 bg-white/90 backdrop-blur-md border-b border-slate-100 px-4 py-3 flex items-center justify-between z-10">
-                <button onClick={() => setSelectedEvent(null)} className="p-2 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"><ChevronLeft size={24}/></button>
-                <div className="flex gap-2">
-                    {['pastor', 'lider'].includes(userRole) && (
-                        <button onClick={() => setActionConfirm({ type: 'delete', id: selectedEvent.id, title: '¿Borrar evento?', message: 'Esta acción es irreversible.' })} className="p-2 rounded-full bg-rose-50 text-rose-600"><Trash2 size={20}/></button>
-                    )}
-                </div>
-            </div>
-
-            {/* Contenido Principal */}
-            <div className="p-5 max-w-lg mx-auto pb-24">
-                <div className="text-center mb-6">
-                   <span className={`inline-block px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wide mb-3 ${config.color}`}>{config.label}</span>
-                   <h1 className="text-2xl font-black text-slate-800 leading-tight mb-2">{selectedEvent.title}</h1>
-                   <div className="flex items-center justify-center gap-2 text-slate-500 text-sm font-bold">
-                       <CalIcon size={16}/> {format(new Date(selectedEvent.date + 'T00:00:00'), "EEEE d 'de' MMMM", { locale: es })}
-                   </div>
-                   <div className="flex items-center justify-center gap-2 text-slate-500 text-sm font-bold mt-1">
-                       <Clock size={16}/> {selectedEvent.time} hs
-                   </div>
-                </div>
-
-                {/* Sección de Asignaciones */}
-                <div className="bg-white rounded-[30px] p-6 shadow-sm border border-slate-100">
-                    <h2 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2"><Users size={20} className="text-brand-600"/> Equipo de Servicio</h2>
-                    <div className="space-y-6">
-                        {Object.entries(SERVICE_ROLES).map(([roleKey, roleInfo]) => {
-                            const assignment = selectedEvent.assignments?.[roleKey];
-                            return (
-                                <div key={roleKey} className="flex items-center justify-between group">
-                                    <div className="flex-1 pr-4">
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">{roleInfo.category}</p>
-                                        <p className="text-sm font-bold text-slate-700">{roleInfo.label}</p>
-                                    </div>
-                                    
-                                    {assignment ? (
-                                        <div className="flex items-center gap-3 bg-slate-50 pl-2 pr-1 py-1 rounded-full border border-slate-100">
-                                            <span className="text-xs font-bold text-slate-700 truncate max-w-[100px]">{assignment.userName}</span>
-                                            <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden relative group-hover:hidden">
-                                                {assignment.userPhoto ? <img src={assignment.userPhoto} className="w-full h-full object-cover"/> : <Users size={14} className="m-auto mt-2 text-slate-400"/>}
-                                            </div>
-                                            {/* Botón Borrar (Solo visible al interactuar o líder) */}
-                                            <button onClick={() => handleRemoveAssignment(roleKey)} className="w-8 h-8 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center hover:bg-rose-200 transition-colors">
-                                                <X size={14} strokeWidth={3}/>
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <button 
-                                            onClick={() => setAssignmentModal({ roleKey, roleLabel: roleInfo.label, category: roleInfo.category })}
-                                            className="w-9 h-9 rounded-full bg-slate-900 text-white flex items-center justify-center shadow-lg active:scale-90 transition-transform hover:bg-brand-600">
-                                            <Plus size={18}/>
-                                        </button>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            </div>
-            
-            {/* Renderizar Modal de Buscador si está activo */}
-            {assignmentModal && <UserSearchModal />}
-        </div>
-    );
-  };
-
   return (
     <div className="pb-24 pt-4 px-4 bg-slate-50 min-h-screen animate-fade-in relative">
-      {/* HEADER PRINCIPAL */}
       <div className="flex justify-between items-center mb-6 sticky top-0 z-20 bg-slate-50/95 backdrop-blur-sm py-2">
         <h1 className="text-2xl font-black text-slate-800">Agenda</h1>
         <div className="flex bg-white p-1 rounded-xl border shadow-sm">
@@ -559,10 +321,7 @@ export default function CalendarPage() {
         <button onClick={() => setIsModalOpen(true)} className="fixed bottom-24 right-4 w-14 h-14 bg-slate-900 text-white rounded-full shadow-lg flex items-center justify-center z-40 active:scale-90"><Plus size={28} /></button>
       )}
 
-      {/* ✅ VISTA DETALLE DEL EVENTO (OVERLAY) */}
-      {selectedEvent && <EventDetailView />}
-
-      {/* ✅ MODAL DE CONFIRMACIÓN */}
+      {/* ✅ MODAL DE CONFIRMACIÓN PERSONALIZADO */}
       {actionConfirm && (
         <div className="fixed inset-0 z-[300] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6 animate-fade-in">
           <div className="bg-white w-full max-w-xs rounded-[35px] p-8 shadow-2xl animate-scale-in text-center">
@@ -583,9 +342,9 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* TOASTS */}
+      {/* SISTEMA DE TOASTS */}
       {toast && (
-        <div className="fixed bottom-24 left-6 right-6 z-[350] animate-slide-up">
+        <div className="fixed bottom-24 left-6 right-6 z-[150] animate-slide-up">
           <div className={`flex items-center gap-3 px-6 py-4 rounded-[22px] shadow-2xl border ${toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-400' : toast.type === 'error' ? 'bg-rose-600 text-white border-rose-400' : 'bg-slate-800 text-white border-slate-600'}`}>
             {toast.type === 'success' ? <Check size={18}/> : <Info size={18}/>}
             <span className="text-[11px] font-black uppercase tracking-widest">{toast.message}</span>
@@ -593,19 +352,18 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* MODAL SELECCION DIA (VISTA MENSUAL) */}
+      {/* MODAL SELECCION DIA */}
       {selectedDayEvents && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedDayEvents(null)}>
             <div className="bg-white w-full max-w-sm rounded-t-[30px] p-6 shadow-2xl animate-slide-up" onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center mb-5"><h3 className="font-black text-lg text-slate-800 capitalize">{format(selectedDayEvents.date, 'EEEE d MMMM', {locale: es})}</h3><button onClick={() => setSelectedDayEvents(null)}><X size={20}/></button></div>
                 <div className="space-y-3">{selectedDayEvents.events.map(event => (
-                        <div key={event.id} onClick={() => { setSelectedEvent(event); setSelectedDayEvents(null); }} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex items-center gap-4 cursor-pointer hover:bg-slate-100 transition-colors"><div className="p-2 rounded-xl bg-brand-50 text-brand-600 shadow-sm"><CalIcon size={20}/></div><div className="flex-1 overflow-hidden"><h4 className="font-bold text-sm text-slate-800 truncate">{event.title}</h4><p className="text-xs text-slate-400 font-bold uppercase">{event.time} hs</p></div><ChevronRight size={16} className="text-slate-300"/></div>
+                        <div key={event.id} onClick={() => navigate(`/calendario/${event.id}`)} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex items-center gap-4 cursor-pointer hover:bg-slate-100 transition-colors"><div className="p-2 rounded-xl bg-brand-50 text-brand-600 shadow-sm"><CalIcon size={20}/></div><div className="flex-1 overflow-hidden"><h4 className="font-bold text-sm text-slate-800 truncate">{event.title}</h4><p className="text-xs text-slate-400 font-bold uppercase">{event.time} hs</p></div><ChevronRight size={16} className="text-slate-300"/></div>
                     ))}</div>
             </div>
         </div>
       )}
 
-      {/* MODAL CREAR EVENTO */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
             <div className="bg-white w-full max-w-sm rounded-[35px] p-6 shadow-2xl max-h-[90vh] overflow-y-auto animate-scale-in">
@@ -626,10 +384,10 @@ export default function CalendarPage() {
                         ))}
                     </div>
                     {newEvent.type === 'ayuno' && (
-                        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
-                          <label className="text-[9px] font-black text-slate-400 uppercase mb-2 block tracking-widest">Foto Ayuno</label>
-                          <label className="w-full h-32 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer overflow-hidden bg-white/50">{imagePreview ? <img src={imagePreview} className="w-full h-full object-cover" alt="Preview"/> : <><ImageIcon size={24} className="text-slate-300 mb-1"/><span className="text-[10px] font-bold text-slate-400">Subir imagen</span></>}<input type="file" className="hidden" accept="image/*" onChange={handleImageChange}/></label>
-                        </div>
+                       <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                         <label className="text-[9px] font-black text-slate-400 uppercase mb-2 block tracking-widest">Foto Ayuno</label>
+                         <label className="w-full h-32 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer overflow-hidden bg-white/50">{imagePreview ? <img src={imagePreview} className="w-full h-full object-cover" alt="Preview"/> : <><ImageIcon size={24} className="text-slate-300 mb-1"/><span className="text-[10px] font-bold text-slate-400">Subir imagen</span></>}<input type="file" className="hidden" accept="image/*" onChange={handleImageChange}/></label>
+                       </div>
                     )}
                     <button onClick={handleCreateEvent} disabled={isUploading} className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl shadow-xl mt-2 active:scale-95 transition-transform disabled:opacity-50">
                         {isUploading ? <Loader2 className="animate-spin" size={20}/> : "GUARDAR EN AGENDA"}
