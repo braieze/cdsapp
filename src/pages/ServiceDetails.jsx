@@ -26,12 +26,15 @@ export default function ServiceDetails() {
   const [userRole, setUserRole] = useState(null);
   const [allUsers, setAllUsers] = useState([]);
   
+  // Archivos y Checklist
   const [selectedFile, setSelectedFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [isSending, setIsSending] = useState(false);
   const [viewingImage, setViewingImage] = useState(null); 
   const [showChecklistCreator, setShowChecklistCreator] = useState(false);
   const [tempTasks, setTempTasks] = useState(['']);
+
+  // Interfaz
   const [showReadersId, setShowReadersId] = useState(null);
   const [hideReceipts, setHideReceipts] = useState(false);
   
@@ -58,7 +61,7 @@ export default function ServiceDetails() {
     fetchData();
   }, [id, navigate, currentUser.uid]);
 
-  // 2. CHAT Y LECTURA
+  // 2. CHAT EN TIEMPO REAL
   useEffect(() => {
     const q = query(collection(db, `events/${id}/notes`), orderBy('createdAt', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -106,12 +109,12 @@ export default function ServiceDetails() {
       await fetch("https://backend-notificaciones-mceh.onrender.com/send-notification", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: userRole === 'pastor' ? `Nota: ${event.title}` : `${currentUser.displayName} en ${event.title}`,
-          body: hasImage ? "📷 Imagen" : hasChecklist ? "📋 Tareas" : text,
+          title: userRole === 'pastor' ? `Nota del Pastor: ${event.title}` : `Mensaje de ${currentUser.displayName}`,
+          body: hasImage ? "📷 Imagen compartida" : hasChecklist ? "📋 Lista de tareas enviada" : text,
           tokens: unique, url: `/servicios/${id}`
         })
       });
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("Error en noti:", e); }
   };
 
   const handleSendMessage = async () => {
@@ -133,16 +136,20 @@ export default function ServiceDetails() {
         const tasks = tempTasks.filter(t => t.trim() !== '');
         if (tasks.length > 0) checklist = tasks.map(t => ({ text: t, completed: false }));
       }
-      const txt = newMessage;
+      const msgText = newMessage;
       await addDoc(collection(db, `events/${id}/notes`), {
-        text: txt, image: imageUrl, checklist: checklist,
+        text: msgText, image: imageUrl, checklist: checklist,
         sender: currentUser.displayName, uid: currentUser.uid,
         createdAt: serverTimestamp(), readBy: [currentUser.uid], isPinned: false
       });
-      sendChatNotification(txt, !!imageUrl, !!checklist);
+      sendChatNotification(msgText, !!imageUrl, !!checklist);
       setNewMessage(''); setSelectedFile(null); setImagePreview(null);
       setShowChecklistCreator(false); setTempTasks(['']);
     } catch (e) { console.error(e); } finally { setIsSending(false); }
+  };
+
+  const deleteMessage = async (msgId) => {
+    if (window.confirm("¿Eliminar este mensaje?")) await deleteDoc(doc(db, `events/${id}/notes`, msgId));
   };
 
   const togglePin = async (msgId, currentState) => {
@@ -156,6 +163,12 @@ export default function ServiceDetails() {
     const newChecklist = [...msg.checklist];
     newChecklist[taskIdx].completed = !newChecklist[taskIdx].completed;
     await updateDoc(doc(db, `events/${id}/notes`, msgId), { checklist: newChecklist });
+  };
+
+  const handleResponse = async (status) => {
+    const eventRef = doc(db, 'events', id);
+    await updateDoc(eventRef, { [`confirmations.${currentUser.displayName}`]: status, updatedAt: serverTimestamp() });
+    setEvent(prev => ({ ...prev, confirmations: { ...prev.confirmations, [currentUser.displayName]: status } }));
   };
 
   if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-brand-600" /></div>;
@@ -174,7 +187,7 @@ export default function ServiceDetails() {
             {m.checklist.map((task, i) => (
               <button key={i} onClick={() => toggleChecklistTask(m.id, i)} className="flex items-center gap-2 w-full text-left">
                 {task.completed ? <CheckSquare size={16} className={isPinnedView ? "text-white/60" : "text-white"}/> : <Square size={16} className="opacity-40"/>}
-                <span className={`text-xs font-bold ${task.completed ? 'opacity-40 line-through' : ''}`}>{task.text}</span>
+                <span className={`${isPinnedView ? 'text-xs' : 'text-sm'} font-bold ${task.completed ? 'opacity-40 line-through' : ''}`}>{task.text}</span>
               </button>
             ))}
           </div>
@@ -187,31 +200,42 @@ export default function ServiceDetails() {
   return (
     <div className="h-screen w-full bg-slate-50 flex flex-col overflow-hidden animate-fade-in">
       
-      {/* 🚀 1. CABECERA INTEGRADA FIJA */}
+      {/* 🚀 CABECERA BLOQUEADA (TOP) */}
       <header className="bg-slate-900 text-white pt-10 pb-4 px-5 rounded-b-[40px] shadow-xl z-50 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
           <button onClick={() => navigate('/servicios')} className="p-2 bg-white/10 rounded-full"><ChevronLeft size={22} /></button>
           <div className="text-center">
             <h1 className="text-xl font-black">{event.title}</h1>
-            <p className="text-[10px] font-bold text-slate-400 uppercase">{format(new Date(event.date + 'T00:00:00'), "d MMMM", { locale: es })} • {event.time} hs</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{format(new Date(event.date + 'T00:00:00'), "d MMMM", { locale: es })} • {event.time} hs</p>
           </div>
           <div className="w-10"></div>
         </div>
 
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-3 flex items-center justify-between">
+        {/* Card de Función e Información de Equipo */}
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-3 flex items-center justify-between mb-2">
            <div className="flex items-center gap-3">
               <div className="bg-brand-500/20 p-2 rounded-xl text-brand-400"><Users size={18} /></div>
               <div><p className="text-[8px] font-black text-white/40 uppercase">Tu función</p><p className="text-sm font-bold text-white capitalize">{myRole?.replace(/_/g, ' ')}</p></div>
            </div>
-           <button onClick={() => navigate(`/calendario/${id}`)} className="text-[9px] font-black bg-brand-600 px-3 py-1.5 rounded-full flex items-center gap-1 shadow-lg active:scale-95 transition-all">EQUIPO <ExternalLink size={10}/></button>
+           <button onClick={() => navigate(`/calendario/${id}`)} className="text-[9px] font-black bg-brand-600 px-3 py-1.5 rounded-full flex items-center gap-1 active:scale-95 transition-all">EQUIPO <ExternalLink size={10}/></button>
         </div>
+
+        {/* Estado de Confirmación Rápida */}
+        {!myStatus ? (
+          <div className="flex gap-2"><button onClick={() => handleResponse('confirmed')} className="flex-1 bg-emerald-500 text-white py-2 rounded-xl font-black text-[9px] uppercase shadow-lg">Confirmar ✓</button><button onClick={() => handleResponse('declined')} className="flex-1 bg-white/10 text-white/60 py-2 rounded-xl font-black text-[9px] uppercase">No puedo</button></div>
+        ) : (
+          <div className={`p-2 rounded-xl flex items-center justify-between border ${myStatus === 'confirmed' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'}`}>
+            <span className="text-[9px] font-black uppercase flex items-center gap-2">{myStatus === 'confirmed' ? <CheckCircle size={14}/> : <XCircle size={14}/>} {myStatus === 'confirmed' ? 'LISTO' : 'BAJA'}</span>
+            <button onClick={() => handleResponse(null)} className="text-[8px] font-black uppercase underline">Cambiar</button>
+          </div>
+        )}
       </header>
 
-      {/* 💬 2. CUERPO DE CHAT (UNICO SCROLLABLE) */}
+      {/* 💬 ÁREA DE CHAT (CENTRAL SCROLLABLE) */}
       <main className="flex-1 overflow-hidden flex flex-col relative">
         
-        {/* Título de notas fijo abajo del header */}
-        <div className="bg-slate-50/95 backdrop-blur-md z-40 border-b border-slate-200">
+        {/* Título de Notas y Pinned (Fijos al inicio del scroll) */}
+        <div className="bg-slate-50/95 backdrop-blur-md z-40 border-b border-slate-200 flex-shrink-0">
             <div className="p-4 flex items-center justify-between">
               <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><MessageSquare size={14} className="text-brand-500"/> Notas de Equipo</h3>
               <button onClick={() => setHideReceipts(!hideReceipts)} className="p-1.5 text-slate-400">{hideReceipts ? <Eye size={16} /> : <EyeOff size={16} />}</button>
@@ -224,8 +248,8 @@ export default function ServiceDetails() {
             )}
         </div>
 
-        {/* Scroll real de mensajes */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-6">
+        {/* Mensajes del Chat */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-6 scroll-smooth">
           {messages.map((m) => {
               const isMy = m.uid === currentUser.uid;
               const readers = allUsers.filter(u => m.readBy?.includes(u.id) && u.id !== m.uid).map(u => u.displayName?.split(' ')[0]);
@@ -249,8 +273,8 @@ export default function ServiceDetails() {
         </div>
       </main>
 
-      {/* 🛠 3. BARRA DE HERRAMIENTAS FIJA INFERIOR */}
-      <footer className="bg-white border-t border-slate-100 p-4 pb-8 z-50 flex-shrink-0">
+      {/* 🛠 CONSOLA DE HERRAMIENTAS BLOQUEADA (BOTTOM) */}
+      <footer className="bg-white border-t border-slate-100 p-4 pb-10 z-50 flex-shrink-0 shadow-[0_-10px_25px_-5px_rgba(0,0,0,0.05)]">
         {imagePreview && (
           <div className="relative inline-block mb-3 animate-scale-in">
             <img src={imagePreview} className="w-16 h-16 object-cover rounded-xl border-2 border-white shadow-lg" />
@@ -259,13 +283,13 @@ export default function ServiceDetails() {
         )}
         {showChecklistCreator && (
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-3 space-y-2">
-            <div className="flex justify-between items-center"><span className="text-[9px] font-black text-slate-500 uppercase">Nueva Lista</span><button onClick={() => setShowChecklistCreator(false)}><X size={12}/></button></div>
+            <div className="flex justify-between items-center"><span className="text-[9px] font-black text-slate-500 uppercase tracking-tighter">Nueva Lista</span><button onClick={() => setShowChecklistCreator(false)}><X size={12}/></button></div>
             {tempTasks.map((t, i) => (
               <input key={i} type="text" value={t} onChange={(e) => {
                 const newT = [...tempTasks]; newT[i] = e.target.value; 
                 if (i === tempTasks.length - 1 && e.target.value !== '') newT.push('');
                 setTempTasks(newT);
-              }} placeholder="Tarea..." className="w-full text-xs p-1 bg-transparent outline-none border-b border-slate-200 focus:border-brand-500 font-bold" />
+              }} placeholder="Añadir tarea..." className="w-full text-xs p-1 bg-transparent outline-none border-b border-slate-200 focus:border-brand-500 font-bold" />
             ))}
           </div>
         )}
@@ -276,11 +300,11 @@ export default function ServiceDetails() {
             <button onClick={() => setShowChecklistCreator(!showChecklistCreator)} className={`p-3 border rounded-xl active:scale-90 transition-transform ${showChecklistCreator ? 'bg-brand-600 text-white border-brand-600' : 'bg-slate-50 text-slate-400 border-slate-100'}`}><ListPlus size={18}/></button>
           </div>
           <textarea ref={textareaRef} rows="1" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Escribir..." className="flex-1 bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-500/20 outline-none resize-none max-h-32 shadow-inner" />
-          <button onClick={handleSendMessage} disabled={isSending || (!newMessage.trim() && !selectedFile && !showChecklistCreator)} className="bg-brand-600 text-white p-3.5 rounded-xl shadow-lg active:scale-90 disabled:opacity-50">{isSending ? <Loader2 size={18} className="animate-spin"/> : <Send size={18}/>}</button>
+          <button onClick={handleSendMessage} disabled={isSending || (!newMessage.trim() && !selectedFile && !showChecklistCreator)} className="bg-brand-600 text-white p-3.5 rounded-xl shadow-lg active:scale-90 disabled:opacity-50 transition-all">{isSending ? <Loader2 size={18} className="animate-spin"/> : <Send size={18}/>}</button>
         </div>
       </footer>
 
-      {/* MODALES: IMAGEN Y LECTORES */}
+      {/* MODALES (IMAGEN Y LECTORES) */}
       {viewingImage && (
         <div className="fixed inset-0 z-[150] bg-black/95 flex flex-col items-center justify-center p-4 animate-fade-in" onClick={() => setViewingImage(null)}>
           <div className="absolute top-8 right-6 flex gap-4"><button onClick={(e) => { e.stopPropagation(); handleDownload(viewingImage); }} className="p-3 bg-white/10 rounded-full text-white"><Download size={22}/></button><button onClick={() => setViewingImage(null)} className="p-3 bg-white/10 rounded-full text-white"><X size={22}/></button></div>
