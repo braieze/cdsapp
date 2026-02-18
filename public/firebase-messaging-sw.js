@@ -1,4 +1,3 @@
-// public/firebase-messaging-sw.js
 importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js');
 
@@ -15,39 +14,48 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
+// 1. RECEPCIÓN EN SEGUNDO PLANO
 messaging.onBackgroundMessage(function(payload) {
+  console.log('[SW] Mensaje recibido en segundo plano:', payload);
+  
   const notificationTitle = payload.data.title || "Nuevo Aviso";
   const notificationOptions = {
     body: payload.data.body || "Toca para ver los detalles.",
     icon: '/web-app-manifest-192x192.png',
     badge: '/badge-72x72.png',
     tag: 'cds-notif-unica',
-    data: { url: payload.data.url || '/' }
+    data: { 
+        // Guardamos la ruta relativa (ej: /post/123)
+        url: payload.data.url || '/' 
+    }
   };
   return self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
+// 2. LÓGICA DE CLIC DE INGENIERÍA (postMessage + focus)
 self.addEventListener('notificationclick', function(event) {
   event.notification.close();
 
-  // 1. Construimos la URL absoluta (Crucial para que iPhone sepa a dónde ir)
   const targetPath = event.notification.data.url || '/';
+  // Construimos URL absoluta solo para el caso de abrir ventana nueva
   const fullUrl = new URL(targetPath, self.location.origin).href;
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-      // 2. Buscamos si la app ya está abierta (primer o segundo plano)
+      // 🎯 BUSCAMOS SI LA APP ESTÁ ABIERTA
       for (let client of clientList) {
         if (client.url.includes(self.location.origin)) {
-          // 🔥 ESTRATEGIA DE INGENIERÍA:
-          // Primero damos foco para despertar la app, luego navegamos.
-          return client.focus().then((focusedClient) => {
-            return focusedClient.navigate(fullUrl);
+          // 1. Le damos el foco (traer al frente)
+          client.focus();
+          // 2. 🔥 EL DESPERTADOR: Enviamos el mensaje al NavigationHandler de App.jsx
+          return client.postMessage({ 
+            type: 'NAVIGATE', 
+            url: targetPath 
           });
         }
       }
       
-      // 3. Si la app estaba cerrada (Cold Start)
+      // 🎯 SI LA APP ESTABA CERRADA
       if (clients.openWindow) {
         return clients.openWindow(fullUrl);
       }

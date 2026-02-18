@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { auth, db, messaging } from './firebase'; 
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore'; 
@@ -19,17 +19,38 @@ import Login from './pages/Login';
 import Profile from './pages/Profile';
 import Directory from './pages/Directory';
 
+// 🔥 COMPONENTE DESPERTADOR (PASO 4)
+// Este componente escucha al Service Worker y fuerza la navegación
+function NavigationHandler() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      const handleMessage = (event) => {
+        // Escuchamos el mensaje 'NAVIGATE' enviado por el SW
+        if (event.data && event.data.type === 'NAVIGATE') {
+          console.log("🔔 Notificación recibida en vivo. Navegando a:", event.data.url);
+          navigate(event.data.url);
+        }
+      };
+
+      navigator.serviceWorker.addEventListener('message', handleMessage);
+      return () => navigator.serviceWorker.removeEventListener('message', handleMessage);
+    }
+  }, [navigate]);
+
+  return null; // No renderiza nada, solo escucha
+}
+
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // 1. FUNCIÓN DE SEGUNDO PLANO (No bloquea la carga)
   const syncUserAndNotifications = async (currentUser) => {
     try {
       const userRef = doc(db, 'users', currentUser.uid);
-      
-      // Verificamos si existe el usuario (sin await en el flujo principal)
       const userSnap = await getDoc(userRef);
+      
       if (!userSnap.exists()) {
         await setDoc(userRef, {
           displayName: currentUser.displayName,
@@ -42,7 +63,6 @@ function App() {
         });
       }
 
-      // Configuración de notificaciones (en paralelo)
       const permission = await Notification.requestPermission();
       if (permission === 'granted') {
         const token = await getToken(messaging, {
@@ -53,22 +73,16 @@ function App() {
         }
       }
     } catch (error) {
-      console.warn("Tarea de fondo falló, pero la app sigue funcionando:", error);
+      console.warn("Sync falló:", error);
     }
   };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      // ✅ PASO CLAVE: Seteamos el usuario y quitamos el loading DE INMEDIATO
       setUser(currentUser);
       setLoading(false); 
-
-      if (currentUser) {
-        // Ejecutamos la sincronización pesada sin 'await', para que no bloquee
-        syncUserAndNotifications(currentUser);
-      }
+      if (currentUser) syncUserAndNotifications(currentUser);
     });
-
     return () => unsubscribe();
   }, []);
 
@@ -82,6 +96,9 @@ function App() {
 
   return (
     <BrowserRouter>
+      {/* ✅ El NavigationHandler debe estar AQUÍ, dentro del BrowserRouter */}
+      <NavigationHandler /> 
+      
       <Toaster richColors position="top-center" />
       <Routes>
         <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />

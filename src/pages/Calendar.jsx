@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { db, auth, messaging } from '../firebase';
-import { collection, query, orderBy, onSnapshot, addDoc, Timestamp, deleteDoc, doc, getDoc, serverTimestamp, getDocs } from 'firebase/firestore'; // ✅ getDocs agregado
-import { Plus, Calendar as CalIcon, List, Clock, Trash2, X, Calendar, ChevronLeft, ChevronRight, Loader2, Image as ImageIcon } from 'lucide-react';
+import { db, auth } from '../firebase';
+import { collection, query, orderBy, onSnapshot, addDoc, Timestamp, deleteDoc, doc, getDoc, serverTimestamp, getDocs } from 'firebase/firestore'; 
+import { Plus, Calendar as CalIcon, List, Clock, Trash2, X, Calendar, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { EVENT_TYPES } from '../utils/eventTypes';
 import { format, addMonths, subMonths, isSameMonth, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -18,7 +18,6 @@ export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [userRole, setUserRole] = useState(null);
 
-  // Estados para subida de imagen
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -30,7 +29,7 @@ export default function CalendarPage() {
     title: '', type: 'culto', date: '', endDate: '', time: '19:30', description: ''
   });
 
-  // --- 🔥 FUNCIÓN DE NOTIFICACIONES (NUEVA) ---
+  // ✅ PASO 3: GESTIÓN DE TOKENS Y NOTIFICACIÓN LIMPIA
   const sendEventNotification = async (eventTitle, eventDate, eventUrl, eventType) => {
     try {
       const usersSnap = await getDocs(collection(db, "users"));
@@ -42,7 +41,8 @@ export default function CalendarPage() {
         }
       });
 
-      const uniqueTokens = [...new Set(tokens)];
+      // Filtramos duplicados y tokens basura
+      const uniqueTokens = [...new Set(tokens)].filter(t => t && t.length > 10);
       if (uniqueTokens.length === 0) return;
 
       const BACKEND_URL = "https://backend-notificaciones-mceh.onrender.com/send-notification";
@@ -52,10 +52,10 @@ export default function CalendarPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: `Se creó un nuevo ${typeLabel}`, 
-          body: `${eventTitle} - 📅 ${eventDate}`,
+          title: String(`Nuevo evento: ${typeLabel}`), 
+          body: String(`${eventTitle} - 📅 ${eventDate}`),
           tokens: uniqueTokens,
-          url: eventUrl 
+          url: String(eventUrl) 
         })
       });
       console.log("✅ Notificación de Agenda enviada");
@@ -84,6 +84,7 @@ export default function CalendarPage() {
     return () => unsubscribeEvents();
   }, []);
 
+  // ✅ PASO 2: COMPRESIÓN DE IMÁGENES INTEGRADA
   const handleCreateEvent = async () => {
     if (!newEvent.title || !newEvent.date) return alert("Falta título o fecha");
     setIsUploading(true);
@@ -91,8 +92,12 @@ export default function CalendarPage() {
 
     try {
         if (imageFile && newEvent.type === 'ayuno') {
+            // Comprimimos antes de subir a Cloudinary
+            const options = { maxSizeMB: 0.6, maxWidthOrHeight: 1200, useWebWorker: true };
+            const compressedFile = await imageCompression(imageFile, options);
+
             const formData = new FormData();
-            formData.append("file", imageFile);
+            formData.append("file", compressedFile);
             formData.append("upload_preset", UPLOAD_PRESET); 
             const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { method: "POST", body: formData });
             const data = await response.json();
@@ -101,7 +106,6 @@ export default function CalendarPage() {
 
         const finalEndDate = newEvent.type === 'ayuno' && newEvent.endDate ? newEvent.endDate : newEvent.date;
 
-        // 1. Guardar Evento en Firestore
         const eventDocRef = await addDoc(collection(db, 'events'), {
             ...newEvent,
             endDate: finalEndDate,
@@ -114,10 +118,10 @@ export default function CalendarPage() {
             createdBy: auth.currentUser?.uid
         });
 
-        // 2. 🔥 Enviar Notificación con fecha formateada
         const dateForNotif = format(new Date(newEvent.date + 'T00:00:00'), "EEEE d 'de' MMMM", { locale: es });
         const capitalizedDate = dateForNotif.charAt(0).toUpperCase() + dateForNotif.slice(1);
 
+        // Notificación con link al evento
         await sendEventNotification(
           newEvent.title,
           capitalizedDate,
@@ -125,7 +129,6 @@ export default function CalendarPage() {
           newEvent.type
         );
 
-        // Lógica de Ayuno (Mantiene tu código original)
         if (newEvent.type === 'ayuno') {
             const startDateStr = format(new Date(newEvent.date + 'T00:00:00'), 'd MMMM', { locale: es });
             const endDateStr = finalEndDate ? format(new Date(finalEndDate + 'T00:00:00'), 'd MMMM', { locale: es }) : startDateStr;
@@ -133,7 +136,7 @@ export default function CalendarPage() {
             await addDoc(collection(db, 'posts'), {
                 type: 'Devocional',
                 title: `🔥 Ayuno: ${newEvent.title}`,
-                content: `${newEvent.description || 'Únete a este tiempo especial.'}\n\n📅 Fecha: Del ${startDateStr} al ${endDateStr}.\n👉 Ve a la Agenda para sumarte.`,
+                content: `${newEvent.description || 'Únete a este tiempo especial.'}\n\n📅 Fecha: Del ${startDateStr} al ${endDateStr}.`,
                 image: uploadedImageUrl,
                 link: `/calendario/${eventDocRef.id}`,
                 linkText: 'Anotarme ahora',
@@ -157,10 +160,17 @@ export default function CalendarPage() {
     } catch (error) { console.error(error); alert("Error al crear evento"); } finally { setIsUploading(false); }
   };
 
-  // --- MANTIENE TUS RENDERERS ORIGINALES ---
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setImageFile(file);
+      setImagePreview(URL.createObjectURL(file));
+    }
+  };
+
+  // --- RENDERERS ---
   const nextMonth = () => setCurrentDate(addMonths(currentDate, 1));
   const prevMonth = () => setCurrentDate(subMonths(currentDate, 1));
-  const isCurrentMonth = isSameMonth(new Date(), currentDate);
   
   const filteredEvents = events.filter(event => {
     const eventDate = new Date(event.date + 'T00:00:00'); 
@@ -174,7 +184,7 @@ export default function CalendarPage() {
   const renderListView = () => {
     if (filteredEvents.length === 0) return (
       <div className="text-center py-12 bg-white rounded-2xl border border-slate-100 shadow-sm">
-        <Calendar size={48} className="mx-auto text-slate-200 mb-4"/>
+        <CalIcon size={48} className="mx-auto text-slate-200 mb-4"/>
         <p className="text-slate-500 font-medium">No hay eventos en este mes.</p>
       </div>
     );
@@ -185,7 +195,7 @@ export default function CalendarPage() {
             return (
               <div key={event.id} onClick={() => navigate(`/calendario/${event.id}`)} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex gap-4 hover:shadow-md transition-shadow cursor-pointer relative group">
                 <div className={`flex flex-col items-center justify-center px-3 rounded-xl border min-w-[60px] ${event.type === 'ayuno' ? 'bg-rose-50 border-rose-100' : 'bg-slate-50 border-slate-200'}`}>
-                  <span className={`text-xs font-bold uppercase ${event.type === 'ayuno' ? 'text-rose-400' : 'text-slate-400'}`}>{format(new Date(event.date + 'T00:00:00'), 'MMM', { locale: es })}</span>
+                  <span className={`text-[10px] font-bold uppercase ${event.type === 'ayuno' ? 'text-rose-400' : 'text-slate-400'}`}>{format(new Date(event.date + 'T00:00:00'), 'MMM', { locale: es })}</span>
                   <span className={`text-xl font-black ${event.type === 'ayuno' ? 'text-rose-600' : 'text-slate-800'}`}>{format(new Date(event.date + 'T00:00:00'), 'dd')}</span>
                 </div>
                 <div className="flex-1">
@@ -244,7 +254,6 @@ export default function CalendarPage() {
 
   return (
     <div className="pb-24 pt-4 px-4 bg-slate-50 min-h-screen animate-fade-in relative">
-      {/* Header, Controles de mes y Vistas se mantienen igual */}
       <div className="flex justify-between items-center mb-6 sticky top-0 z-20 bg-slate-50/95 backdrop-blur-sm py-2 border-b border-slate-200/50">
         <h1 className="text-2xl font-black text-slate-800">Agenda</h1>
         <div className="flex bg-white p-1 rounded-xl border border-slate-200 shadow-sm">
@@ -269,7 +278,6 @@ export default function CalendarPage() {
         </button>
       )}
 
-      {/* Modal de Día y Modal de Creación se mantienen igual */}
       {selectedDayEvents && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedDayEvents(null)}>
             <div className="bg-white w-full max-w-sm rounded-2xl p-5 animate-slide-up relative shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -316,6 +324,20 @@ export default function CalendarPage() {
                             </button>
                         ))}
                     </div>
+
+                    {newEvent.type === 'ayuno' && (
+                       <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                         <label className="text-xs font-bold text-slate-400 uppercase mb-2 block">Imagen del Ayuno</label>
+                         <label className="w-full h-32 border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-white transition-colors overflow-hidden">
+                           {imagePreview ? (
+                             <img src={imagePreview} className="w-full h-full object-cover" alt="Preview"/>
+                           ) : (
+                             <><ImageIcon size={24} className="text-slate-300"/><span className="text-xs text-slate-400">Subir imagen</span></>
+                           )}
+                           <input type="file" className="hidden" accept="image/*" onChange={handleImageChange}/>
+                         </label>
+                       </div>
+                    )}
 
                     <button onClick={handleCreateEvent} disabled={isUploading} className="w-full bg-slate-900 text-white font-bold py-3.5 rounded-xl shadow-lg mt-2 disabled:opacity-50">
                         {isUploading ? <Loader2 className="animate-spin" size={20}/> : "Crear en Agenda"}

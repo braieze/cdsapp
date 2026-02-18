@@ -15,11 +15,9 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
   const [loading, setLoading] = useState(false);
   const [type, setType] = useState('Noticia');
   
-  // Estado para Encuestas
   const [showPoll, setShowPoll] = useState(false);
   const [pollOptions, setPollOptions] = useState(['', '']); 
 
-  // TUS DATOS DE CLOUDINARY
   const CLOUD_NAME = "djmkggzjp"; 
   const UPLOAD_PRESET = "ml_default"; 
 
@@ -43,7 +41,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     setImage(null); setPreview(null); setShowPoll(false); setPollOptions(['', '']);
   };
 
-  // 🔥 FUNCIÓN ACTUALIZADA: Ahora envía la URL para Deep Linking
+  // ✅ PASO 3: GESTIÓN DE TOKENS OPTIMIZADA
   const sendPushNotification = async (postTitle, postContent, postUrl) => {
     try {
       const usersSnap = await getDocs(collection(db, "users"));
@@ -56,34 +54,24 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         }
       });
 
-      const uniqueTokens = [...new Set(tokens)];
+      // Filtramos duplicados y tokens inválidos (vacíos o muy cortos)
+      const uniqueTokens = [...new Set(tokens)].filter(t => t && t.length > 10);
 
       if (uniqueTokens.length === 0) return;
 
-      console.log(`Enviando notificación a ${uniqueTokens.length} dispositivos...`);
-
       const BACKEND_URL = "https://backend-notificaciones-mceh.onrender.com/send-notification";
 
-      const response = await fetch(BACKEND_URL, {
+      await fetch(BACKEND_URL, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: postTitle || "Nueva Publicación",
-          body: postContent ? postContent.substring(0, 100) : "Toca para ver más.",
+          title: String(postTitle || "Nueva Publicación"),
+          body: String(postContent ? postContent.substring(0, 100) : "Toca para ver más."),
           tokens: uniqueTokens,
-          url: postUrl || "/" // 👈 Enviamos la URL al backend
+          url: postUrl || "/" 
         })
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Error en el servidor');
-      }
-
-      console.log(`✅ Notificación con URL enviada con éxito`);
-
+      console.log(`✅ Notificación enviada a ${uniqueTokens.length} dispositivos`);
     } catch (error) {
       console.error("❌ Error enviando notificación:", error.message);
     }
@@ -91,15 +79,29 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
 
   if (!isOpen) return null;
 
+  // ✅ PASO 2: COMPRESIÓN DE IMÁGENES (Subidas rápidas)
   const handleImageChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const options = { maxSizeMB: 0.5, maxWidthOrHeight: 1200, useWebWorker: true };
+    
+    // Opciones de compresión profesional: máximo 0.6MB
+    const options = { 
+      maxSizeMB: 0.6, 
+      maxWidthOrHeight: 1280, 
+      useWebWorker: true,
+      initialQuality: 0.8
+    };
+
     try {
+      setLoading(true); // Bloqueamos brevemente mientras comprime
       const compressedFile = await imageCompression(file, options);
       setImage(compressedFile);
       setPreview(URL.createObjectURL(compressedFile));
-    } catch (error) { console.log(error); }
+    } catch (error) { 
+      console.log("Error comprimiendo imagen:", error); 
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAddPollOption = () => {
@@ -139,14 +141,9 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
       };
 
       if (postToEdit) {
-        // --- MODO EDICIÓN ---
         const postRef = doc(db, 'posts', postToEdit.id);
-        await updateDoc(postRef, {
-          ...commonData,
-          updatedAt: serverTimestamp()
-        });
+        await updateDoc(postRef, { ...commonData, updatedAt: serverTimestamp() });
       } else {
-        // --- MODO CREACIÓN ---
         let finalPoll = null;
         if (showPoll) {
           const validOptions = pollOptions.filter(opt => opt.trim() !== '');
@@ -158,7 +155,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           }
         }
 
-        // Capturamos la referencia del nuevo post para obtener su ID
         const docRef = await addDoc(collection(db, 'posts'), {
           ...commonData,
           authorId: auth.currentUser.uid,
@@ -172,8 +168,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           commentsCount: 0
         });
 
-        // 🔥 NOTIFICACIÓN CON REDIRECCIÓN
-        // Por ahora enviamos a la raíz "/", pero podrías usar `/post/${docRef.id}`
+        // 🔥 NOTIFICACIÓN CON REDIRECCIÓN AL POST ESPECÍFICO
         await sendPushNotification(
             title || `Nueva ${type}`, 
             text || "Hay nuevo contenido en la app.",
@@ -196,7 +191,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
       <div className="bg-white w-full max-w-md rounded-2xl p-4 shadow-2xl animate-slide-up relative max-h-[85vh] overflow-y-auto flex flex-col">
         
-        {/* Header */}
         <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-3 flex-shrink-0">
           <h3 className="font-bold text-slate-800 text-lg">
             {postToEdit ? 'Editar Publicación' : 'Crear Publicación'}
@@ -206,9 +200,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           </button>
         </div>
 
-        {/* Scrollable Content */}
         <div className="overflow-y-auto flex-1 pr-1">
-          {/* Selector de Tipo */}
           <div className="flex gap-2 mb-4">
             {['Noticia', 'Devocional', 'Urgente'].map(t => (
               <button 
@@ -235,7 +227,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
             className="w-full h-24 p-3 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:border-brand-500 resize-none text-sm mb-3"
           />
 
-          {/* Sección Encuesta */}
           {!postToEdit && showPoll && (
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 mb-3 animate-fade-in">
               <div className="flex justify-between items-center mb-2">
@@ -256,14 +247,13 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
             </div>
           )}
 
-          {/* Links y Tags */}
           <div className="space-y-2 mb-3">
              <div className="flex gap-2">
-               <div className="relative flex-1">
+                <div className="relative flex-1">
                   <LinkIcon size={14} className="absolute left-3 top-3 text-slate-400" />
                   <input type="text" placeholder="https://..." value={link} onChange={e => setLink(e.target.value)} className="w-full pl-8 p-2 bg-slate-50 rounded-lg border border-slate-200 text-xs focus:outline-none" />
-               </div>
-               <input type="text" placeholder="Texto Botón" value={linkText} onChange={e => setLinkText(e.target.value)} className="w-1/3 p-2 bg-slate-50 rounded-lg border border-slate-200 text-xs focus:outline-none" />
+                </div>
+                <input type="text" placeholder="Texto Botón" value={linkText} onChange={e => setLinkText(e.target.value)} className="w-1/3 p-2 bg-slate-50 rounded-lg border border-slate-200 text-xs focus:outline-none" />
              </div>
              <div className="relative">
                 <Tag size={14} className="absolute left-3 top-3 text-slate-400" />
@@ -279,10 +269,12 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           )}
         </div>
 
-        {/* Footer Actions */}
         <div className="flex justify-between items-center pt-3 mt-auto border-t border-slate-100">
           <div className="flex gap-2">
-            <label className="text-brand-600 p-2 hover:bg-brand-50 rounded-lg cursor-pointer"><ImageIcon size={20} /><input type="file" accept="image/*" className="hidden" onChange={handleImageChange} /></label>
+            <label className="text-brand-600 p-2 hover:bg-brand-50 rounded-lg cursor-pointer">
+              {loading ? <Loader2 size={20} className="animate-spin" /> : <ImageIcon size={20} />}
+              <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} disabled={loading} />
+            </label>
             {!postToEdit && (
               <button onClick={() => setShowPoll(!showPoll)} className={`p-2 rounded-lg ${showPoll ? 'text-brand-600 bg-brand-50' : 'text-slate-400 hover:bg-slate-50'}`}><BarChart2 size={20} /></button>
             )}
@@ -297,7 +289,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
             {postToEdit ? 'Guardar' : 'Publicar'}
           </button>
         </div>
-
       </div>
     </div>
   );

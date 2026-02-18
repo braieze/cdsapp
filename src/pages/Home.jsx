@@ -62,9 +62,30 @@ export default function Home() {
 
   const REACTION_TYPES = ['👍', '❤️', '🔥', '🙏', '😢', '😂'];
 
-  // 1. CARGAR POSTS
+  // 🔥 PASO 4: "EL DESPERTADOR" (Escuchador de Navegación)
+  // Este código soluciona que la app no reaccione a notificaciones cuando está abierta.
   useEffect(() => {
-    const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
+    if ('serviceWorker' in navigator) {
+      const handleMessage = (event) => {
+        if (event.data && event.data.type === 'NAVIGATE') {
+          console.log("🚀 Navegación forzada desde Notificación:", event.data.url);
+          navigate(event.data.url);
+        }
+      };
+      navigator.serviceWorker.addEventListener('message', handleMessage);
+      return () => navigator.serviceWorker.removeEventListener('message', handleMessage);
+    }
+  }, [navigate]);
+
+  // 1. CARGAR POSTS (Optimizado con limit)
+  useEffect(() => {
+    // ✅ Añadimos limit(15) para máxima velocidad de carga
+    const q = query(
+      collection(db, 'posts'), 
+      orderBy('createdAt', 'desc'),
+      limit(15) 
+    );
+    
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const postsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       postsData.sort((a, b) => (a.isPinned === b.isPinned ? 0 : a.isPinned ? -1 : 1));
@@ -98,6 +119,8 @@ export default function Home() {
     });
     return () => unsubscribe();
   }, []);
+
+  // ... (Resto del código de funciones: handleReaction, handleConfirmDelete, etc. se mantiene igual)
 
   useEffect(() => {
     const closeMenu = () => setMenuOpenId(null);
@@ -253,12 +276,10 @@ export default function Home() {
                         </button>
                       ))}
                     </div>
-                    {/* ✅ TODO UNO: Navega a la ruta dinámica */}
                     <button onClick={(e) => { e.stopPropagation(); navigate(`/post/${post.id}`); }} className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-brand-600 transition-colors px-2 py-1 rounded-lg hover:bg-slate-50">
                       <MessageCircle size={22} /> Comentar
                     </button>
                   </div>
-                  {/* ✅ TODO UNO: Click en la previsualización navega a la ruta */}
                   <CommentPreview postId={post.id} onClick={() => navigate(`/post/${post.id}`)} />
                 </div>
               );
@@ -267,7 +288,6 @@ export default function Home() {
                 return (
                   <div key={post.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mx-4 sm:mx-0 relative">
                      <div className="absolute top-4 right-4 z-10"><ManagementMenu /></div>
-                    {/* ✅ TODO UNO: Navega a la ruta dinámica */}
                     <div onClick={() => navigate(`/post/${post.id}`)} className="cursor-pointer">
                       {post.image ? (
                         <div className="h-56 w-full bg-slate-200 relative">
@@ -318,7 +338,6 @@ export default function Home() {
                     </div>
                     <ManagementMenu />
                   </div>
-                  {/* ✅ TODO UNO: Navega a la ruta dinámica */}
                   <div className="px-5 mb-4 cursor-pointer" onClick={() => navigate(`/post/${post.id}`)}>
                     <div className={`text-base text-slate-800 whitespace-pre-wrap leading-relaxed ${isExpanded ? '' : 'line-clamp-4'}`}>{post.content}</div>
                     {post.content.length > 200 && !isExpanded && <button onClick={(e) => { e.stopPropagation(); toggleExpand(post.id); }} className="text-brand-600 text-sm font-bold mt-2 hover:underline">Leer más...</button>}
@@ -369,14 +388,8 @@ export default function Home() {
       {/* MODALES ACTIVOS */}
       <CreatePostModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} postToEdit={editingPost} />
       {fullImage && <ImageModal src={fullImage} onClose={() => setFullImage(null)} />}
-      
       {showReactionsFor && <ReactionsListModal post={showReactionsFor} onClose={() => setShowReactionsFor(null)} />}
-      
-      <BirthdayModal 
-        isOpen={isBirthdayModalOpen} 
-        onClose={() => setIsBirthdayModalOpen(false)} 
-        users={birthdays}
-      />
+      <BirthdayModal isOpen={isBirthdayModalOpen} onClose={() => setIsBirthdayModalOpen(false)} users={birthdays} />
 
       {postToDelete && (
         <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
