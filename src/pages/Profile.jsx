@@ -4,12 +4,13 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { 
   User, Phone, MapPin, Calendar, Save, Edit3, Shield, 
   Briefcase, LogOut, Camera, Loader2, MessageCircle, 
-  Heart, Fingerprint, Download, CreditCard, X
+  Heart, Fingerprint, Download, CreditCard, X, QrCode, Award
 } from 'lucide-react';
-import { signOut } from 'firebase/auth'; // ✅ Aseguramos la importación de signOut
+import { signOut } from 'firebase/auth';
 import imageCompression from 'browser-image-compression';
+import { QRCodeCanvas } from 'qrcode.react'; // ✅ QR para asistencias
 
-// ✅ IMPORTACIÓN DE LIBRERÍAS (Requiere: npm install jspdf html2canvas)
+// LIBRERÍAS DE PDF
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
@@ -52,32 +53,29 @@ export default function Profile() {
     fetchUserData();
   }, [currentUser]);
 
-  // ✅ DEFINICIÓN DE handleLogout (CORRIGE EL ERROR)
   const handleLogout = () => {
     if (window.confirm("¿Cerrar sesión de Conquistadores?")) {
-      signOut(auth).catch((error) => console.error("Error al salir:", error));
+      signOut(auth).catch((error) => console.error("Error:", error));
     }
   };
 
-  // ✅ GENERADOR DE PDF PROFESIONAL
   const downloadPDF = async () => {
     if (!credentialRef.current) return;
     setIsGeneratingPDF(true);
     try {
       const canvas = await html2canvas(credentialRef.current, {
-        scale: 3, 
+        scale: 4, 
         useCORS: true, 
-        backgroundColor: "#ffffff",
-        borderRadius: 40
+        backgroundColor: "#0f172a"
       });
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'px',
-        format: [canvas.width / 3, canvas.height / 3]
+        format: [canvas.width / 4, canvas.height / 4]
       });
-      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width / 3, canvas.height / 3);
-      pdf.save(`Credencial_MCEH_${currentUser.displayName.replace(/\s/g, '_')}.pdf`);
+      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width / 4, canvas.height / 4);
+      pdf.save(`Credencial_CDS_${currentUser.displayName.replace(/\s/g, '_')}.pdf`);
     } catch (error) {
       console.error("Error en PDF:", error);
     } finally {
@@ -118,113 +116,144 @@ export default function Profile() {
   return (
     <div className="pb-24 bg-slate-50 min-h-screen relative animate-fade-in font-outfit">
       
-      {/* PORTADA Y FOTO */}
-      <div className="relative mb-16">
-        <div className="h-44 bg-slate-900 w-full rounded-b-[50px] shadow-2xl flex items-center justify-center">
-           <h2 className="text-white/10 font-black text-6xl uppercase tracking-tighter select-none">PERFIL</h2>
+      {/* PORTADA CON DISEÑO Y LOGO */}
+      <div className="relative mb-20">
+        <div className="h-52 bg-slate-900 w-full rounded-b-[60px] shadow-2xl overflow-hidden relative border-b-4 border-brand-500">
+           {/* Patrón de fondo abstracto */}
+           <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
+           <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent"></div>
+           <div className="h-full flex flex-col items-center justify-center pb-10">
+              <span className="text-brand-500 font-black text-6xl tracking-tighter opacity-40">CDS</span>
+              <span className="text-white/20 font-bold text-[10px] uppercase tracking-[0.4em] mt-1">Conquistadores de Sueños</span>
+           </div>
         </div>
-        <div className="absolute -bottom-12 left-1/2 -translate-x-1/2">
+        
+        {/* FOTO DE PERFIL (POSICIONADA CORRECTAMENTE ARRIBA) */}
+        <div className="absolute -bottom-14 left-1/2 -translate-x-1/2">
           <div className="relative group">
-            <img src={displayPhoto} className={`w-32 h-32 rounded-[40px] border-4 border-white object-cover shadow-2xl bg-white ${uploadingPhoto ? 'opacity-50' : ''}`} />
-            <label className="absolute -bottom-2 -right-2 bg-brand-600 text-white p-2.5 rounded-2xl border-4 border-white shadow-lg cursor-pointer hover:scale-110 transition-transform">
-              <Camera size={18} />
+            <div className="w-36 h-36 rounded-[45px] border-[6px] border-slate-50 overflow-hidden shadow-2xl bg-white">
+               <img src={displayPhoto} className={`w-full h-full object-cover ${uploadingPhoto ? 'opacity-50' : ''}`} />
+            </div>
+            <label className="absolute bottom-1 right-1 bg-brand-600 text-white p-3 rounded-2xl border-4 border-slate-50 shadow-lg cursor-pointer hover:scale-110 active:scale-90 transition-all">
+              <Camera size={20} />
               <input type="file" className="hidden" onChange={handlePhotoUpload}/>
             </label>
           </div>
         </div>
       </div>
 
-      <div className="text-center px-6 mb-8">
-        <h1 className="text-2xl font-black text-slate-800 leading-tight">{currentUser?.displayName}</h1>
-        <div className="flex justify-center gap-2 mt-3">
-          <span className="px-3 py-1 rounded-xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 shadow-sm"><Shield size={12} /> {userData?.role || 'Miembro'}</span>
-          <span className="px-3 py-1 rounded-xl bg-brand-50 text-brand-700 text-[10px] font-black uppercase tracking-widest border border-brand-100 flex items-center gap-1.5 shadow-sm"><Briefcase size={12} /> {formData.ministerio || 'Sin Área'}</span>
+      <div className="text-center px-6 mb-10">
+        <h1 className="text-3xl font-black text-slate-800 tracking-tight">{currentUser?.displayName}</h1>
+        <div className="flex justify-center gap-3 mt-4">
+          <span className="px-4 py-1.5 rounded-2xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg"><Shield size={12} className="text-brand-400"/> {userData?.role || 'Miembro'}</span>
+          <span className="px-4 py-1.5 rounded-2xl bg-white text-slate-800 text-[10px] font-black uppercase tracking-widest border-2 border-slate-100 flex items-center gap-2 shadow-sm"><Briefcase size={12} className="text-brand-600"/> {formData.ministerio || 'EQUIPO'}</span>
         </div>
       </div>
 
-      {/* QUICK ACTIONS SMART */}
+      {/* QUICK ACTIONS MEJORADOS */}
       {!isEditing && (
-        <div className="px-4 mb-6 grid grid-cols-2 gap-3">
-           <a href={`https://wa.me/${formData.phone?.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="bg-emerald-50 text-emerald-700 p-5 rounded-[30px] border border-emerald-100 flex flex-col items-center gap-2 active:scale-95 transition-all shadow-sm">
-              <MessageCircle size={24}/>
-              <span className="text-[10px] font-black uppercase tracking-widest">WhatsApp</span>
+        <div className="px-6 mb-10 grid grid-cols-2 gap-4">
+           <a href={`https://wa.me/${formData.phone?.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="bg-white p-5 rounded-[35px] border-2 border-emerald-50 flex flex-col items-center gap-3 active:scale-95 transition-all shadow-xl shadow-emerald-900/5">
+              <div className="p-3 bg-emerald-500 rounded-2xl text-white shadow-lg shadow-emerald-200"><MessageCircle size={24}/></div>
+              <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">WhatsApp</span>
            </a>
-           <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(formData.address || '')}`} target="_blank" rel="noreferrer" className="bg-blue-50 text-blue-700 p-5 rounded-[30px] border border-blue-100 flex flex-col items-center gap-2 active:scale-95 transition-all shadow-sm">
-              <MapPin size={24}/>
-              <span className="text-[10px] font-black uppercase tracking-widest">Ubicación</span>
+           <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(formData.address || '')}`} target="_blank" rel="noreferrer" className="bg-white p-5 rounded-[35px] border-2 border-blue-50 flex flex-col items-center gap-3 active:scale-95 transition-all shadow-xl shadow-blue-900/5">
+              <div className="p-3 bg-blue-500 rounded-2xl text-white shadow-lg shadow-blue-200"><MapPin size={24}/></div>
+              <span className="text-[10px] font-black text-blue-700 uppercase tracking-widest">Ubicación</span>
            </a>
-           <button onClick={() => setShowCredential(true)} className="col-span-2 bg-slate-900 text-white p-5 rounded-[30px] flex items-center justify-center gap-3 shadow-xl active:scale-95 transition-all">
-              <CreditCard size={20} className="text-brand-400"/>
-              <span className="text-xs font-black uppercase tracking-widest">Ver Credencial Digital</span>
+           <button onClick={() => setShowCredential(true)} className="col-span-2 bg-slate-900 text-white p-6 rounded-[40px] flex items-center justify-between gap-3 shadow-2xl active:scale-95 transition-all group overflow-hidden relative">
+              <div className="absolute right-0 top-0 p-4 opacity-10 group-hover:rotate-12 transition-transform"><Award size={80}/></div>
+              <div className="flex items-center gap-4 relative z-10">
+                 <div className="p-3 bg-brand-500 rounded-2xl shadow-lg"><CreditCard size={24} /></div>
+                 <div className="text-left"><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Identidad Digital</p><p className="text-sm font-black uppercase">VER CREDENCIAL CDS</p></div>
+              </div>
+              <QrCode size={32} className="text-brand-500 relative z-10"/>
            </button>
         </div>
       )}
 
-      {/* FICHA TÉCNICA */}
-      <div className="px-4 space-y-4">
-        <div className="bg-white rounded-[40px] shadow-sm border border-slate-100 p-6">
-          <div className="flex justify-between items-center mb-8">
-            <h3 className="font-black text-slate-800 uppercase text-[10px] tracking-[0.2em] flex items-center gap-2">DATOS DE SERVIDOR</h3>
-            <button onClick={() => isEditing ? handleSave() : setIsEditing(true)} className={`p-3 rounded-2xl transition-all ${isEditing ? 'bg-emerald-500 text-white shadow-lg' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}>
+      {/* FICHA TÉCNICA (CON BRILLO) */}
+      <div className="px-6 space-y-6">
+        <div className="bg-white rounded-[45px] shadow-2xl shadow-slate-200/50 border border-slate-100 p-8 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 opacity-50"></div>
+          
+          <div className="flex justify-between items-center mb-10 relative z-10">
+            <h3 className="font-black text-slate-900 uppercase text-xs tracking-[0.2em] flex items-center gap-3">DATOS DE SERVIDOR</h3>
+            <button onClick={() => isEditing ? handleSave() : setIsEditing(true)} className={`p-4 rounded-[20px] transition-all shadow-lg ${isEditing ? 'bg-emerald-500 text-white shadow-emerald-200' : 'bg-slate-900 text-white shadow-slate-200'}`}>
               {isEditing ? <Save size={20}/> : <Edit3 size={20}/>}
             </button>
           </div>
 
-          <div className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-8 relative z-10">
+            <div className="grid grid-cols-2 gap-6">
                <div className="space-y-2">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">DNI / Documento</label>
-                  <input disabled={!isEditing} value={formData.dni} onChange={e => setFormData({...formData, dni: e.target.value})} className="w-full bg-slate-50 p-4 rounded-2xl text-sm font-bold border border-slate-100 outline-none disabled:text-slate-500 focus:ring-2 focus:ring-brand-500/20" placeholder="00.000.000" />
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Nº DOCUMENTO</label>
+                  <input disabled={!isEditing} value={formData.dni} onChange={e => setFormData({...formData, dni: e.target.value})} className="w-full bg-slate-50 p-5 rounded-3xl text-sm font-black border-2 border-transparent focus:border-brand-500 outline-none disabled:text-slate-600 transition-all" placeholder="00.000.000" />
                </div>
                <div className="space-y-2">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Sangre</label>
-                  <input disabled={!isEditing} value={formData.bloodType} onChange={e => setFormData({...formData, bloodType: e.target.value})} className="w-full bg-slate-50 p-4 rounded-2xl text-sm font-bold border border-slate-100 outline-none uppercase disabled:text-slate-500 focus:ring-2 focus:ring-brand-500/20" placeholder="O+" />
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">G. SANGRE</label>
+                  <input disabled={!isEditing} value={formData.bloodType} onChange={e => setFormData({...formData, bloodType: e.target.value})} className="w-full bg-slate-50 p-5 rounded-3xl text-sm font-black border-2 border-transparent focus:border-brand-500 outline-none uppercase disabled:text-slate-600 transition-all text-center" placeholder="O+" />
                </div>
             </div>
             
             <div className="space-y-2">
-               <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Dirección Actual</label>
-               <input disabled={!isEditing} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full bg-slate-50 p-4 rounded-2xl text-sm font-bold border border-slate-100 outline-none disabled:text-slate-500" placeholder="Calle y número..." />
+               <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">DOMICILIO ACTUAL</label>
+               <input disabled={!isEditing} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full bg-slate-50 p-5 rounded-3xl text-sm font-black border-2 border-transparent focus:border-brand-500 outline-none disabled:text-slate-600 transition-all" placeholder="Calle y altura..." />
             </div>
 
-            <div className="bg-rose-50/30 p-5 rounded-[30px] border border-rose-100/50">
-               <label className="text-[9px] font-black text-rose-600 uppercase tracking-widest mb-4 block">CONTACTO DE EMERGENCIA</label>
-               <input disabled={!isEditing} value={formData.emergencyName} onChange={e => setFormData({...formData, emergencyName: e.target.value})} className="w-full bg-white p-4 rounded-2xl text-xs font-bold border border-rose-100/50 outline-none mb-3" placeholder="Nombre" />
-               <input disabled={!isEditing} value={formData.emergencyPhone} onChange={e => setFormData({...formData, emergencyPhone: e.target.value})} className="w-full bg-white p-4 rounded-2xl text-xs font-bold border border-rose-100/50 outline-none" placeholder="Teléfono" />
+            <div className="bg-slate-900 p-6 rounded-[35px] shadow-xl">
+               <label className="text-[9px] font-black text-brand-400 uppercase tracking-[0.2em] mb-5 block border-b border-white/10 pb-2">CONTACTO DE EMERGENCIA</label>
+               <input disabled={!isEditing} value={formData.emergencyName} onChange={e => setFormData({...formData, emergencyName: e.target.value})} className="w-full bg-white/5 p-4 rounded-2xl text-xs font-bold text-white border border-white/10 outline-none mb-3 focus:border-brand-500" placeholder="Nombre completo" />
+               <input disabled={!isEditing} value={formData.emergencyPhone} onChange={e => setFormData({...formData, emergencyPhone: e.target.value})} className="w-full bg-white/5 p-4 rounded-2xl text-xs font-bold text-white border border-white/10 outline-none focus:border-brand-500" placeholder="Teléfono de contacto" />
             </div>
           </div>
         </div>
 
-        <button onClick={handleLogout} className="w-full flex items-center justify-center gap-3 text-rose-500 font-black text-[10px] uppercase tracking-[0.2em] py-5 rounded-[35px] bg-rose-50 border border-rose-100 active:scale-95 transition-all mt-4">
-          <LogOut size={16} /> Cerrar Sesión
+        <button onClick={handleLogout} className="w-full flex items-center justify-center gap-3 text-rose-500 font-black text-[10px] uppercase tracking-[0.3em] py-6 rounded-[40px] bg-rose-50 border-2 border-rose-100 active:scale-95 transition-all mt-6 shadow-sm mb-10">
+          <LogOut size={18} /> CERRAR SESIÓN SEGURA
         </button>
       </div>
 
-      {/* ✅ MODAL CREDENCIAL CON GENERADOR PDF */}
+      {/* ✅ NUEVA CREDENCIAL CDS (REDiseñada para PDF) */}
       {showCredential && (
-        <div className="fixed inset-0 z-[500] bg-slate-900/95 backdrop-blur-xl flex flex-col items-center justify-center p-6 animate-fade-in">
+        <div className="fixed inset-0 z-[500] bg-slate-950 backdrop-blur-2xl flex flex-col items-center justify-center p-6 animate-fade-in overflow-y-auto">
           
-          <button onClick={() => setShowCredential(false)} className="absolute top-8 right-8 text-white/50 hover:text-white p-2 transition-colors"><X size={32}/></button>
+          <button onClick={() => setShowCredential(false)} className="absolute top-8 right-8 text-white bg-white/10 p-3 rounded-full hover:bg-white/20 transition-all"><X size={28}/></button>
 
-          {/* EL CARNET (Lo que se captura) */}
-          <div ref={credentialRef} className="w-full max-w-[300px] bg-white rounded-[40px] overflow-hidden shadow-2xl relative mb-10 border border-white">
-            <div className="h-28 bg-brand-600 w-full flex items-center justify-center p-6 relative">
-               <div className="absolute top-0 right-0 p-4 opacity-10"><Shield size={60} className="text-white"/></div>
-               <h2 className="text-white font-black uppercase tracking-tighter text-xl relative z-10">Conquistadores</h2>
+          {/* EL CARNET (FONDO NEGRO / DISEÑO CUADRADO PARA PDF) */}
+          <div ref={credentialRef} className="w-full max-w-[340px] bg-slate-900 shadow-2xl relative border-4 border-brand-500">
+            {/* Header Credencial */}
+            <div className="h-32 bg-slate-900 w-full flex flex-col items-center justify-center p-6 border-b-2 border-brand-500/30">
+               <div className="absolute top-0 right-0 p-4 opacity-5"><Shield size={100} className="text-white"/></div>
+               <h2 className="text-brand-500 font-black uppercase tracking-tighter text-3xl">CDS</h2>
+               <p className="text-white/40 text-[8px] font-black tracking-[0.5em] uppercase">Conquistadores</p>
             </div>
-            <div className="p-8 text-center bg-white">
-               <img src={displayPhoto} className="w-28 h-28 rounded-[35px] mx-auto -mt-20 border-8 border-white shadow-xl object-cover mb-4 bg-white" />
-               <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight leading-none mb-1">{currentUser?.displayName}</h3>
-               <p className="text-[10px] font-black text-brand-600 uppercase mb-8 tracking-widest">{formData.ministerio || 'SERVIDOR'}</p>
-               
-               <div className="grid grid-cols-2 gap-6 text-left border-t border-slate-50 pt-6">
-                  <div><p className="text-[8px] font-black text-slate-300 uppercase tracking-widest mb-1">DNI</p><p className="text-xs font-black text-slate-700">{formData.dni || '-'}</p></div>
-                  <div><p className="text-[8px] font-black text-slate-300 uppercase tracking-widest mb-1">SANGRE</p><p className="text-xs font-black text-slate-700">{formData.bloodType || '-'}</p></div>
+
+            <div className="p-10 text-center bg-slate-900">
+               {/* Foto integrada en el diseño */}
+               <div className="w-40 h-40 mx-auto -mt-24 border-[6px] border-brand-500 bg-slate-800 shadow-2xl overflow-hidden">
+                  <img src={displayPhoto} className="w-full h-full object-cover" />
+               </div>
+
+               <div className="mt-8">
+                  <h3 className="text-2xl font-black text-white uppercase tracking-tight mb-1">{currentUser?.displayName}</h3>
+                  <div className="inline-block px-4 py-1 bg-brand-500 text-slate-900 text-[10px] font-black uppercase tracking-widest rounded-sm mb-8">{formData.ministerio || 'EQUIPO CDS'}</div>
                </div>
                
-               <div className="mt-10 pt-6 border-t border-dashed border-slate-100 flex flex-col items-center gap-2">
-                  <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center border border-slate-100"><Shield size={24} className="text-slate-200"/></div>
-                  <p className="text-[7px] font-bold text-slate-300 uppercase tracking-[0.3em]">ID: {currentUser.uid.slice(0,10)}</p>
+               <div className="grid grid-cols-2 gap-8 text-left border-t border-white/10 pt-8 mb-10">
+                  <div><p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">IDENTIDAD / DNI</p><p className="text-sm font-black text-white">{formData.dni || '-'}</p></div>
+                  <div><p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">RANGO / ROL</p><p className="text-sm font-black text-white uppercase">{userData?.role || 'Miembro'}</p></div>
+               </div>
+               
+               {/* ZONA QR TÁCTICA */}
+               <div className="pt-8 border-t-2 border-dashed border-brand-500/20 flex flex-col items-center gap-4">
+                  <div className="p-4 bg-white rounded-none shadow-inner">
+                    <QRCodeCanvas value={`https://mceh.app/verify/${currentUser.uid}`} size={100} level="H" />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[8px] font-black text-brand-500 uppercase tracking-[0.4em]">Verified Server</p>
+                    <p className="text-[7px] text-white/20 font-mono mt-1 italic">ID: {currentUser.uid.toUpperCase()}</p>
+                  </div>
                </div>
             </div>
           </div>
@@ -232,9 +261,9 @@ export default function Profile() {
           <button 
             onClick={downloadPDF}
             disabled={isGeneratingPDF}
-            className="w-full max-w-[300px] bg-white text-slate-900 py-5 rounded-[30px] font-black text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-2xl active:scale-95 transition-all disabled:opacity-50"
+            className="w-full max-w-[340px] bg-brand-500 text-slate-900 py-6 font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-2xl active:scale-95 transition-all disabled:opacity-50 mt-10 rounded-none"
           >
-            {isGeneratingPDF ? <Loader2 className="animate-spin" size={18}/> : <><Download size={18} className="text-brand-600"/> Descargar Credencial</>}
+            {isGeneratingPDF ? <Loader2 className="animate-spin" size={18}/> : <><Download size={20}/> DESCARGAR CREDENCIAL PDF</>}
           </button>
         </div>
       )}
