@@ -10,7 +10,7 @@ import {
   Plus, Calendar as CalIcon, List, Clock, Trash2, X, 
   ChevronLeft, ChevronRight, Loader2, Megaphone, 
   Send, EyeOff, CheckCircle, XCircle, ImageIcon,
-  Check, Info, AlertCircle, Users, ChevronDown, Search, UserCheck
+  Check, Info, AlertCircle, Users, ChevronDown, Search, UserCheck 
 } from 'lucide-react';
 import { EVENT_TYPES } from '../utils/eventTypes';
 import { format, addMonths, subMonths, isSameMonth, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
@@ -21,7 +21,7 @@ export default function CalendarPage() {
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState('list');
   const [events, setEvents] = useState([]);
-  const [allUsers, setAllUsers] = useState([]); // ✅ Base de datos de servidores para el blindaje
+  const [allUsers, setAllUsers] = useState([]); 
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedDayEvents, setSelectedDayEvents] = useState(null); 
@@ -39,7 +39,7 @@ export default function CalendarPage() {
   const CLOUD_NAME = "djmkggzjp"; 
   const UPLOAD_PRESET = "ml_default"; 
 
-  // ✅ ESTADO DE NUEVO EVENTO CON ASIGNACIONES INTEGRADAS
+  // ✅ ESTADO DE NUEVO EVENTO CON ESTRUCTURA DE ASIGNACIÓN
   const [newEvent, setNewEvent] = useState({
     title: '', type: 'culto', date: '', endDate: '', time: '19:30', description: '',
     published: false,
@@ -56,7 +56,7 @@ export default function CalendarPage() {
     }
   }, [toast]);
 
-  // ✅ 1. CARGA DE DATOS (MANTENIDA + DIRECTORIO)
+  // ✅ 1. CARGA DE DATOS (MANTENIDA + DIRECTORIO COMPLETO)
   useEffect(() => {
     const fetchData = async () => {
       const user = auth.currentUser;
@@ -65,7 +65,6 @@ export default function CalendarPage() {
         if (userSnap.exists()) setUserRole(userSnap.data().role);
       }
       
-      // Traemos todos los usuarios para filtrar por ministerio y validar disponibilidad
       const usersSnap = await getDocs(collection(db, 'users'));
       setAllUsers(usersSnap.docs.map(d => ({ id: d.id, ...d.data() })));
     };
@@ -79,21 +78,22 @@ export default function CalendarPage() {
     return () => unsubscribeEvents();
   }, []);
 
-  // ✅ 2. LÓGICA DE BLINDAJE: NO REPETIR PERSONAS
+  // ✅ 2. LÓGICA DE BLINDAJE: ¿ESTÁ YA SELECCIONADO?
   const isUserSelectedSomewhere = (name) => {
-    return Object.values(newEvent.assignments).flat().includes(name);
+    // Escanea todos los arrays de assignments para ver si el nombre ya figura
+    return Object.values(newEvent.assignments).some(list => list.includes(name));
   };
 
   const toggleAssignment = (role, name) => {
-    const current = newEvent.assignments[role] || [];
-    if (current.includes(name)) {
-      setNewEvent({ ...newEvent, assignments: { ...newEvent.assignments, [role]: current.filter(n => n !== name) } });
+    const currentList = newEvent.assignments[role] || [];
+    if (currentList.includes(name)) {
+      setNewEvent({ ...newEvent, assignments: { ...newEvent.assignments, [role]: currentList.filter(n => n !== name) } });
     } else {
-      setNewEvent({ ...newEvent, assignments: { ...newEvent.assignments, [role]: [...current, name] } });
+      setNewEvent({ ...newEvent, assignments: { ...newEvent.assignments, [role]: [...currentList, name] } });
     }
   };
 
-  // ✅ 3. SISTEMA DE NOTIFICACIONES (MANTENIDO)
+  // ✅ 3. SISTEMA DE NOTIFICACIONES (RESPETADO)
   const sendEventNotification = async (eventTitle, eventDate, eventUrl, eventType) => {
     try {
       const usersSnap = await getDocs(collection(db, "users"));
@@ -101,14 +101,12 @@ export default function CalendarPage() {
       usersSnap.forEach((doc) => { if (doc.data().fcmTokens) tokens.push(...doc.data().fcmTokens); });
       const uniqueTokens = [...new Set(tokens)].filter(t => t && t.length > 10);
       if (uniqueTokens.length === 0) return;
-
       const typeLabel = EVENT_TYPES[eventType]?.label || eventType;
       await fetch("https://backend-notificaciones-mceh.onrender.com/send-notification", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: `Nuevo evento: ${typeLabel}`, body: `${eventTitle} - 📅 ${eventDate}`, tokens: uniqueTokens, url: eventUrl })
       });
-    } catch (error) { console.error(error); }
+    } catch (e) { console.error(e); }
   };
 
   const sendBulkNotification = async (monthName) => {
@@ -118,20 +116,18 @@ export default function CalendarPage() {
       usersSnap.forEach(d => { if (d.data().fcmTokens) tokens.push(...d.data().fcmTokens); });
       const uniqueTokens = [...new Set(tokens)].filter(t => t && t.length > 10);
       if (uniqueTokens.length === 0) return;
-
       await fetch("https://backend-notificaciones-mceh.onrender.com/send-notification", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: `📅 Agenda de ${monthName} lista`, body: "Se publicaron las nuevas actividades.", tokens: uniqueTokens, url: "/servicios" })
+        body: JSON.stringify({ title: `📅 Agenda de ${monthName} lista`, body: "Actividades publicadas.", tokens: uniqueTokens, url: "/servicios" })
       });
     } catch (e) { console.error(e); }
   };
 
-  // ✅ 4. ACCIONES DE BORRADO Y PUBLICACIÓN (MANTENIDAS)
+  // ✅ 4. ACCIONES CONFIRMADAS (BORRADO/PUBLICACIÓN)
   const executeConfirmedAction = async () => {
     if (!actionConfirm) return;
     const { type, id } = actionConfirm;
     setActionConfirm(null);
-
     if (type === 'delete') {
       try {
         await deleteDoc(doc(db, 'events', id));
@@ -144,10 +140,9 @@ export default function CalendarPage() {
         const postsSnap = await getDocs(query(collection(db, "posts"), where("eventId", "==", id)));
         postsSnap.forEach(p => batch.delete(p.ref));
         await batch.commit();
-        setToast({ message: "Evento eliminado", type: "info" });
+        setToast({ message: "Eliminado con éxito", type: "info" });
       } catch (e) { setToast({ message: "Error al borrar", type: "error" }); }
     }
-
     if (type === 'publish') {
       setIsPublishing(true);
       try {
@@ -157,29 +152,24 @@ export default function CalendarPage() {
         });
         await batch.commit();
         await sendBulkNotification(format(currentDate, 'MMMM', { locale: es }));
-        setToast({ message: "¡Mes publicado!", type: "success" });
+        setToast({ message: "¡Todo el mes publicado!", type: "success" });
       } catch (e) { setToast({ message: "Error al publicar", type: "error" }); }
       finally { setIsPublishing(false); }
     }
   };
 
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (file) { setImageFile(file); setImagePreview(URL.createObjectURL(file)); }
-  };
-
-  // ✅ 5. CREACIÓN DE EVENTO (MANTENIDA + EQUIPO)
+  // ✅ 5. CREACIÓN DE EVENTO (MANTENIDA + GUARDADO DE EQUIPO)
   const handleCreateEvent = async () => {
-    if (!newEvent.title || !newEvent.date) return setToast({ message: "Título y fecha obligatorios", type: "error" });
+    if (!newEvent.title || !newEvent.date) return setToast({ message: "Faltan datos", type: "error" });
     setIsUploading(true);
     let uploadedImageUrl = null;
     try {
         if (imageFile && newEvent.type === 'ayuno') {
             const options = { maxSizeMB: 0.6, maxWidthOrHeight: 1200, useWebWorker: true };
             const compressed = await imageCompression(imageFile, options);
-            const formData = new FormData();
-            formData.append("file", compressed); formData.append("upload_preset", UPLOAD_PRESET);
-            const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { method: "POST", body: formData });
+            const fd = new FormData();
+            fd.append("file", compressed); fd.append("upload_preset", UPLOAD_PRESET);
+            const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { method: "POST", body: fd });
             const data = await res.json();
             uploadedImageUrl = data.secure_url;
         }
@@ -202,7 +192,7 @@ export default function CalendarPage() {
         if (newEvent.type === 'ayuno') {
             await addDoc(collection(db, 'posts'), {
                 type: 'Devocional', title: `🔥 Ayuno: ${newEvent.title}`,
-                content: newEvent.description || 'Súmate a este tiempo.',
+                content: newEvent.description || 'Únete.',
                 image: uploadedImageUrl, eventId: eventDocRef.id,
                 createdAt: serverTimestamp(), authorId: auth.currentUser.uid, authorName: auth.currentUser.displayName
             });
@@ -210,17 +200,22 @@ export default function CalendarPage() {
         setIsModalOpen(false);
         setNewEvent({ title: '', type: 'culto', date: '', endDate: '', time: '19:30', description: '', published: false, assignments: { predica: [], alabanza: [], multimedia: [], recepcion: [] } });
         setImageFile(null); setImagePreview(null);
-        setToast({ message: "Servicio agendado", type: "success" });
+        setToast({ message: "Agenda actualizada", type: "success" });
     } catch (error) { setToast({ message: "Error al guardar", type: "error" }); } 
     finally { setIsUploading(false); }
   };
 
-  // ✅ 6. FUNCIONES DE NAVEGACIÓN Y RENDER (MANTENIDAS)
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) { setImageFile(file); setImagePreview(URL.createObjectURL(file)); }
+  };
+
+  // ✅ 6. FUNCIONES DE NAVEGACIÓN (CORREGIDAS)
   const nextMonth = () => setCurrentDate(addMonths(currentDate, 1));
   const prevMonth = () => setCurrentDate(subMonths(currentDate, 1));
 
   const renderListView = () => {
-    if (filteredEvents.length === 0) return <div className="text-center py-12"><CalIcon size={48} className="mx-auto text-slate-200 mb-4"/><p className="text-slate-500 font-medium">No hay eventos para este mes.</p></div>;
+    if (filteredEvents.length === 0) return <div className="text-center py-12"><CalIcon size={48} className="mx-auto text-slate-200 mb-4"/><p className="text-slate-500 font-medium">Sin eventos.</p></div>;
     return (
       <div className="space-y-4 animate-fade-in">
           {filteredEvents.map(event => {
@@ -235,7 +230,7 @@ export default function CalendarPage() {
                   <div className="flex justify-between items-start">
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase ${config.color}`}>{config.label}</span>
                     {['pastor', 'lider'].includes(userRole) && (
-                      <button onClick={(e) => { e.stopPropagation(); setActionConfirm({ type: 'delete', id: event.id, title: '¿Borrar evento?', message: `Se eliminará "${event.title}".` }); }} className="text-slate-300 hover:text-red-500"><Trash2 size={16}/></button>
+                      <button onClick={(e) => { e.stopPropagation(); setActionConfirm({ type: 'delete', id: event.id, title: '¿Borrar evento?', message: 'Se eliminará de la agenda.' }); }} className="text-slate-300 hover:text-red-500"><Trash2 size={16}/></button>
                     )}
                   </div>
                   <h4 className="font-bold text-slate-800 text-base leading-tight mt-1 uppercase truncate">{event.title}</h4>
@@ -266,7 +261,7 @@ export default function CalendarPage() {
                     const hasEvents = dayEvents.length > 0;
                     return (
                         <div key={day.toString()} onClick={() => hasEvents && setSelectedDayEvents({ date: day, events: dayEvents })}
-                            className={`aspect-square rounded-2xl flex flex-col items-center justify-center relative cursor-pointer transition-all ${!isCurrentMonthDay ? 'text-slate-200' : 'text-slate-700'} ${isToday ? 'bg-slate-900 text-white shadow-lg' : 'hover:bg-slate-50'} ${hasEvents && !isToday && isCurrentMonthDay ? 'bg-brand-50 font-black text-brand-700' : ''}`}>
+                            className={`aspect-square rounded-2xl flex flex-col items-center justify-center relative cursor-pointer transition-all ${!isCurrentMonthDay ? 'text-slate-200' : 'text-slate-700'} ${isToday ? 'bg-slate-900 text-white' : 'hover:bg-slate-50'} ${hasEvents && !isToday && isCurrentMonthDay ? 'bg-brand-50 font-black text-brand-700' : ''}`}>
                             <span className="text-xs font-bold">{format(day, 'd')}</span>
                             <div className="flex gap-0.5 mt-1 h-1">{dayEvents.slice(0, 3).map((ev, i) => <div key={i} className={`w-1 h-1 rounded-full ${EVENT_TYPES[ev.type]?.dot || 'bg-slate-400'}`}></div>)}</div>
                         </div>
@@ -277,11 +272,10 @@ export default function CalendarPage() {
     );
   };
 
-  // ✅ 7. SELECTOR DE EQUIPO CON FILTRO Y BLINDAJE REAL
+  // ✅ 7. SELECTOR DE EQUIPO CON BLINDAJE (CORREGIDO)
   const renderTeamPicker = () => {
     if (!activeAssignRole) return null;
     
-    // Filtro por ministerio/rol específico
     const candidates = allUsers.filter(u => {
       const nameMatch = u.displayName?.toLowerCase().includes(assignSearch.toLowerCase());
       if (activeAssignRole === 'predica') return (u.role === 'pastor' || u.role === 'lider') && nameMatch;
@@ -289,42 +283,42 @@ export default function CalendarPage() {
     });
 
     return (
-      <div className="fixed inset-0 z-[200] bg-slate-900/90 backdrop-blur-xl flex items-end justify-center animate-fade-in" onClick={() => setActiveAssignRole(null)}>
+      <div className="fixed inset-0 z-[200] bg-slate-900/90 backdrop-blur-xl flex items-end justify-center p-0 animate-fade-in" onClick={() => setActiveAssignRole(null)}>
         <div className="bg-white w-full max-w-md rounded-t-[45px] p-8 animate-slide-up max-h-[85vh] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
           <div className="flex justify-between items-center mb-6">
-            <h3 className="font-black text-slate-800 uppercase text-xs tracking-widest flex items-center gap-2"><Users size={16} className="text-brand-500"/> EQUIPO {activeAssignRole}</h3>
+            <h3 className="font-black text-slate-800 uppercase text-xs tracking-widest flex items-center gap-2"><Users size={16} className="text-brand-500"/> Equipo {activeAssignRole}</h3>
             <button onClick={() => setActiveAssignRole(null)} className="p-2 bg-slate-50 rounded-full text-slate-400"><X size={20}/></button>
           </div>
 
           <div className="relative mb-4">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
-            <input placeholder="Buscar servidor..." className="w-full pl-10 p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none" value={assignSearch} onChange={e => setAssignSearch(e.target.value)} />
+            <input placeholder="Buscar..." className="w-full pl-10 p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none" value={assignSearch} onChange={e => setAssignSearch(e.target.value)} />
           </div>
           
           <div className="flex-1 overflow-y-auto space-y-3 pb-6 no-scrollbar">
             {candidates.map(user => {
-              const isSelectedHere = newEvent.assignments[activeAssignRole].includes(user.displayName);
-              const isBlocked = isUserSelectedSomewhere(user.displayName) && !isSelectedHere;
+              const isHere = newEvent.assignments[activeAssignRole].includes(user.displayName);
+              const isSomewhereElse = isUserSelectedSomewhere(user.displayName) && !isHere;
               
               return (
                 <button 
-                  key={user.id} disabled={isBlocked}
+                  key={user.id} disabled={isSomewhereElse}
                   onClick={() => toggleAssignment(activeAssignRole, user.displayName)}
-                  className={`w-full flex items-center gap-4 p-3 rounded-[28px] border-2 transition-all ${isSelectedHere ? 'bg-brand-50 border-brand-500' : isBlocked ? 'bg-slate-50 border-transparent opacity-40 grayscale cursor-not-allowed' : 'bg-white border-slate-100 active:scale-95'}`}
+                  className={`w-full flex items-center gap-4 p-3 rounded-[28px] border-2 transition-all ${isHere ? 'bg-brand-50 border-brand-500' : isSomewhereElse ? 'bg-slate-50 border-transparent opacity-40 grayscale cursor-not-allowed' : 'bg-white border-slate-100 active:scale-95'}`}
                 >
                   <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}`} className="w-14 h-14 rounded-2xl object-cover border-2 border-white shadow-sm" />
                   <div className="flex-1 text-left min-w-0">
-                    <p className="font-black text-slate-800 text-sm truncate uppercase tracking-tight">{user.displayName}</p>
-                    <p className={`text-[8px] font-black uppercase tracking-widest ${isBlocked ? 'text-rose-500 animate-pulse' : 'text-slate-400'}`}>
-                      {isBlocked ? 'Ya seleccionado en otra área' : user.role}
+                    <p className="font-black text-slate-800 text-sm truncate uppercase">{user.displayName}</p>
+                    <p className={`text-[8px] font-black uppercase tracking-widest ${isSomewhereElse ? 'text-rose-500 animate-pulse' : 'text-slate-400'}`}>
+                      {isSomewhereElse ? 'Ya tiene un servicio asignado' : user.role}
                     </p>
                   </div>
-                  {isSelectedHere && <CheckCircle size={22} className="text-brand-600"/>}
+                  {isHere && <CheckCircle size={22} className="text-brand-600"/>}
                 </button>
               );
             })}
           </div>
-          <button onClick={() => setActiveAssignRole(null)} className="w-full bg-slate-900 text-white py-5 rounded-[28px] font-black text-[10px] uppercase tracking-[0.2em] shadow-xl">Confirmar Equipo</button>
+          <button onClick={() => setActiveAssignRole(null)} className="w-full bg-slate-900 text-white py-5 rounded-[28px] font-black text-[10px] uppercase tracking-[0.2em]">Confirmar</button>
         </div>
       </div>
     );
@@ -332,7 +326,6 @@ export default function CalendarPage() {
 
   const filteredEvents = events.filter(e => isSameMonth(new Date(e.date + 'T00:00:00'), currentDate));
 
-  // ✅ RENDERIZADO PRINCIPAL
   return (
     <div className="pb-24 pt-4 px-4 bg-slate-50 min-h-screen animate-fade-in relative font-outfit">
       
@@ -353,23 +346,22 @@ export default function CalendarPage() {
       {loading ? <div className="flex justify-center py-20"><Loader2 className="animate-spin text-brand-500" size={32}/></div> : (viewMode === 'list' ? renderListView() : renderMonthView())}
 
       {['pastor', 'lider'].includes(userRole) && (
-        <button onClick={() => setIsModalOpen(true)} className="fixed bottom-24 right-4 w-16 h-16 bg-slate-900 text-white rounded-full shadow-2xl flex items-center justify-center z-40 active:scale-90 border-4 border-white transition-transform shadow-slate-900/40"><Plus size={32} /></button>
+        <button onClick={() => setIsModalOpen(true)} className="fixed bottom-24 right-4 w-16 h-16 bg-slate-900 text-white rounded-full shadow-2xl flex items-center justify-center z-40 active:scale-90 border-4 border-white"><Plus size={32} /></button>
       )}
 
-      {/* ✅ MODAL DE CREACIÓN CON BLINDAJE INTEGRADO */}
+      {/* ✅ MODAL DE CREACIÓN CON EQUIPO */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
             <div className="bg-white w-full max-w-sm rounded-[45px] p-8 shadow-2xl max-h-[92vh] overflow-y-auto animate-scale-in">
                 <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Nuevo Evento</h2><button onClick={() => setIsModalOpen(false)} className="p-2 bg-slate-50 rounded-full text-slate-400"><X size={20}/></button></div>
                 <div className="space-y-4">
-                    <input type="text" placeholder="TÍTULO DEL SERVICIO" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-3xl font-black outline-none uppercase text-sm focus:ring-2 focus:ring-brand-500/20" value={newEvent.title} onChange={e => setNewEvent({...newEvent, title: e.target.value})} />
+                    <input type="text" placeholder="TÍTULO" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-3xl font-black outline-none uppercase text-sm" value={newEvent.title} onChange={e => setNewEvent({...newEvent, title: e.target.value})} />
                     
                     <div className="grid grid-cols-2 gap-3">
                         <input type="date" className="p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none text-xs font-black uppercase" value={newEvent.date} onChange={e => setNewEvent({...newEvent, date: e.target.value})} />
                         <input type="time" className="p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none text-xs font-black" value={newEvent.time} onChange={e => setNewEvent({...newEvent, time: e.target.value})} />
                     </div>
 
-                    {/* ✅ EQUIPO CON VISUALIZACIÓN DE ASIGNADOS */}
                     <div className="bg-slate-900 p-6 rounded-[35px] shadow-xl space-y-3">
                        <p className="text-[9px] font-black text-brand-400 uppercase tracking-[0.2em] border-b border-white/10 pb-2">Asignar Equipo</p>
                        {['predica', 'alabanza', 'multimedia', 'recepcion'].map(role => (
@@ -386,7 +378,7 @@ export default function CalendarPage() {
                     </div>
 
                     <button onClick={() => setNewEvent({...newEvent, published: !newEvent.published})} className={`w-full p-4 rounded-[28px] border flex items-center justify-between transition-all ${newEvent.published ? 'bg-emerald-50 border-emerald-200 text-emerald-700 shadow-inner' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
-                       <span className="text-[10px] font-black uppercase tracking-wider">¿Notificar al equipo ahora?</span>
+                       <span className="text-[10px] font-black uppercase tracking-wider">¿Notificar equipo?</span>
                        {newEvent.published ? <CheckCircle size={20}/> : <XCircle size={20}/>}
                     </button>
 
@@ -400,29 +392,15 @@ export default function CalendarPage() {
 
       {renderTeamPicker()}
       
-      {/* RESTO DE MODALES Y TOASTS (RESPETADOS) */}
+      {/* MODALES EXTRAS (DÍAS, TOASTS, CONFIRMACIÓN) RESPETADOS */}
       {selectedDayEvents && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedDayEvents(null)}>
             <div className="bg-white w-full max-w-sm rounded-t-[40px] p-8 shadow-2xl animate-slide-up" onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center mb-6"><h3 className="font-black text-xl text-slate-800 capitalize tracking-tighter">{format(selectedDayEvents.date, 'EEEE d MMMM', {locale: es})}</h3><button onClick={() => setSelectedDayEvents(null)} className="p-2 bg-slate-50 rounded-full text-slate-400"><X size={20}/></button></div>
                 <div className="space-y-3">{selectedDayEvents.events.map(event => (
-                    <div key={event.id} onClick={() => navigate(`/calendario/${event.id}`)} className="p-4 bg-slate-50 border border-slate-100 rounded-3xl flex items-center gap-4 cursor-pointer hover:bg-slate-100 transition-colors"><div className="p-2.5 rounded-2xl bg-brand-50 text-brand-600 shadow-sm"><CalIcon size={20}/></div><div className="flex-1 overflow-hidden"><h4 className="font-black text-sm text-slate-800 truncate uppercase">{event.title}</h4><p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{event.time} hs</p></div><ChevronRightIcon size={16} className="text-slate-300"/></div>
+                    <div key={event.id} onClick={() => navigate(`/calendario/${event.id}`)} className="p-4 bg-slate-50 border border-slate-100 rounded-3xl flex items-center gap-4 cursor-pointer hover:bg-slate-100 transition-colors"><div className="p-2.5 rounded-2xl bg-brand-50 text-brand-600 shadow-sm"><CalIcon size={20}/></div><div className="flex-1 overflow-hidden"><h4 className="font-black text-sm text-slate-800 truncate uppercase">{event.title}</h4><p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{event.time} hs</p></div><ChevronRight size={16} className="text-slate-300"/></div>
                 ))}</div>
             </div>
-        </div>
-      )}
-
-      {actionConfirm && (
-        <div className="fixed inset-0 z-[300] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6">
-          <div className="bg-white w-full max-w-xs rounded-[35px] p-8 shadow-2xl text-center">
-            <AlertCircle size={32} className="mx-auto mb-6 text-amber-500"/>
-            <h4 className="font-black text-slate-800 text-lg mb-2 uppercase tracking-tighter">{actionConfirm.title}</h4>
-            <p className="text-xs text-slate-500 font-bold mb-8 uppercase tracking-widest">{actionConfirm.message}</p>
-            <div className="flex flex-col gap-3">
-              <button onClick={executeConfirmedAction} className={`w-full py-4 rounded-2xl font-black text-[10px] uppercase shadow-lg ${actionConfirm.type === 'delete' ? 'bg-rose-600 text-white' : 'bg-amber-600 text-white'}`}>Confirmar</button>
-              <button onClick={() => setActionConfirm(null)} className="w-full py-4 rounded-2xl font-black text-[10px] uppercase text-slate-400 bg-slate-50">Cancelar</button>
-            </div>
-          </div>
         </div>
       )}
 
