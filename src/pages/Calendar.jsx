@@ -10,7 +10,7 @@ import {
   Plus, Calendar as CalIcon, List, Clock, Trash2, X, 
   ChevronLeft, ChevronRight, Loader2, Megaphone, 
   Send, EyeOff, CheckCircle, XCircle, ImageIcon,
-  Check, Info // ✅ Agregados para el sistema de Toasts
+  Check, Info, AlertCircle // ✅ Iconos para el sistema de Toasts y Modales
 } from 'lucide-react';
 import { EVENT_TYPES } from '../utils/eventTypes';
 import { format, addMonths, subMonths, isSameMonth, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
@@ -32,8 +32,9 @@ export default function CalendarPage() {
   const [imagePreview, setImagePreview] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  // ✅ ESTADO PARA TOASTS PERSONALIZADOS
-  const [toast, setToast] = useState(null); // { message, type }
+  // ✅ ESTADOS DE INTERFAZ PERSONALIZADA
+  const [toast, setToast] = useState(null); 
+  const [actionConfirm, setActionConfirm] = useState(null); // { type, id, title, message }
 
   const CLOUD_NAME = "djmkggzjp"; 
   const UPLOAD_PRESET = "ml_default"; 
@@ -43,7 +44,7 @@ export default function CalendarPage() {
     published: false 
   });
 
-  // Limpiador automático de Toasts
+  // Limpiador de Toasts
   useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => setToast(null), 3000);
@@ -51,15 +52,14 @@ export default function CalendarPage() {
     }
   }, [toast]);
 
+  // ✅ 1. SISTEMA DE NOTIFICACIONES
   const sendEventNotification = async (eventTitle, eventDate, eventUrl, eventType) => {
     try {
       const usersSnap = await getDocs(collection(db, "users"));
       let tokens = [];
       usersSnap.forEach((doc) => {
         const data = doc.data();
-        if (data.fcmTokens && Array.isArray(data.fcmTokens)) {
-          tokens.push(...data.fcmTokens);
-        }
+        if (data.fcmTokens) tokens.push(...data.fcmTokens);
       });
       const uniqueTokens = [...new Set(tokens)].filter(t => t && t.length > 10);
       if (uniqueTokens.length === 0) return;
@@ -99,46 +99,42 @@ export default function CalendarPage() {
     } catch (e) { console.error(e); }
   };
 
-  const handleDeleteEvent = async (id) => {
-    if(!window.confirm("¿Borrar evento? Se eliminarán también los avisos de los servidores.")) return;
-    try {
+  // ✅ 2. EJECUCIÓN DE ACCIONES CONFIRMADAS (BORRADO/PUBLICACIÓN)
+  const executeConfirmedAction = async () => {
+    if (!actionConfirm) return;
+    const { type, id } = actionConfirm;
+    setActionConfirm(null);
+
+    if (type === 'delete') {
+      try {
         await deleteDoc(doc(db, 'events', id));
         const batch = writeBatch(db);
         const usersSnap = await getDocs(collection(db, "users"));
         for (const userDoc of usersSnap.docs) {
-            const notifs = await getDocs(query(collection(db, `users/${userDoc.id}/notifications`), where("eventId", "==", id)));
-            notifs.forEach(n => batch.delete(n.ref));
+          const notifs = await getDocs(query(collection(db, `users/${userDoc.id}/notifications`), where("eventId", "==", id)));
+          notifs.forEach(n => batch.delete(n.ref));
         }
         const postsSnap = await getDocs(query(collection(db, "posts"), where("eventId", "==", id)));
         postsSnap.forEach(p => batch.delete(p.ref));
         await batch.commit();
-        
-        // ✅ Reemplazo de Alert
-        setToast({ message: "Evento eliminado correctamente", type: "info" });
-    } catch (e) { 
-        setToast({ message: "Error al borrar", type: "error" });
+        setToast({ message: "Evento y avisos eliminados", type: "info" });
+      } catch (e) { setToast({ message: "Error al borrar", type: "error" }); }
     }
-  };
 
-  const handlePublishMonth = async () => {
-    const monthEvents = filteredEvents.filter(e => !e.published);
-    if (monthEvents.length === 0) return;
-    if (!window.confirm(`¿Publicar ${monthEvents.length} eventos y notificar al equipo?`)) return;
-
-    setIsPublishing(true);
-    try {
-      const batch = writeBatch(db);
-      monthEvents.forEach(e => {
-        batch.update(doc(db, 'events', e.id), { published: true, updatedAt: serverTimestamp() });
-      });
-      await batch.commit();
-      await sendBulkNotification(format(currentDate, 'MMMM', { locale: es }));
-      
-      // ✅ Reemplazo de Alert
-      setToast({ message: "Cronograma mensual publicado", type: "success" });
-    } catch (e) { 
-        setToast({ message: "Error al publicar", type: "error" });
-    } finally { setIsPublishing(false); }
+    if (type === 'publish') {
+      setIsPublishing(true);
+      try {
+        const monthEvents = filteredEvents.filter(e => !e.published);
+        const batch = writeBatch(db);
+        monthEvents.forEach(e => {
+          batch.update(doc(db, 'events', e.id), { published: true, updatedAt: serverTimestamp() });
+        });
+        await batch.commit();
+        await sendBulkNotification(format(currentDate, 'MMMM', { locale: es }));
+        setToast({ message: "¡Todo el mes publicado!", type: "success" });
+      } catch (e) { setToast({ message: "Error al publicar", type: "error" }); }
+      finally { setIsPublishing(false); }
+    }
   };
 
   useEffect(() => {
@@ -160,11 +156,7 @@ export default function CalendarPage() {
   }, []);
 
   const handleCreateEvent = async () => {
-    // ✅ Reemplazo de Alert de validación
-    if (!newEvent.title || !newEvent.date) {
-        return setToast({ message: "Falta título o fecha del evento", type: "error" });
-    }
-
+    if (!newEvent.title || !newEvent.date) return setToast({ message: "Falta título o fecha", type: "error" });
     setIsUploading(true);
     let uploadedImageUrl = null;
     try {
@@ -196,23 +188,18 @@ export default function CalendarPage() {
         if (newEvent.type === 'ayuno') {
             await addDoc(collection(db, 'posts'), {
                 type: 'Devocional', title: `🔥 Ayuno: ${newEvent.title}`,
-                content: newEvent.description || 'Únete a este tiempo especial.',
+                content: newEvent.description || 'Únete a este tiempo.',
                 image: uploadedImageUrl, eventId: eventDocRef.id,
                 createdAt: serverTimestamp(), authorId: auth.currentUser.uid,
                 authorName: auth.currentUser.displayName
             });
         }
-        
         setIsModalOpen(false);
         setNewEvent({ title: '', type: 'culto', date: '', endDate: '', time: '19:30', description: '', published: false });
         setImageFile(null); setImagePreview(null);
-        
-        // ✅ Reemplazo de Alert final
-        setToast({ message: "Evento creado exitosamente", type: "success" });
-
-    } catch (error) { 
-        setToast({ message: "Error al crear el evento", type: "error" });
-    } finally { setIsUploading(false); }
+        setToast({ message: "Evento guardado en agenda", type: "success" });
+    } catch (error) { setToast({ message: "Error al guardar", type: "error" }); } 
+    finally { setIsUploading(false); }
   };
 
   const nextMonth = () => setCurrentDate(addMonths(currentDate, 1));
@@ -237,7 +224,14 @@ export default function CalendarPage() {
                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase ${config.color}`}>{config.label}</span>
                        {!event.published && <span className="text-[10px] font-bold px-2 py-0.5 rounded-md uppercase bg-amber-500 text-white flex items-center gap-1"><EyeOff size={10}/> Borrador</span>}
                     </div>
-                    {['pastor', 'lider'].includes(userRole) && <button onClick={(e) => {e.stopPropagation(); handleDeleteEvent(event.id)}} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>}
+                    {['pastor', 'lider'].includes(userRole) && (
+                      <button onClick={(e) => {
+                        e.stopPropagation(); 
+                        setActionConfirm({ type: 'delete', id: event.id, title: '¿Borrar evento?', message: `Se eliminará "${event.title}" y todos sus avisos.` });
+                      }} className="text-slate-300 hover:text-red-500 transition-colors">
+                        <Trash2 size={16}/>
+                      </button>
+                    )}
                   </div>
                   <h4 className="font-bold text-slate-800 text-base leading-tight mt-1">{event.title}</h4>
                   <div className="flex items-center gap-1 mt-2 text-xs text-slate-500"><Clock size={14}/> {event.time} hs</div>
@@ -283,11 +277,6 @@ export default function CalendarPage() {
     );
   };
 
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (file) { setImageFile(file); setImagePreview(URL.createObjectURL(file)); }
-  };
-
   return (
     <div className="pb-24 pt-4 px-4 bg-slate-50 min-h-screen animate-fade-in relative">
       <div className="flex justify-between items-center mb-6 sticky top-0 z-20 bg-slate-50/95 backdrop-blur-sm py-2">
@@ -300,8 +289,14 @@ export default function CalendarPage() {
 
       {['pastor', 'lider'].includes(userRole) && filteredEvents.some(e => !e.published) && (
           <div className="bg-amber-100 border border-amber-200 p-4 rounded-2xl mb-6 flex items-center justify-between animate-pulse">
-             <div className="flex items-center gap-3 text-amber-800"><Megaphone size={20}/><div className="min-w-0 flex-1"><p className="text-xs font-black uppercase tracking-tighter leading-tight">Cronograma Oculto</p><p className="text-[10px] font-bold opacity-70">El equipo aún no ve estos eventos.</p></div></div>
-             <button onClick={handlePublishMonth} disabled={isPublishing} className="bg-amber-600 text-white px-4 py-2 rounded-xl text-[10px] font-black shadow-md flex items-center gap-2 active:scale-95 transition-all">{isPublishing ? <Loader2 size={12} className="animate-spin"/> : <><Send size={12}/> PUBLICAR TODO</>}</button>
+             <div className="flex items-center gap-3 text-amber-800"><Megaphone size={20}/><div className="min-w-0 flex-1"><p className="text-xs font-black uppercase tracking-tighter">Cronograma Oculto</p><p className="text-[10px] font-bold opacity-70">Hay eventos que el equipo aún no ve.</p></div></div>
+             <button 
+                onClick={() => setActionConfirm({ type: 'publish', title: '¿Publicar cronograma?', message: 'Se notificará a todo el equipo sobre las nuevas actividades.' })} 
+                disabled={isPublishing} 
+                className="bg-amber-600 text-white px-4 py-2 rounded-xl text-[10px] font-black shadow-md flex items-center gap-2 active:scale-95 transition-all"
+             >
+                {isPublishing ? <Loader2 size={12} className="animate-spin"/> : <><Send size={12}/> PUBLICAR</>}
+             </button>
           </div>
       )}
 
@@ -314,10 +309,31 @@ export default function CalendarPage() {
       {loading ? <div className="flex justify-center py-20"><Loader2 className="animate-spin text-brand-500" size={32}/></div> : (viewMode === 'list' ? renderListView() : renderMonthView())}
 
       {['pastor', 'lider'].includes(userRole) && (
-        <button onClick={() => setIsModalOpen(true)} className="fixed bottom-24 right-4 w-14 h-14 bg-slate-900 text-white rounded-full shadow-lg flex items-center justify-center z-40 active:scale-90 transition-transform"><Plus size={28} /></button>
+        <button onClick={() => setIsModalOpen(true)} className="fixed bottom-24 right-4 w-14 h-14 bg-slate-900 text-white rounded-full shadow-lg flex items-center justify-center z-40 active:scale-90"><Plus size={28} /></button>
       )}
 
-      {/* ✅ SISTEMA DE TOASTS */}
+      {/* ✅ MODAL DE CONFIRMACIÓN PERSONALIZADO */}
+      {actionConfirm && (
+        <div className="fixed inset-0 z-[300] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6 animate-fade-in">
+          <div className="bg-white w-full max-w-xs rounded-[35px] p-8 shadow-2xl animate-scale-in text-center">
+            <div className={`w-16 h-16 rounded-full mx-auto mb-6 flex items-center justify-center ${actionConfirm.type === 'delete' ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'}`}>
+              <AlertCircle size={32}/>
+            </div>
+            <h4 className="font-black text-slate-800 text-lg mb-2">{actionConfirm.title}</h4>
+            <p className="text-xs text-slate-500 font-bold mb-8 uppercase tracking-widest leading-relaxed">{actionConfirm.message}</p>
+            <div className="flex flex-col gap-3">
+              <button onClick={executeConfirmedAction} className={`w-full py-4 rounded-2xl font-black text-xs uppercase shadow-lg ${actionConfirm.type === 'delete' ? 'bg-rose-600 text-white' : 'bg-amber-600 text-white'}`}>
+                Confirmar Acción
+              </button>
+              <button onClick={() => setActionConfirm(null)} className="w-full py-4 rounded-2xl font-black text-xs uppercase text-slate-400 bg-slate-50">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SISTEMA DE TOASTS */}
       {toast && (
         <div className="fixed bottom-24 left-6 right-6 z-[150] animate-slide-up">
           <div className={`flex items-center gap-3 px-6 py-4 rounded-[22px] shadow-2xl border ${toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-400' : toast.type === 'error' ? 'bg-rose-600 text-white border-rose-400' : 'bg-slate-800 text-white border-slate-600'}`}>
@@ -327,7 +343,7 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* MODALES (SELECCION DIA Y CREACION) */}
+      {/* MODAL SELECCION DIA Y CREACION (Resto del código igual) */}
       {selectedDayEvents && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedDayEvents(null)}>
             <div className="bg-white w-full max-w-sm rounded-t-[30px] p-6 shadow-2xl animate-slide-up" onClick={e => e.stopPropagation()}>
