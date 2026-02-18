@@ -72,13 +72,12 @@ export default function ServiceDetails() {
     return () => unsubscribe();
   }, [id, currentUser.uid]);
 
-  // ✅ NAVEGACIÓN INTERNA: Ir al mensaje original
-  const scrollToMessage = (msgId) => {
+  const scrollToOriginalMessage = (msgId) => {
     const element = document.getElementById(`msg-${msgId}`);
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      element.classList.add('ring-4', 'ring-brand-500/30', 'transition-all');
-      setTimeout(() => element.classList.remove('ring-4', 'ring-brand-500/30'), 2000);
+      element.classList.add('ring-4', 'ring-brand-500/40', 'bg-brand-50/50');
+      setTimeout(() => element.classList.remove('ring-4', 'ring-brand-500/40', 'bg-brand-50/50'), 2000);
     }
   };
 
@@ -152,6 +151,10 @@ export default function ServiceDetails() {
     } catch (e) { console.error(e); } finally { setIsSending(false); }
   };
 
+  const deleteMessage = async (msgId) => {
+    if (window.confirm("¿Eliminar este mensaje?")) await deleteDoc(doc(db, `events/${id}/notes`, msgId));
+  };
+
   const togglePin = async (msgId, currentState) => {
     if (userRole !== 'pastor') return;
     messages.forEach(async (m) => { if (m.isPinned) await updateDoc(doc(db, `events/${id}/notes`, m.id), { isPinned: false }); });
@@ -165,17 +168,13 @@ export default function ServiceDetails() {
     await updateDoc(doc(db, `events/${id}/notes`, msgId), { checklist: newChecklist });
   };
 
-  const deleteMessage = async (msgId) => {
-    if (window.confirm("¿Eliminar este mensaje?")) await deleteDoc(doc(db, `events/${id}/notes`, msgId));
-  };
-
   const handleResponse = async (status) => {
     const eventRef = doc(db, 'events', id);
     await updateDoc(eventRef, { [`confirmations.${currentUser.displayName}`]: status, updatedAt: serverTimestamp() });
     setEvent(prev => ({ ...prev, confirmations: { ...prev.confirmations, [currentUser.displayName]: status } }));
   };
 
-  if (loading) return <div className="h-screen flex items-center justify-center bg-white"><Loader2 className="animate-spin text-brand-600" /></div>;
+  if (loading) return <div className="fixed inset-0 flex items-center justify-center bg-white z-[100]"><Loader2 className="animate-spin text-brand-600" /></div>;
 
   const myRole = Object.keys(event.assignments || {}).find(role => event.assignments[role].includes(currentUser.displayName));
   const myStatus = event.confirmations?.[currentUser.displayName];
@@ -190,37 +189,38 @@ export default function ServiceDetails() {
           <div className={`${isPinnedView ? 'mt-1' : 'p-3'} space-y-1.5`}>
             {m.checklist.map((task, i) => (
               <button key={i} onClick={(e) => { e.stopPropagation(); toggleChecklistTask(m.id, i); }} className="flex items-center gap-2.5 w-full text-left">
-                {task.completed ? <CheckSquare size={isPinnedView ? 14 : 16} className={isPinnedView ? "text-white/60" : "text-white"}/> : <Square size={16} className="opacity-40"/>}
+                {task.completed ? <CheckSquare size={isPinnedView ? 14 : 16} className={isPinnedView ? "text-white/80" : (isMyMessage ? "text-white" : "text-brand-600")}/> : <Square size={16} className="opacity-40"/>}
                 <span className={`${isPinnedView ? 'text-xs' : 'text-sm'} font-bold ${task.completed ? 'opacity-40 line-through' : ''}`}>{task.text}</span>
               </button>
             ))}
           </div>
         )}
-        {m.text && <p className={`font-semibold leading-snug whitespace-pre-wrap ${isPinnedView ? 'text-xs' : 'px-4 py-2.5 text-sm'}`}>{m.text}</p>}
+        {m.text && <p className={`font-semibold leading-snug whitespace-pre-wrap ${isPinnedView ? 'text-xs truncate' : 'px-4 py-2.5 text-sm'}`}>{m.text}</p>}
       </div>
     );
   };
 
   return (
-    <div className="h-screen w-full bg-slate-50 flex flex-col overflow-hidden animate-fade-in">
+    /* ✅ PANTALLA COMPLETA: Oculta el bottom nav tapándolo con z-index */
+    <div className="fixed inset-0 bg-white flex flex-col overflow-hidden animate-fade-in z-[100]">
       
       {/* 🚀 CABECERA FIJA SUPERIOR */}
-      <header className="bg-slate-900 text-white pt-10 pb-4 px-5 rounded-b-[40px] shadow-xl z-50 flex-shrink-0">
+      <header className="bg-slate-900 text-white pt-12 pb-4 px-5 rounded-b-[40px] shadow-xl z-50 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
           <button onClick={() => navigate('/servicios')} className="p-2 bg-white/10 rounded-full"><ChevronLeft size={22} /></button>
-          <div className="text-center">
-            <h1 className="text-xl font-black">{event.title}</h1>
-            <p className="text-[10px] font-bold text-slate-400 uppercase">{format(new Date(event.date + 'T00:00:00'), "d MMMM", { locale: es })} • {event.time} hs</p>
+          <div className="text-center flex-1">
+            <h1 className="text-xl font-black truncate">{event.title}</h1>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{format(new Date(event.date + 'T00:00:00'), "d MMMM", { locale: es })} • {event.time} hs</p>
           </div>
           <div className="w-10"></div>
         </div>
 
         <div className="bg-white/5 border border-white/10 rounded-2xl p-3 flex items-center justify-between mb-2">
-           <div className="flex items-center gap-3">
+           <div className="flex items-center gap-3 overflow-hidden">
               <div className="bg-brand-500/20 p-2 rounded-xl text-brand-400"><Users size={18} /></div>
-              <div><p className="text-[8px] font-black text-white/40 uppercase">Tu función</p><p className="text-sm font-bold text-white capitalize">{myRole?.replace(/_/g, ' ')}</p></div>
+              <div className="min-w-0 flex-1"><p className="text-[8px] font-black text-white/40 uppercase">Tu función</p><p className="text-sm font-bold text-white capitalize truncate">{myRole?.replace(/_/g, ' ')}</p></div>
            </div>
-           <button onClick={() => navigate(`/calendario/${id}`)} className="text-[9px] font-black bg-brand-600 px-3 py-1.5 rounded-full flex items-center gap-1 active:scale-95 transition-all shadow-lg">EQUIPO <ExternalLink size={10}/></button>
+           <button onClick={() => navigate(`/calendario/${id}`)} className="text-[9px] font-black bg-brand-600 text-white px-3 py-1.5 rounded-full flex items-center gap-1 active:scale-95 transition-all">EQUIPO <ExternalLink size={10}/></button>
         </div>
 
         {!myStatus ? (
@@ -236,46 +236,39 @@ export default function ServiceDetails() {
       {/* 💬 ÁREA DE CHAT (CENTRAL SCROLLABLE) */}
       <main className="flex-1 overflow-hidden flex flex-col relative bg-white">
         
-        {/* Título de Notas y Pinned (Sticky) */}
+        {/* Pinned Sticky */}
         <div className="bg-slate-50/95 backdrop-blur-md z-40 border-b border-slate-200 flex-shrink-0">
             <div className="p-4 flex items-center justify-between">
               <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><MessageSquare size={14} className="text-brand-500"/> Notas de Equipo</h3>
               <button onClick={() => setHideReceipts(!hideReceipts)} className="p-1.5 text-slate-400">{hideReceipts ? <Eye size={16} /> : <EyeOff size={16} />}</button>
             </div>
-            
-            {/* ✅ PINNED STICKY: Clic para navegar y lectura completa */}
             {pinnedMessage && (
-              <div 
-                onClick={() => scrollToMessage(pinnedMessage.id)}
-                className="bg-brand-600 text-white p-4 shadow-lg flex items-start gap-3 animate-slide-down cursor-pointer active:bg-brand-700 transition-colors max-h-48 overflow-y-auto"
-              >
-                <Pin size={18} className="flex-shrink-0 mt-1 opacity-60"/>
-                <div className="flex-1">
-                   <p className="text-[9px] font-black uppercase opacity-40 tracking-widest mb-1">Mensaje Anclado (Toca para ir)</p>
-                   <MessageContent m={pinnedMessage} isPinnedView={true} />
-                </div>
-                {userRole === 'pastor' && <button onClick={(e) => { e.stopPropagation(); togglePin(pinnedMessage.id, true); }} className="p-1 hover:bg-white/10 rounded-full"><X size={18}/></button>}
+              <div onClick={() => scrollToOriginalMessage(pinnedMessage.id)} className="bg-brand-600 text-white p-4 shadow-lg flex items-start gap-3 animate-slide-down cursor-pointer max-h-40 overflow-y-auto">
+                <Pin size={18} className="flex-shrink-0 mt-1 opacity-60"/><div className="flex-1"><p className="text-[9px] font-black uppercase opacity-40 mb-1">Mensaje Fijado (Toca para ir)</p><MessageContent m={pinnedMessage} isPinnedView={true} /></div>
+                {userRole === 'pastor' && <button onClick={(e) => { e.stopPropagation(); togglePin(pinnedMessage.id, true); }} className="p-1"><X size={18}/></button>}
               </div>
             )}
         </div>
 
-        {/* Mensajes con Scroll Interno */}
+        {/* Scroll Mensajes */}
         <div className="flex-1 overflow-y-auto p-5 space-y-6 scroll-smooth">
           {messages.map((m) => {
               const isMy = m.uid === currentUser.uid;
               const readers = allUsers.filter(u => m.readBy?.includes(u.id) && u.id !== m.uid).map(u => u.displayName?.split(' ')[0]);
               return (
-                <div key={m.id} id={`msg-${m.id}`} className={`flex flex-col ${isMy ? 'items-end' : 'items-start'}`}>
-                    <div className="relative group max-w-[85%]">
-                      <MessageContent m={m} />
-                      <div className={`absolute top-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity ${isMy ? '-left-14' : '-right-14'}`}>
-                         {(userRole === 'pastor' || isMy) && <button onClick={() => deleteMessage(m.id)} className="p-1.5 bg-red-50 text-red-500 rounded-full shadow-sm"><Trash2 size={12}/></button>}
-                         {userRole === 'pastor' && <button onClick={() => togglePin(m.id, m.isPinned)} className={`p-1.5 rounded-full ${m.isPinned ? 'bg-brand-600 text-white' : 'bg-brand-50 text-brand-600'}`}><Pin size={12}/></button>}
-                      </div>
-                    </div>
-                    <div className={`flex flex-col mt-1 px-1 ${isMy ? 'items-end' : 'items-start'}`}>
-                      <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{m.sender?.split(' ')[0]}</span>
-                      {!hideReceipts && readers.length > 0 && <button onClick={() => setShowReadersId(m.id)} className="text-[7px] font-bold text-slate-300 mt-0.5 flex items-center gap-1"><Eye size={8} /> Visto por {readers.length}</button>}
+                <div key={m.id} id={`msg-${m.id}`} className="flex flex-col">
+                    <div className={`flex flex-col ${isMy ? 'items-end' : 'items-start'}`}>
+                        <div className="relative group max-w-[85%]">
+                          <MessageContent m={m} />
+                          <div className={`absolute top-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity ${isMy ? '-left-14' : '-right-14'}`}>
+                             {(userRole === 'pastor' || isMy) && <button onClick={() => deleteMessage(m.id)} className="p-1.5 bg-red-50 text-red-500 rounded-full shadow-sm"><Trash2 size={12}/></button>}
+                             {userRole === 'pastor' && <button onClick={() => togglePin(m.id, m.isPinned)} className={`p-1.5 rounded-full ${m.isPinned ? 'bg-brand-600 text-white' : 'bg-brand-50 text-brand-600'}`}><Pin size={12}/></button>}
+                          </div>
+                        </div>
+                        <div className={`flex flex-col mt-1 px-1 ${isMy ? 'items-end' : 'items-start'}`}>
+                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{m.sender?.split(' ')[0]}</span>
+                          {!hideReceipts && readers.length > 0 && <button onClick={() => setShowReadersId(m.id)} className="text-[7px] font-bold text-slate-300 mt-0.5 flex items-center gap-1"><Eye size={8} /> Visto por {readers.length}</button>}
+                        </div>
                     </div>
                 </div>
               );
@@ -284,17 +277,17 @@ export default function ServiceDetails() {
         </div>
       </main>
 
-      {/* 🛠 CONSOLA FIJA INFERIOR */}
-      <footer className="bg-white border-t border-slate-100 p-4 pb-10 z-50 flex-shrink-0 shadow-2xl">
+      {/* 🛠 CONSOLA INFERIOR BLOQUEADA */}
+      <footer className="bg-white border-t border-slate-100 p-4 pb-8 z-50 flex-shrink-0 shadow-[0_-10px_25px_-5px_rgba(0,0,0,0.05)] relative">
         {imagePreview && (
-          <div className="relative inline-block mb-3 animate-scale-in">
+          <div className="absolute bottom-full left-4 mb-3 animate-scale-in">
             <img src={imagePreview} className="w-16 h-16 object-cover rounded-xl border-2 border-white shadow-lg" />
             <button onClick={() => { setSelectedFile(null); setImagePreview(null); }} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white p-1 rounded-full"><X size={10}/></button>
           </div>
         )}
         {showChecklistCreator && (
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-3 space-y-2">
-            <div className="flex justify-between items-center"><span className="text-[9px] font-black text-slate-500 uppercase">Nueva Lista</span><button onClick={() => setShowChecklistCreator(false)}><X size={12}/></button></div>
+          <div className="absolute bottom-full left-4 right-4 bg-white border border-slate-200 rounded-xl p-3 mb-3 space-y-2 shadow-2xl animate-slide-up">
+            <div className="flex justify-between items-center"><span className="text-[9px] font-black text-slate-500 uppercase tracking-tighter">Nueva Lista</span><button onClick={() => setShowChecklistCreator(false)}><X size={12}/></button></div>
             {tempTasks.map((t, i) => (
               <input key={i} type="text" value={t} onChange={(e) => {
                 const newT = [...tempTasks]; newT[i] = e.target.value; 
@@ -315,7 +308,7 @@ export default function ServiceDetails() {
         </div>
       </footer>
 
-      {/* MODALES: IMAGEN Y LECTORES */}
+      {/* MODALES */}
       {viewingImage && (
         <div className="fixed inset-0 z-[150] bg-black/95 flex flex-col items-center justify-center p-4 animate-fade-in" onClick={() => setViewingImage(null)}>
           <div className="absolute top-8 right-6 flex gap-4"><button onClick={(e) => { e.stopPropagation(); handleDownload(viewingImage); }} className="p-3 bg-white/10 rounded-full text-white"><Download size={22}/></button><button onClick={() => setViewingImage(null)} className="p-3 bg-white/10 rounded-full text-white"><X size={22}/></button></div>
