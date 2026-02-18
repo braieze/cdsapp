@@ -13,6 +13,7 @@ import MainLayout from './layouts/MainLayout';
 import Home from './pages/Home';
 import Calendar from './pages/Calendar';
 import MyServices from './pages/MyServices';
+import ServiceDetails from './pages/ServiceDetails';
 import HistoryPage from './pages/History';
 import AppsHub from './pages/AppsHub';
 import Login from './pages/Login';
@@ -108,6 +109,7 @@ function App() {
           <Route path="/calendario" element={<Calendar />} />
           <Route path="/calendario/:id" element={<EventDetails />} />
           <Route path="/servicios" element={<MyServices />} />
+          <Route path="/servicios/:id" element={<ServiceDetails />} />
           <Route path="/historial" element={<HistoryPage />} />
           <Route path="/apps" element={<AppsHub />} />
           <Route path="/perfil" element={<Profile />} /> 

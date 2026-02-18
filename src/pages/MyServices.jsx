@@ -1,7 +1,8 @@
+// MyServices.jsx corregido
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { Calendar, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, History, ChevronRight, Loader2, RefreshCcw, Users, ShieldAlert } from 'lucide-react';
 import { format, isSameMonth, isPast, isFuture } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -9,42 +10,53 @@ import { es } from 'date-fns/locale';
 export default function MyServices() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('me'); // 'me' | 'team'
-  
-  // Datos
+  const [activeTab, setActiveTab] = useState('me');
   const [myEvents, setMyEvents] = useState([]);
   const [teamEvents, setTeamEvents] = useState([]);
-  
-  // ✅ NUEVO ESTADO: Alertas para los globitos
   const [alerts, setAlerts] = useState({ me: 0, team: 0 });
-
-  // Usuario
-  const currentUser = auth.currentUser;
   const [userRole, setUserRole] = useState(null); 
   const [stats, setStats] = useState({ monthCount: 0, lastServiceDate: null, nextServiceDays: null });
 
-  // 1. CARGAR USUARIO Y EVENTOS
+  const currentUser = auth.currentUser;
+
+  // ✅ EFECTO 1: LIMPIAR GLOBITOS AL ENTRAR A "MI EQUIPO"
+  useEffect(() => {
+    const markAsSeen = async () => {
+      if (activeTab === 'team' && currentUser && (userRole === 'pastor' || userRole === 'lider')) {
+        try {
+          const userRef = doc(db, 'users', currentUser.uid);
+          // Guardamos el momento exacto en que el pastor entró a ver el equipo
+          await updateDoc(userRef, { lastViewedTeam: serverTimestamp() });
+          setAlerts(prev => ({ ...prev, team: 0 })); 
+        } catch (e) { console.error(e); }
+      }
+    };
+    markAsSeen();
+  }, [activeTab, userRole, currentUser]);
+
   useEffect(() => {
     const fetchData = async () => {
         if (!currentUser) return;
 
         try {
-            // A. Cargar Rol del Usuario
             const userRef = doc(db, 'users', currentUser.uid);
             const userSnap = await getDoc(userRef);
             let role = 'miembro';
+            let lastSeenDate = null;
+
             if (userSnap.exists()) {
-                role = userSnap.data().role;
+                const userData = userSnap.data();
+                role = userData.role;
+                // Obtenemos la fecha de la última vez que el pastor revisó la pestaña
+                lastSeenDate = userData.lastViewedTeam?.toDate() || new Date(0); 
                 setUserRole(role);
-                console.log("Rol detectado:", role); 
             }
 
-            // B. Cargar Eventos
             const q = query(collection(db, 'events'), orderBy('date', 'asc'));
             const unsubscribe = onSnapshot(q, (snapshot) => {
                 const eventsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 
-                // FILTRO 1: MIS SERVICIOS (Personal)
+                // 1. Mis Servicios
                 const myAssignments = eventsData.filter(event => {
                     if (!event.assignments) return false;
                     return Object.values(event.assignments).some(peopleArray => 
@@ -54,27 +66,29 @@ export default function MyServices() {
                 setMyEvents(myAssignments);
                 calculateStats(myAssignments, currentUser.displayName);
 
-                // FILTRO 2: MI EQUIPO (Liderazgo)
-                let futureEvents = []; // Declaramos fuera para usar en alertas
+                // 2. Mi Equipo
+                let futureEvents = [];
                 if (role === 'pastor' || role === 'lider') {
                     futureEvents = eventsData.filter(event => isFuture(new Date(event.date + 'T00:00:00')));
                     setTeamEvents(futureEvents);
                 }
 
-                // ✅ CÁLCULO DE ALERTAS (GLOBITOS INTERNOS)
-                
-                // 1. Alerta Personal: Eventos futuros donde NO he respondido
+                // ✅ CÁLCULO DE ALERTAS CON MEMORIA (PUNTO 2)
+                // Solo contamos si el evento fue modificado DESPUÉS de que el pastor lo vio
                 const myPendingCount = myAssignments.filter(e => 
                     !isPast(new Date(e.date + 'T00:00:00')) && 
                     (!e.confirmations || !e.confirmations[currentUser.displayName])
                 ).length;
 
-                // 2. Alerta Equipo: Suma de todos los "declined" en eventos futuros
                 let teamIssuesCount = 0;
-                if (role === 'pastor' || role === 'lider') {
+                if (role === 'pastor' || role === 'lider' && activeTab !== 'team') {
                     teamIssuesCount = futureEvents.reduce((total, event) => {
-                        const declinedInEvent = event.confirmations ? Object.values(event.confirmations).filter(status => status === 'declined').length : 0;
-                        return total + declinedInEvent;
+                        const hasDeclined = event.confirmations && Object.values(event.confirmations).includes('declined');
+                        
+                        // Si hay bajas Y el evento se actualizó después de que el pastor miró la pestaña
+                        const isNewIssue = hasDeclined && (!event.updatedAt || event.updatedAt.toDate() > lastSeenDate);
+                        
+                        return isNewIssue ? total + 1 : total;
                     }, 0);
                 }
 
@@ -83,14 +97,12 @@ export default function MyServices() {
             });
             return () => unsubscribe();
         } catch (error) {
-            console.error("Error cargando datos:", error);
             setLoading(false);
         }
     };
     fetchData();
-  }, [currentUser]);
+  }, [currentUser, activeTab]);
 
-  // --- CÁLCULOS ESTADÍSTICAS ---
   const calculateStats = (events, myName) => {
     const now = new Date();
     const activeEvents = events.filter(e => e.confirmations?.[myName] !== 'declined');
@@ -102,7 +114,7 @@ export default function MyServices() {
     
     let daysToNext = null;
     if (nextEvent) {
-        const diffTime = Math.abs(new Date(nextEvent.date) - now);
+        const diffTime = Math.abs(new Date(nextEvent.date + 'T00:00:00') - now);
         daysToNext = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
     }
 
@@ -117,7 +129,10 @@ export default function MyServices() {
     if(!window.confirm(status === 'declined' ? "¿Seguro que no puedes asistir?" : "¿Confirmar asistencia?")) return;
     try {
         const eventRef = doc(db, 'events', eventId);
-        await updateDoc(eventRef, { [`confirmations.${currentUser.displayName}`]: status });
+        await updateDoc(eventRef, { 
+          [`confirmations.${currentUser.displayName}`]: status,
+          updatedAt: serverTimestamp() // Importante para la alerta del pastor
+        });
     } catch (error) { alert("Error al actualizar."); }
   };
 
@@ -128,7 +143,6 @@ export default function MyServices() {
     } catch (error) { console.error(error); }
   }
 
-  // Helpers
   const getMyRole = (event) => {
       if (!event.assignments) return 'Servidor';
       const roleKey = Object.keys(event.assignments).find(key => event.assignments[key].includes(currentUser.displayName));
@@ -139,7 +153,6 @@ export default function MyServices() {
       let totalAssigned = 0;
       let totalDeclined = 0;
       let totalConfirmed = 0;
-
       if (!event.assignments) return { total: 0, confirmed: 0, declined: 0 };
 
       Object.values(event.assignments).flat().forEach(personName => {
@@ -148,18 +161,16 @@ export default function MyServices() {
           if (status === 'confirmed') totalConfirmed++;
           if (status === 'declined') totalDeclined++;
       });
-
       return { total: totalAssigned, confirmed: totalConfirmed, declined: totalDeclined };
   };
 
-  if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-brand-600"/></div>;
+  if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-brand-600" size={32}/></div>;
 
   const isLeader = userRole === 'pastor' || userRole === 'lider';
 
   return (
     <div className="pb-24 pt-6 px-4 bg-slate-50 min-h-screen animate-fade-in">
       
-      {/* HEADER + TABS */}
       <div className="mb-6">
         <h1 className="text-2xl font-black text-slate-800 mb-1">Hola, {currentUser?.displayName?.split(' ')[0]} 👋</h1>
         
@@ -170,7 +181,6 @@ export default function MyServices() {
                     className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all relative ${activeTab === 'me' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                 >
                     Mis Turnos
-                    {/* 🔴 Globito Mis Turnos */}
                     {alerts.me > 0 && (
                         <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white flex items-center justify-center rounded-full text-[9px] border-2 border-white shadow-sm animate-pulse">
                             {alerts.me}
@@ -182,7 +192,6 @@ export default function MyServices() {
                     className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 relative ${activeTab === 'team' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                 >
                     <Users size={14}/> Mi Equipo
-                    {/* 🟠 Globito Mi Equipo */}
                     {alerts.team > 0 && (
                         <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 text-white flex items-center justify-center rounded-full text-[9px] border-2 border-white shadow-sm">
                             {alerts.team}
@@ -195,10 +204,8 @@ export default function MyServices() {
         )}
       </div>
 
-      {/* --- PESTAÑA: MIS TURNOS (PERSONAL) --- */}
       {activeTab === 'me' && (
           <div className="animate-fade-in">
-              {/* Dashboard Stats */}
               <div className="grid grid-cols-2 gap-3 mb-8">
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-28 relative overflow-hidden">
                     <div className="absolute top-0 right-0 p-3 opacity-10 text-brand-600"><TrendingUp size={60}/></div>
@@ -216,14 +223,12 @@ export default function MyServices() {
                 </div>
               </div>
 
-              {/* Pendientes */}
-              {myEvents.filter(e => !isPast(new Date(e.date)) && (!e.confirmations || !e.confirmations[currentUser.displayName])).length > 0 && (
+              {myEvents.filter(e => !isPast(new Date(e.date + 'T00:00:00')) && (!e.confirmations || !e.confirmations[currentUser.displayName])).length > 0 && (
                   <div className="mb-8">
                       <h2 className="text-sm font-black text-slate-800 uppercase tracking-wide mb-3 flex items-center gap-2"><AlertCircle size={16} className="text-amber-500"/> Requiere tu atención</h2>
                       <div className="space-y-3">
-                          {myEvents.filter(e => !isPast(new Date(e.date)) && (!e.confirmations || !e.confirmations[currentUser.displayName])).map(event => (
+                          {myEvents.filter(e => !isPast(new Date(e.date + 'T00:00:00')) && (!e.confirmations || !e.confirmations[currentUser.displayName])).map(event => (
                               <div key={event.id} className="bg-slate-900 rounded-2xl p-5 text-white shadow-xl shadow-slate-900/20 relative overflow-hidden">
-                                  <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl opacity-10"></div>
                                   <div className="relative z-10">
                                       <span className="inline-block px-2 py-1 rounded bg-white/10 text-[10px] font-bold uppercase mb-2 border border-white/10">{getMyRole(event)}</span>
                                       <h3 className="text-xl font-bold mb-1">{event.title}</h3>
@@ -242,12 +247,11 @@ export default function MyServices() {
                   </div>
               )}
 
-              {/* Confirmados */}
               <div className="mb-6">
                   <h2 className="text-sm font-black text-slate-800 uppercase tracking-wide mb-3">Agenda Confirmada</h2>
                   <div className="space-y-3">
-                    {myEvents.filter(e => !isPast(new Date(e.date)) && e.confirmations && e.confirmations[currentUser.displayName] === 'confirmed').map(event => (
-                        <div key={event.id} onClick={() => navigate(`/calendario/${event.id}`)} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4 hover:bg-slate-50 transition-colors cursor-pointer">
+                    {myEvents.filter(e => !isPast(new Date(e.date + 'T00:00:00')) && e.confirmations && e.confirmations[currentUser.displayName] === 'confirmed').map(event => (
+                        <div key={event.id} onClick={() => navigate(`/servicios/${event.id}`)} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4 hover:bg-slate-50 transition-colors cursor-pointer">
                             <div className="flex flex-col items-center justify-center w-12 h-12 bg-green-50 rounded-xl border border-green-100 text-green-600">
                                 <span className="text-[10px] font-bold uppercase">{format(new Date(event.date + 'T00:00:00'), 'MMM', { locale: es })}</span>
                                 <span className="text-lg font-black">{format(new Date(event.date + 'T00:00:00'), 'dd')}</span>
@@ -263,12 +267,11 @@ export default function MyServices() {
                   </div>
               </div>
 
-              {/* Rechazados */}
-              {myEvents.filter(e => !isPast(new Date(e.date)) && e.confirmations && e.confirmations[currentUser.displayName] === 'declined').length > 0 && (
+              {myEvents.filter(e => !isPast(new Date(e.date + 'T00:00:00')) && e.confirmations && e.confirmations[currentUser.displayName] === 'declined').length > 0 && (
                   <div className="mb-6 opacity-75">
                       <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">No puedo asistir</h2>
                       <div className="space-y-2">
-                        {myEvents.filter(e => !isPast(new Date(e.date)) && e.confirmations && e.confirmations[currentUser.displayName] === 'declined').map(event => (
+                        {myEvents.filter(e => !isPast(new Date(e.date + 'T00:00:00')) && e.confirmations && e.confirmations[currentUser.displayName] === 'declined').map(event => (
                             <div key={event.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex items-center justify-between">
                                 <div className="flex items-center gap-3 opacity-60">
                                     <XCircle size={20} className="text-slate-400"/>
@@ -283,7 +286,6 @@ export default function MyServices() {
           </div>
       )}
 
-      {/* --- PESTAÑA: MI EQUIPO (LIDERAZGO) --- */}
       {activeTab === 'team' && (
           <div className="animate-slide-up">
               <div className="bg-slate-900 text-white p-4 rounded-2xl mb-6 shadow-lg">
@@ -300,7 +302,7 @@ export default function MyServices() {
                       const progress = status.total > 0 ? Math.round(((status.confirmed + status.declined) / status.total) * 100) : 0;
 
                       return (
-                          <div key={event.id} onClick={() => navigate(`/calendario/${event.id}`)} className={`bg-white p-4 rounded-2xl border shadow-sm cursor-pointer transition-all hover:shadow-md ${hasIssues ? 'border-red-200 bg-red-50/30' : 'border-slate-100'}`}>
+                          <div key={event.id} onClick={() => navigate(`/servicios/${event.id}`)} className={`bg-white p-4 rounded-2xl border shadow-sm cursor-pointer transition-all hover:shadow-md ${hasIssues ? 'border-red-200 bg-red-50/30' : 'border-slate-100'}`}>
                               <div className="flex justify-between items-start mb-3">
                                   <div>
                                       <h4 className="font-bold text-slate-800 text-sm">{event.title}</h4>
@@ -323,13 +325,7 @@ export default function MyServices() {
           </div>
       )}
 
-      {/* ✅ BOTÓN DE HISTORIAL FUNCIONAL */}
-      <button 
-        onClick={() => navigate('/historial')} 
-        className="w-full py-4 text-center text-xs font-bold text-slate-400 hover:text-brand-600 flex items-center justify-center gap-1"
-      >
-          <History size={14}/> Ver historial completo
-      </button>
+      <button onClick={() => navigate('/historial')} className="w-full py-4 text-center text-xs font-bold text-slate-400 hover:text-brand-600 flex items-center justify-center gap-1"><History size={14}/> Ver historial completo</button>
     </div>
   );
 }
