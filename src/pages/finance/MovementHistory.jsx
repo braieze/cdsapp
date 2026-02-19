@@ -14,7 +14,7 @@ export default function MovementHistory({ movements = [], setCustomAlert }) {
   const [filter, setFilter] = useState('all'); // all, income, expense
   const [search, setSearch] = useState("");
 
-  // ✅ 1. FILTRADO INTELIGENTE
+  // ✅ 1. FILTRADO INTELIGENTE (RESPETADO)
   const filteredMovements = useMemo(() => {
     return movements.filter(m => {
       const matchSearch = m.concept?.toLowerCase().includes(search.toLowerCase());
@@ -24,14 +24,23 @@ export default function MovementHistory({ movements = [], setCustomAlert }) {
     });
   }, [movements, filter, search]);
 
-  // ✅ 2. CÁLCULO DE TOTALES FILTRADOS
+  // ✅ 2. CÁLCULO DE TOTALES FILTRADOS (RESPETADO)
   const totals = useMemo(() => {
     return filteredMovements.reduce((acc, m) => acc + Number(m.total), 0);
   }, [filteredMovements]);
 
-  // ✅ 3. ELIMINAR CON ALERTA PREMIUM (REEMPLAZA WINDOW.CONFIRM)
+  // ✅ Función segura para alertas (Evita el TypeError: n is not a function)
+  const triggerAlert = (config) => {
+    if (typeof setCustomAlert === 'function') {
+      setCustomAlert(config);
+    } else {
+      console.warn("Alerta:", config.message);
+    }
+  };
+
+  // ✅ 3. ELIMINAR CON ALERTA PREMIUM (MEJORADO)
   const handleDeleteRequest = (id) => {
-    setCustomAlert({
+    triggerAlert({
       title: "Eliminar Registro",
       message: "¿Estás seguro de borrar este movimiento? El balance total se actualizará automáticamente.",
       type: "confirm",
@@ -46,36 +55,37 @@ export default function MovementHistory({ movements = [], setCustomAlert }) {
   return (
     <div className="space-y-6 pt-4 pb-24 text-left">
       
-      {/* 📊 RESUMEN DINÁMICO DEL FILTRO */}
+      {/* 📊 RESUMEN DINÁMICO DEL FILTRO (ESTILO BANCARIO) */}
       <section className="px-2">
-        <div className="bg-slate-900/40 border border-white/5 p-6 rounded-[40px] flex justify-between items-center backdrop-blur-xl">
-            <div>
-                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest italic">
+        <div className="bg-slate-900/40 border border-white/5 p-6 rounded-[40px] flex justify-between items-center backdrop-blur-xl shadow-2xl relative overflow-hidden group">
+            <div className="absolute inset-0 bg-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="relative z-10">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest italic leading-none mb-2">
                     {filter === 'all' ? 'Balance Filtrado' : filter === 'income' ? 'Total Ingresos' : 'Total Gastos'}
                 </p>
-                <h3 className={`text-3xl font-black italic tracking-tighter ${totals >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
+                <h3 className={`text-4xl font-black italic tracking-tighter leading-none ${totals >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
                     ${Math.abs(totals).toLocaleString('es-AR')}
                 </h3>
             </div>
-            <div className={`p-4 rounded-2xl ${totals >= 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
+            <div className={`p-4 rounded-2xl relative z-10 ${totals >= 0 ? 'bg-emerald-500/10 text-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.2)]' : 'bg-rose-500/10 text-rose-500 shadow-[0_0_20px_rgba(244,63,94,0.2)]'}`}>
                 {totals >= 0 ? <ArrowUpCircle size={28}/> : <ArrowDownCircle size={28}/>}
             </div>
         </div>
       </section>
 
-      {/* 🔍 BUSCADOR Y SELECTOR DE TABS */}
+      {/* 🔍 BUSCADOR Y SELECTOR DE TABS (RESPETADO) */}
       <header className="space-y-4 px-2">
         <div className="relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
           <input 
             value={search}
-            onChange={(e) => setSearch(e.search)}
+            onChange={(e) => setSearch(e.target.value)} // ✅ Corregido el bug de e.search
             placeholder="Buscar por concepto o detalle..."
             className="w-full bg-slate-900/50 border border-white/5 rounded-2xl py-4 pl-12 pr-4 text-xs font-bold text-white outline-none focus:border-blue-500 transition-all shadow-inner"
           />
         </div>
 
-        <div className="flex bg-slate-900/50 p-1.5 rounded-2xl border border-white/5">
+        <div className="flex bg-slate-900/50 p-1.5 rounded-2xl border border-white/5 shadow-inner">
             {[
                 { id: 'all', label: 'Todo', icon: ListFilter },
                 { id: 'income', label: 'Ingresos', icon: TrendingUp },
@@ -83,7 +93,7 @@ export default function MovementHistory({ movements = [], setCustomAlert }) {
             ].map(t => (
                 <button 
                     key={t.id} onClick={() => setFilter(t.id)}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[9px] font-black uppercase transition-all ${filter === t.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-500'}`}
+                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[9px] font-black uppercase transition-all ${filter === t.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-500'}`}
                 >
                     <t.icon size={12}/> {t.label}
                 </button>
@@ -91,7 +101,7 @@ export default function MovementHistory({ movements = [], setCustomAlert }) {
         </div>
       </header>
 
-      {/* 📋 LISTA DE MOVIMIENTOS FILTRADA */}
+      {/* 📋 LISTA DE MOVIMIENTOS FILTRADA (RESPETADO Y EMBELLECIDO) */}
       <div className="space-y-3 px-1">
         <AnimatePresence mode="popLayout">
           {filteredMovements.map((m) => (
@@ -101,7 +111,7 @@ export default function MovementHistory({ movements = [], setCustomAlert }) {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, x: 20 }}
-              className="group relative bg-slate-900/40 backdrop-blur-xl border border-white/5 p-5 rounded-[35px] flex justify-between items-center transition-all hover:bg-slate-900/60"
+              className="group relative bg-slate-900/40 backdrop-blur-xl border border-white/5 p-5 rounded-[35px] flex justify-between items-center transition-all hover:bg-slate-800/50 shadow-sm"
             >
               <div className="flex items-center gap-4">
                 <div className={`p-3 rounded-2xl ${m.total > 0 ? 'bg-emerald-500/10 text-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.1)]' : 'bg-rose-500/10 text-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.1)]'}`}>
@@ -112,7 +122,7 @@ export default function MovementHistory({ movements = [], setCustomAlert }) {
                     {m.concept}
                   </p>
                   <div className="flex items-center gap-2">
-                     <span className={`px-1.5 py-0.5 rounded text-[7px] font-black uppercase ${m.total > 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
+                     <span className={`px-1.5 py-0.5 rounded text-[7px] font-black uppercase ${m.total > 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
                         {m.category || (m.total > 0 ? 'Ingreso' : 'Gasto')}
                      </span>
                      <span className="w-1 h-1 bg-slate-700 rounded-full"></span>
@@ -122,7 +132,7 @@ export default function MovementHistory({ movements = [], setCustomAlert }) {
               </div>
 
               <div className="flex items-center gap-4 text-right">
-                <div>
+                <div className="relative">
                   <p className={`text-lg font-black italic leading-none ${m.total > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                     {m.total > 0 ? '+' : '-'}${Math.abs(m.total).toLocaleString('es-AR')}
                   </p>
@@ -131,7 +141,7 @@ export default function MovementHistory({ movements = [], setCustomAlert }) {
                   </p>
                 </div>
                 
-                {/* BOTONES DE ACCIÓN (Aparecen al interacción) */}
+                {/* BOTONES DE ACCIÓN (RESPETADO) */}
                 <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-all scale-90 group-hover:scale-100">
                   <button className="p-2 bg-white/5 text-slate-500 hover:text-blue-400 rounded-xl transition-colors">
                     <Edit3 size={14} />
@@ -153,7 +163,7 @@ export default function MovementHistory({ movements = [], setCustomAlert }) {
             <div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center mx-auto mb-4 border border-white/5 opacity-10">
                 <Filter size={32} />
             </div>
-            <p className="text-[10px] font-black text-slate-700 uppercase tracking-[0.4em]">Sin registros que coincidan</p>
+            <p className="text-[10px] font-black text-slate-700 uppercase tracking-[0.4em] text-center">Sin registros hallados</p>
           </div>
         )}
       </div>

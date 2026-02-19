@@ -24,16 +24,16 @@ export default function Tesoreria() {
   const [pin, setPin] = useState("");
   const [activeTab, setActiveTab] = useState('resumen');
   
-  // ✅ Estados de Control de Menús
-  const [showRegMenu, setShowRegMenu] = useState(false); // Menú de registro (+/–)
-  const [showDownMenu, setShowDownMenu] = useState(false); // Menú de descargas
-  const [modalType, setModalType] = useState(null); // 'income' o 'expense'
-  const [customAlert, setCustomAlert] = useState(null); // { title, type, onConfirm }
+  // ✅ Estados de Control de Menús (Respetados)
+  const [showRegMenu, setShowRegMenu] = useState(false); 
+  const [showDownMenu, setShowDownMenu] = useState(false); 
+  const [modalType, setModalType] = useState(null); 
+  const [customAlert, setCustomAlert] = useState(null); 
 
   const [finances, setFinances] = useState([]);
   const [pendingOfferings, setPendingOfferings] = useState([]);
 
-  // --- 1. ESCUCHA DE DATOS ---
+  // --- 1. ESCUCHA DE DATOS (Respetado) ---
   useEffect(() => {
     if (isLocked) return;
     const unsubFin = onSnapshot(query(collection(db, 'finances'), orderBy('date', 'desc')), (snap) => {
@@ -45,7 +45,7 @@ export default function Tesoreria() {
     return () => { unsubFin(); unsubPend(); };
   }, [isLocked]);
 
-  // --- 2. ESTADÍSTICAS ---
+  // --- 2. ESTADÍSTICAS (Respetado) ---
   const stats = useMemo(() => {
     let total = 0, ingresos = 0, egresos = 0;
     const now = new Date();
@@ -60,7 +60,7 @@ export default function Tesoreria() {
     return { total, ingresos, egresos };
   }, [finances]);
 
-  // --- 3. FUNCIONES DE EXPORTACIÓN ---
+  // --- 3. FUNCIONES DE EXPORTACIÓN (Respetado) ---
   const exportarPDF = (periodo) => {
     const doc = new jsPDF();
     doc.text(`REPORTE ${periodo.toUpperCase()} - CDS`, 14, 15);
@@ -80,18 +80,17 @@ export default function Tesoreria() {
   };
 
   if (isLocked) {
-    // Mantengo tu pantalla de PIN profesional
     return (
       <div className="fixed inset-0 bg-slate-950 z-[300] flex flex-col items-center justify-center p-8 font-outfit text-white">
         <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-sm bg-slate-900/50 backdrop-blur-xl border border-white/10 p-10 rounded-[40px] text-center shadow-2xl">
           <Shield className="text-blue-500 mx-auto mb-6" size={48} />
-          <h2 className="text-2xl font-black uppercase italic tracking-tighter mb-8">Acceso Protegido</h2>
+          <h2 className="text-2xl font-black uppercase italic tracking-tighter mb-8 text-white">Acceso Protegido</h2>
           <input 
             type="password" value={pin} onChange={e => setPin(e.target.value)} maxLength={4}
-            className="w-full bg-slate-950/50 border-2 border-slate-800 rounded-3xl p-6 text-center text-4xl tracking-[0.5em] font-black mb-6 outline-none focus:border-blue-500 transition-all"
+            className="w-full bg-slate-950/50 border-2 border-slate-800 rounded-3xl p-6 text-center text-4xl tracking-[0.5em] font-black mb-6 outline-none focus:border-blue-500 text-white"
             placeholder="••••" autoFocus onKeyUp={(e) => e.key === 'Enter' && handleUnlock()}
           />
-          <button onClick={handleUnlock} className="w-full bg-blue-600 py-5 rounded-3xl font-black uppercase text-xs tracking-widest shadow-lg active:scale-95 transition-all">Desbloquear</button>
+          <button onClick={handleUnlock} className="w-full bg-blue-600 py-5 rounded-3xl font-black uppercase text-xs tracking-widest shadow-lg active:scale-95 transition-all text-white">Desbloquear</button>
           <button onClick={() => navigate('/apps')} className="mt-8 text-slate-500 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 mx-auto"><Home size={14}/> Salir</button>
         </motion.div>
       </div>
@@ -102,17 +101,16 @@ export default function Tesoreria() {
     <div className="fixed inset-0 bg-slate-950 z-[250] flex flex-col font-outfit text-white overflow-hidden">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(37,99,235,0.12),transparent)] pointer-events-none" />
 
-      {/* 🛰️ HEADER DINÁMICO */}
+      {/* 🛰️ HEADER DINÁMICO (Respetado) */}
       <header className="flex items-center justify-between px-6 pt-12 pb-6 relative z-10">
-        <button onClick={() => navigate('/apps')} className="p-3 bg-white/5 rounded-2xl border border-white/10 active:scale-90 transition-all"><ChevronLeft size={24} /></button>
+        <button onClick={() => navigate('/apps')} className="p-3 bg-white/5 rounded-2xl border border-white/10 active:scale-90 transition-all text-white"><ChevronLeft size={24} /></button>
         
         <div className="text-center">
-          <h1 className="text-xl font-black italic tracking-tighter uppercase leading-none">Caja CDS</h1>
+          <h1 className="text-xl font-black italic tracking-tighter uppercase leading-none text-white">Caja CDS</h1>
           <p className="text-[8px] font-bold text-blue-400 uppercase tracking-[0.3em] mt-1">Bóveda Digital</p>
         </div>
 
         <div className="flex gap-2 relative">
-          {/* ✅ Menú de Descargas Profesional */}
           <button onClick={() => setShowDownMenu(!showDownMenu)} className={`p-3 rounded-2xl border transition-all ${showDownMenu ? 'bg-blue-600 border-blue-500 text-white' : 'bg-blue-600/20 border-blue-500/30 text-blue-400'}`}>
             <Download size={20} />
           </button>
@@ -120,9 +118,9 @@ export default function Tesoreria() {
           <AnimatePresence>
             {showDownMenu && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute top-16 right-0 w-48 bg-slate-900 border border-white/10 rounded-3xl p-2 shadow-2xl z-50">
-                <p className="text-[8px] font-black text-slate-500 uppercase p-3 tracking-widest">Generar Reporte</p>
-                <button onClick={() => exportarPDF('semanal')} className="w-full flex items-center gap-3 p-3 hover:bg-white/5 rounded-2xl text-[10px] font-black uppercase"><FileText size={14}/> Semanal</button>
-                <button onClick={() => exportarPDF('mensual')} className="w-full flex items-center gap-3 p-3 hover:bg-white/5 rounded-2xl text-[10px] font-black uppercase"><FileText size={14}/> Mensual</button>
+                <p className="text-[8px] font-black text-slate-500 uppercase p-3 tracking-widest text-left">Generar Reporte</p>
+                <button onClick={() => exportarPDF('semanal')} className="w-full flex items-center gap-3 p-3 hover:bg-white/5 rounded-2xl text-[10px] font-black uppercase text-white"><FileText size={14}/> Semanal</button>
+                <button onClick={() => exportarPDF('mensual')} className="w-full flex items-center gap-3 p-3 hover:bg-white/5 rounded-2xl text-[10px] font-black uppercase text-white"><FileText size={14}/> Mensual</button>
               </motion.div>
             )}
           </AnimatePresence>
@@ -131,17 +129,17 @@ export default function Tesoreria() {
         </div>
       </header>
 
-      {/* 📊 ÁREA DE CONTENIDO */}
+      {/* 📊 ÁREA DE CONTENIDO (Distribución de setCustomAlert) */}
       <main className="flex-1 overflow-y-auto px-6 pb-40 relative z-10 custom-scrollbar text-left">
         <AnimatePresence mode="wait">
           {activeTab === 'resumen' && <FinanceOverview key="resumen" stats={stats} finances={finances} />}
           {activeTab === 'pendientes' && <PendingList key="pendientes" items={pendingOfferings} />}
-          {activeTab === 'historial' && <MovementHistory key="historial" movements={finances} />}
-          {activeTab === 'pastoral' && <DonorIntelligence key="pastoral" movements={finances} />}
+          {activeTab === 'historial' && <MovementHistory key="historial" movements={finances} setCustomAlert={setCustomAlert} />}
+          {activeTab === 'pastoral' && <DonorIntelligence key="pastoral" movements={finances} setCustomAlert={setCustomAlert} />}
         </AnimatePresence>
       </main>
 
-      {/* 🛸 NAVEGACIÓN CRYPZONE CON REGISTRO DUAL */}
+      {/* 🛸 NAVEGACIÓN CRYPZONE (Respetada) */}
       <nav className="absolute bottom-8 left-6 right-6 h-20 bg-slate-900/80 backdrop-blur-2xl rounded-[35px] border border-white/10 flex items-center justify-around px-2 shadow-2xl z-20">
         {[
           { id: 'resumen', icon: BarChart3 },
@@ -155,13 +153,12 @@ export default function Tesoreria() {
           </button>
         ))}
         
-        {/* ✅ BOTÓN "+" DINÁMICO */}
         <div className="absolute -top-10 left-1/2 -translate-x-1/2 flex flex-col items-center">
             <AnimatePresence>
                 {showRegMenu && (
                     <motion.div initial={{ opacity: 0, y: 20, scale: 0.5 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 20, scale: 0.5 }} className="flex gap-3 mb-4 bg-slate-900 p-2 rounded-[30px] border border-white/10 shadow-2xl">
-                        <button onClick={() => {setModalType('expense'); setShowRegMenu(false)}} className="w-12 h-12 bg-rose-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-rose-500/20 active:scale-90 transition-all"><ArrowDownCircle size={20}/></button>
-                        <button onClick={() => {setModalType('income'); setShowRegMenu(false)}} className="w-12 h-12 bg-emerald-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/20 active:scale-90 transition-all"><ArrowUpCircle size={20}/></button>
+                        <button onClick={() => {setModalType('expense'); setShowRegMenu(false)}} className="w-12 h-12 bg-rose-500 text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all"><ArrowDownCircle size={20}/></button>
+                        <button onClick={() => {setModalType('income'); setShowRegMenu(false)}} className="w-12 h-12 bg-emerald-500 text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all"><ArrowUpCircle size={20}/></button>
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -171,10 +168,18 @@ export default function Tesoreria() {
         </div>
       </nav>
 
-      {/* ✅ MODALES DE ACCIÓN */}
-      <AnimatePresence>{modalType && <AdminModals type={modalType} onClose={() => setModalType(null)} />}</AnimatePresence>
+      {/* ✅ MODALES (Se pasa setCustomAlert correctamente) */}
+      <AnimatePresence>
+        {modalType && (
+          <AdminModals 
+            type={modalType} 
+            onClose={() => setModalType(null)} 
+            setCustomAlert={setCustomAlert} 
+          />
+        )}
+      </AnimatePresence>
 
-      {/* ✅ SISTEMA DE ALERTA PREMIUM (REEMPLAZA AL CONFIRM/ALERT) */}
+      {/* ✅ SISTEMA DE ALERTA (Respetado) */}
       <AnimatePresence>
         {customAlert && (
           <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-slate-950/60 backdrop-blur-sm">
