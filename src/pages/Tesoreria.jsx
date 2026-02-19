@@ -11,7 +11,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
-// Sub-componentes
+// Sub-componentesss
 import FinanceOverview from './finance/FinanceOverview';
 import PendingList from './finance/PendingList';
 import MovementHistory from './finance/MovementHistory';
