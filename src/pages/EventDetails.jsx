@@ -8,6 +8,7 @@ import { format, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
 import html2canvas from 'html2canvas'; 
 import jsPDF from 'jspdf'; 
+import OneSignal from 'react-onesignal'; // ✅ OneSignal para notificaciones robustas
 
 export default function EventDetails() {
   const { id } = useParams();
@@ -26,14 +27,29 @@ export default function EventDetails() {
   const [personSearchTerm, setPersonSearchTerm] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-
-  // ✅ ESTADO DE TOAST DECLARADO CORRECTAMENTE
   const [toast, setToast] = useState(null);
 
   const currentUser = auth.currentUser;
   const myUid = currentUser?.uid;
 
-  // ✅ LIMPIADOR DE TOASTS
+  // ✅ 1. INICIALIZACIÓN DE ONESIGNAL (Con tu App ID Real)
+  useEffect(() => {
+    const initOneSignal = async () => {
+      try {
+        await OneSignal.init({
+          appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a", //
+          allowLocalhostAsSecureOrigin: true,
+          notifyButton: { enable: false },
+        });
+        if (currentUser) {
+          // Vinculamos el UID de Firebase para que OneSignal sepa a quién notificar
+          await OneSignal.login(currentUser.uid);
+        }
+      } catch (e) { console.error("Error OneSignal Init:", e); }
+    };
+    initOneSignal();
+  }, [currentUser]);
+
   useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => setToast(null), 3000);
@@ -64,15 +80,11 @@ export default function EventDetails() {
         } else {
           navigate('/calendario');
         }
-      } catch (error) { 
-        console.error(error); 
-        setToast({ message: "Error al cargar datos", type: "error" });
-      } finally { setLoading(false); }
+      } catch (error) { console.error(error); } finally { setLoading(false); }
     };
     fetchData();
   }, [id, navigate, currentUser]);
 
-  // ✅ DESCARGA DE PDF DIRECTA
   const downloadPDF = async () => {
     if (!reportRef.current) return;
     setIsDownloading(true);
@@ -84,51 +96,57 @@ export default function EventDetails() {
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
       pdf.save(`Agenda-${event.title}-${format(new Date(), 'dd-MM')}.pdf`);
-      setToast({ message: "PDF Descargado", type: "success" });
-    } catch (e) { 
-      setToast({ message: "Error al generar PDF", type: "error" });
-    } finally { setIsDownloading(false); }
+      setToast({ message: "PDF Generado con éxito", type: "success" });
+    } catch (e) { setToast({ message: "Error al crear PDF", type: "error" }); } finally { setIsDownloading(false); }
   };
 
-  // ✅ BLINDAJE CORREGIDO (Protección contra null/undefined para evitar TypeError)
   const isUserTaken = (name) => {
     if (!assignments) return false;
     return Object.values(assignments).flat().includes(name);
   };
 
+  // ✅ 2. ENVÍO MASIVO CON ONESIGNAL (Con tu REST API Key Real)
   const notifyNewAssignments = async (newAssignments) => {
     try {
       const oldAssigned = Object.values(event.assignments || {}).flat();
       const currentAssigned = Object.values(newAssignments).flat();
-      const newlyAdded = currentAssigned.filter(name => !oldAssigned.includes(name));
-      if (newlyAdded.length === 0) return;
-      const targetTokens = users.filter(u => newlyAdded.includes(u.displayName) && u.fcmTokens).flatMap(u => u.fcmTokens);
-      if (targetTokens.length === 0) return;
-      const BACKEND_URL = "https://backend-notificaciones-mceh.onrender.com/send-notification";
-      await fetch(BACKEND_URL, {
+      const newlyAddedNames = currentAssigned.filter(name => !oldAssigned.includes(name));
+
+      if (newlyAddedNames.length === 0) return;
+
+      const targetUserIds = users
+        .filter(u => newlyAddedNames.includes(u.displayName))
+        .map(u => u.id);
+
+      if (targetUserIds.length === 0) return;
+
+      await fetch("https://onesignal.com/api/v1/notifications", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Basic os_v2_app_oqvgftlncvbh7c5llodvt6v5bizleim6w4cefan3kucbz63ch6kslgr5rvlaoicnpzicabq3natbwjhks37jm2vjdr4bn7i225ejyui" //
+        },
         body: JSON.stringify({
-          title: "📍 Nueva tarea asignada",
-          body: `Se te asignó un servicio en: ${event.title}`,
-          tokens: [...new Set(targetTokens)],
-          url: "/servicios"
+          app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a", //
+          include_external_user_ids: targetUserIds,
+          headings: { "es": "📍 Nueva tarea asignada" },
+          contents: { "es": `Fuiste asignado en: ${event.title}. Revisa tus turnos.` },
+          url: "https://tu-app-mceh.web.app/servicios" // Cambia por tu URL real
         })
       });
-    } catch (error) { console.error("Error notificando equipo:", error); }
+      setToast({ message: "Notificaciones enviadas", type: "success" });
+    } catch (error) { console.error("Error OneSignal:", error); }
   };
 
   const handleSaveAssignments = async () => {
     setIsSaving(true);
     try {
       await updateDoc(doc(db, 'events', id), { assignments });
-      notifyNewAssignments(assignments);
+      await notifyNewAssignments(assignments); 
       setEvent(prev => ({ ...prev, assignments }));
-      setToast({ message: "Cambios guardados con éxito", type: "success" });
+      setToast({ message: "Asignaciones guardadas", type: "success" });
       setIsEditing(false);
-    } catch (error) { 
-      setToast({ message: "Error al guardar", type: "error" });
-    } finally { setIsSaving(false); }
+    } catch (error) { setToast({ message: "Error al guardar", type: "error" }); } finally { setIsSaving(false); }
   };
 
   const handleToggleTask = async (taskIndex) => {
@@ -221,7 +239,6 @@ export default function EventDetails() {
         <div className="absolute -bottom-1 left-0 right-0 h-12 bg-white rounded-t-[40px]"></div>
       </div>
 
-      {/* CUERPO - CAPTURADO PARA PDF */}
       <div ref={reportRef} className="flex-1 overflow-y-auto bg-white px-6 pb-24">
         <div className="max-w-xl mx-auto space-y-6">
             <div className="flex flex-wrap gap-2 justify-center mt-4">
@@ -236,101 +253,45 @@ export default function EventDetails() {
                 )}
             </div>
 
-            {isAyuno ? (
-                <div className="space-y-3 pb-10">
-                    <h3 className="font-black text-slate-800 text-lg">📅 Calendario de Ayuno</h3>
-                    {getAyunoDays().map((day) => {
-                        const dateStr = format(day, 'yyyy-MM-dd');
-                        const fasters = assignments[dateStr] || [];
-                        const isJoined = fasters.includes(myUid);
-                        const isExpanded = expandedDay === dateStr;
-                        return (
-                            <div key={dateStr} className="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
-                                <div className="p-4 flex items-center justify-between gap-3">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center border ${isJoined ? 'bg-rose-500 border-rose-600 text-white' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>
-                                            <span className="text-[8px] font-bold uppercase">{format(day, 'MMM', {locale: es})}</span>
-                                            <span className="text-sm font-black">{format(day, 'dd')}</span>
-                                        </div>
-                                        <div>
-                                            <h4 className="font-bold text-slate-700 text-sm capitalize">{format(day, 'EEEE', {locale: es})}</h4>
-                                            <button onClick={() => setExpandedDay(isExpanded ? null : dateStr)} className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
-                                                <Users size={12}/> {fasters.length} hermanos <ChevronDown size={10} className={isExpanded ? 'rotate-180' : ''}/>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <button onClick={() => handleToggleFastingDate(dateStr)} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${isJoined ? 'bg-rose-100 text-rose-600' : 'bg-white border border-slate-200 text-slate-500'}`}>{isJoined ? 'Anotado ✓' : 'Sumarme'}</button>
-                                </div>
-                                {isExpanded && fasters.length > 0 && (
-                                    <div className="bg-slate-50 px-4 py-3 border-t border-slate-100 flex flex-wrap gap-2">
-                                        {fasters.map(uid => {
-                                            const u = users.find(user => user.id === uid);
-                                            return <span key={uid} className="text-[10px] bg-white border border-slate-200 px-2 py-1 rounded-lg text-slate-600 font-bold shadow-sm">{u?.displayName || 'Hermano'}</span>
-                                        })}
-                                    </div>
-                                )}
-                            </div>
-                        )
-                    })}
-                </div>
-            ) : hasChecklist ? (
-                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden mb-10">
-                    <div className="bg-cyan-50 px-5 py-3 border-b border-cyan-100 flex items-center gap-2">
-                        <h3 className="font-black text-cyan-700 text-[11px] uppercase tracking-widest">Lista de Tareas</h3>
-                    </div>
-                    {event.checklist?.map((task, idx) => (
-                        <div key={idx} onClick={() => handleToggleTask(idx)} className="p-4 flex items-start gap-3 cursor-pointer hover:bg-slate-50 border-b border-slate-50 last:border-0">
-                            <div className={`mt-0.5 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${task.completed ? 'bg-cyan-500 border-cyan-500' : 'border-slate-300'}`}>
-                                {task.completed && <CheckSquare size={16} className="text-white" />}
-                            </div>
-                            <div className="flex-1">
-                                <p className={`text-sm font-bold ${task.completed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{task.text}</p>
-                                {task.completed && task.completedBy && <p className="text-[10px] text-cyan-600 font-bold mt-1 uppercase">✓ {task.completedBy}</p>}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            ) : (
-                <div className="space-y-6 pb-20">
-                  {getStructure(event.type).map((section, idx) => (
-                      <div key={idx} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-                          <div className="bg-slate-50/50 px-5 py-3 border-b border-slate-100 flex items-center justify-between">
-                              <h3 className="font-black text-slate-700 text-[11px] uppercase tracking-widest">{section.section}</h3>
-                              <div className="w-1.5 h-1.5 rounded-full bg-brand-500"></div>
-                          </div>
-                          <div className="p-5 space-y-5">
-                              {section.roles.map(role => {
-                                  const assigned = assignments[role.key] || [];
-                                  const RoleIcon = role.icon;
-                                  return (
-                                      <div key={role.key}>
-                                          <label className="text-[10px] font-black text-slate-400 uppercase mb-3 flex items-center gap-2 tracking-tighter">
-                                              <RoleIcon size={12} className="text-brand-500"/> {role.label}
-                                          </label>
-                                          <div className="flex flex-wrap gap-2">
-                                              {assigned.length > 0 ? assigned.map((p, i) => (
-                                                  <span key={i} className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${isEditing ? 'bg-brand-50 border-brand-200 text-brand-700' : 'bg-slate-50 border-slate-100 text-slate-700'}`}>
-                                                      {p}
-                                                      {!isEditing && <span>{getStatusIcon(p)}</span>}
-                                                      {isEditing && <button onClick={() => handleRemovePersonRole(role.key, p)} className="p-0.5 bg-brand-200 rounded-full hover:bg-brand-300"><X size={12}/></button>}
-                                                  </span>
-                                              )) : <p className="text-[10px] text-slate-300 italic font-bold ml-2">Vacante</p>}
-                                              {isEditing && (role.type === 'multi' || assigned.length === 0) && (
-                                                  <button onClick={() => openPersonSelector(role.key, role)} className="w-full mt-2 py-3 border-2 border-dashed border-slate-200 rounded-2xl text-[10px] font-black text-slate-400 hover:bg-slate-50 transition-all uppercase">+ Añadir</button>
-                                              )}
-                                          </div>
-                                      </div>
-                                  );
-                              })}
-                          </div>
+            {/* SECCIONES PREMIUM (PASTORAL, ALABANZA, OPERATIVO, MULTIMEDIA) */}
+            <div className="space-y-6 pb-20">
+              {getStructure(event.type).map((section, idx) => (
+                  <div key={idx} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                      <div className="bg-slate-50/50 px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+                          <h3 className="font-black text-slate-700 text-[11px] uppercase tracking-widest">{section.section}</h3>
+                          <div className="w-1.5 h-1.5 rounded-full bg-brand-500"></div>
                       </div>
-                  ))}
-                </div>
-            )}
+                      <div className="p-5 space-y-5">
+                          {section.roles.map(role => {
+                              const assigned = assignments[role.key] || [];
+                              const RoleIcon = role.icon;
+                              return (
+                                  <div key={role.key}>
+                                      <label className="text-[10px] font-black text-slate-400 uppercase mb-3 flex items-center gap-2 tracking-tighter">
+                                          <RoleIcon size={12} className="text-brand-500"/> {role.label}
+                                      </label>
+                                      <div className="flex flex-wrap gap-2">
+                                          {assigned.length > 0 ? assigned.map((p, i) => (
+                                              <span key={i} className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${isEditing ? 'bg-brand-50 border-brand-200 text-brand-700' : 'bg-slate-50 border-slate-100 text-slate-700'}`}>
+                                                  {p}
+                                                  {!isEditing && <span>{getStatusIcon(p)}</span>}
+                                                  {isEditing && <button onClick={() => handleRemovePersonRole(role.key, p)} className="p-0.5 bg-brand-200 rounded-full hover:bg-brand-300"><X size={12}/></button>}
+                                              </span>
+                                          )) : <p className="text-[10px] text-slate-300 italic font-bold ml-2">Vacante</p>}
+                                          {isEditing && (role.type === 'multi' || assigned.length === 0) && (
+                                              <button onClick={() => openPersonSelector(role.key, role)} className="w-full mt-2 py-3 border-2 border-dashed border-slate-200 rounded-2xl text-[10px] font-black text-slate-400 hover:bg-slate-50 transition-all uppercase">+ Añadir</button>
+                                          )}
+                                      </div>
+                                  </div>
+                              );
+                          })}
+                      </div>
+                  </div>
+              ))}
+            </div>
         </div>
       </div>
 
-      {/* FOOTER EDICIÓN */}
       {isEditing && (
           <div className="p-4 bg-white border-t border-slate-100 absolute bottom-0 w-full shadow-2xl flex gap-3 z-50 animate-slide-up">
               <button onClick={async () => { if(window.confirm("¿Eliminar?")) { await deleteDoc(doc(db, 'events', id)); navigate('/calendario'); } }} className="p-4 bg-red-50 text-red-500 rounded-2xl hover:bg-red-100 transition-colors"><Trash2 size={24}/></button>
@@ -341,12 +302,12 @@ export default function EventDetails() {
           </div>
       )}
 
-      {/* ✅ MODAL SELECTOR CON BLINDAJE Y FILTRO POR MINISTERIO */}
+      {/* MODAL SELECTOR CON BLINDAJE Y FILTRO POR MINISTERIO */}
       {isSelectorOpen && (
           <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in" onClick={() => setIsSelectorOpen(false)}>
               <div className="bg-white w-full sm:max-w-sm rounded-t-[40px] sm:rounded-[40px] max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
                   <div className="p-6 border-b flex justify-between items-center bg-white shrink-0">
-                      <h3 className="font-black text-slate-800 text-sm uppercase tracking-widest">Asignar a {activeRoleConfig?.label}</h3>
+                      <h3 className="font-black text-slate-800 text-sm uppercase">Asignar a {activeRoleConfig?.label}</h3>
                       <button onClick={() => setIsSelectorOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-400 hover:bg-slate-200 transition-colors"><X size={20}/></button>
                   </div>
                   <div className="p-4 bg-slate-50 shrink-0">
@@ -359,29 +320,17 @@ export default function EventDetails() {
                           const matchesSearch = (u.displayName || '').toLowerCase().includes(personSearchTerm.toLowerCase());
                           if (personSearchTerm) return matchesSearch;
 
-                          // ✅ FILTROS SOLICITADOS POR MINISTERIO
                           const roleLabel = (activeRoleConfig?.label || '').toLowerCase();
                           const userArea = (u.area || u.ministerio || '').toLowerCase();
                           const userRoleType = (u.role || '').toLowerCase();
 
-                          // Pastoral: Pastores y Líderes
-                          if (roleLabel.includes('predica') || roleLabel.includes('oración') || roleLabel.includes('ofrenda')) {
-                              return userRoleType === 'pastor' || userRoleType === 'lider';
-                          }
-                          // Alabanza: Área Alabanza
-                          if (roleLabel.includes('alabanza') || roleLabel.includes('voces') || roleLabel.includes('teclado') || roleLabel.includes('guitarra') || roleLabel.includes('bajo') || roleLabel.includes('batería')) {
-                              return userArea === 'alabanza';
-                          }
-                          // Operativo: Servidores, Pastores y Líderes
-                          if (roleLabel.includes('bienvenida') || roleLabel.includes('pasillo') || roleLabel.includes('seguridad') || roleLabel.includes('baños') || roleLabel.includes('altar') || roleLabel.includes('asistencia')) {
-                              return userRoleType === 'servidor' || userRoleType === 'pastor' || userRoleType === 'lider';
-                          }
-                          // Multimedia: Área Multimedia
-                          if (roleLabel.includes('multimedia') || roleLabel.includes('proyección') || roleLabel.includes('transmisión')) {
-                              return userArea === 'multimedia';
-                          }
+                          // ✅ FILTROS SOLICITADOS
+                          if (roleLabel.includes('predica')) return userRoleType === 'pastor' || userRoleType === 'lider';
+                          if (roleLabel.includes('alabanza')) return userArea === 'alabanza';
+                          if (roleLabel.includes('multimedia')) return userArea === 'multimedia';
+                          if (roleLabel.includes('bienvenida')) return userRoleType === 'servidor' || userRoleType === 'pastor' || userRoleType === 'lider';
 
-                          return true; // Fallback para mostrar todos
+                          return true;
                       }).map(u => {
                           const isTaken = isUserTaken(u.displayName);
                           const isAlreadyInThisRole = (assignments[activeRoleKey] || []).includes(u.displayName);
@@ -410,14 +359,10 @@ export default function EventDetails() {
                           );
                       })}
                   </div>
-                  <div className="p-4 bg-white border-t shrink-0">
-                      <button onClick={() => setIsSelectorOpen(false)} className="w-full bg-slate-900 text-white py-4 rounded-[25px] font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 transition-all">Confirmar Selección</button>
-                  </div>
               </div>
           </div>
       )}
 
-      {/* ✅ TOAST RENDERIZADO (Referencia segura al estado) */}
       {toast && (
         <div className="fixed bottom-24 left-6 right-6 z-[400] animate-slide-up">
           <div className={`flex items-center gap-4 px-8 py-5 rounded-[30px] shadow-2xl border-2 ${toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-400' : 'bg-slate-900 text-white border-slate-700'}`}>
