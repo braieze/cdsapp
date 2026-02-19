@@ -20,6 +20,7 @@ import Login from './pages/Login';
 import Profile from './pages/Profile';
 import Directory from './pages/Directory';
 import Ofrendar from './pages/Ofrendar'; // O la ruta donde hayas guardado el archivo
+import Tesoreria from './pages/Tesoreria';
 
 // COMPONENTE DESPERTADOR
 function NavigationHandler() {
@@ -138,6 +139,7 @@ return (
           <Route path="/apps" element={<AppsHub />} />
           <Route path="/perfil" element={<Profile />} /> 
           <Route path="/directorio" element={<Directory />} />
+          <Route path="/tesoreria" element={<Tesoreria />} /> {/* 🔥 NUEVA LÍNEA */}
         </Route>
       </Routes>
     </BrowserRouter>

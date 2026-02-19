@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { 
   Users, Heart, History, GraduationCap, Video, 
-  Calendar, RefreshCw, Music, HeartHandshake // ✅ Cambié DollarSign por HeartHandshake para más calidez
+  Calendar, RefreshCw, Music, HeartHandshake,
+  Wallet // ✅ Ícono para Tesorería
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -36,9 +37,10 @@ export default function AppsHub() {
     { id: 'classroom', name: 'Escuela', icon: GraduationCap, color: 'text-emerald-600', bg: 'bg-emerald-50', path: '#' },
     { id: 'visitacion', name: 'Visitación', icon: Heart, color: 'text-rose-600', bg: 'bg-rose-50', path: '#' },
     { id: 'alabanza', name: 'Cancionero', icon: Music, color: 'text-pink-600', bg: 'bg-pink-50', path: '#' },
+    { id: 'ofrendar_user', name: 'Ofrendar', icon: HeartHandshake, color: 'text-brand-600', bg: 'bg-brand-50', path: '/ofrendar' },
     
-    // ✅ ACTUALIZADO: Apunta a /ofrendar y usa un estilo CDS moderno
-    { id: 'tesoreria', name: 'Ofrendar', icon: HeartHandshake, color: 'text-brand-600', bg: 'bg-brand-50', path: '/ofrendar' },
+    // ✅ NUEVO: Acceso a la Tesorería (Admin)
+    { id: 'tesoreria_admin', name: 'Tesorería', icon: Wallet, color: 'text-slate-900', bg: 'bg-slate-200', path: '/tesoreria' },
     
     { id: 'multimedia', name: 'Multimedia', icon: Video, color: 'text-cyan-600', bg: 'bg-cyan-50', path: '#' },
   ];
@@ -87,7 +89,6 @@ export default function AppsHub() {
         })}
       </div>
 
-      {/* BANNER INFERIOR CDS */}
       <div className="mt-12 bg-slate-900 rounded-[35px] p-6 text-white shadow-2xl relative overflow-hidden border-b-4 border-brand-600">
         <div className="relative z-10">
           <div className="bg-brand-500 w-10 h-1 rounded-full mb-3"></div>
