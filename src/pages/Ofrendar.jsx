@@ -9,7 +9,7 @@ export default function Ofrendar() {
   const [user, setUser] = useState(null);
   const [step, setStep] = useState(1);
   const [copied, setCopied] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false); // ✅ Estado de carga
+  const [isSubmitting, setIsSubmitting] = useState(false); // ✅ Estado para el icono de carga
   const [formData, setFormData] = useState({ name: '', prayer: '', amount: '' });
 
   useEffect(() => {
@@ -22,27 +22,29 @@ export default function Ofrendar() {
     return () => unsubscribe();
   }, []);
 
-  // ✅ Función para formatear miles (ej: 20000 -> 20.000)
-  const formatNumber = (val) => {
+  // ✅ 1. Formateo automático de miles (Ej: 20000 -> 20.000)
+  const formatVisualAmount = (val) => {
     if (!val) return '';
-    return Number(val.replace(/\D/g, '')).toLocaleString('es-AR');
+    const numeric = val.replace(/\D/g, '');
+    return new Intl.NumberFormat('es-AR').format(numeric);
   };
 
   const handleRegister = async () => {
     if (!formData.name || !formData.amount) return;
-    setIsSubmitting(true); // 🔥 Iniciamos carga
-    
+    setIsSubmitting(true); // 🚀 Mostrar cargando
+
     try {
+      // Guardamos en Firebase con el monto limpio (sin puntos)
       await addDoc(collection(db, 'offerings'), {
         fullName: formData.name,
         prayerRequest: formData.prayer,
-        amount: Number(formData.amount.replace(/\D/g, '')), // Guardamos solo el número puro
+        amount: Number(formData.amount.replace(/\D/g, '')),
         uid: user?.uid || 'guest',
-        date: serverTimestamp(),
+        date: serverTimestamp(), // 🔥 Registro de fecha automático
         status: 'intent'
       });
       
-      // Pequeño delay para que el usuario vea que algo pasó
+      // Simulamos un pequeño delay para que se vea el proceso
       setTimeout(() => {
         setIsSubmitting(false);
         setStep(2);
@@ -61,14 +63,14 @@ export default function Ofrendar() {
 
   return (
     <div className="fixed inset-0 bg-white flex flex-col z-[150] font-outfit overflow-hidden">
-      {/* 🚀 CABECERA CDS */}
+      {/* 🚀 CABECERA ESTILO CDS */}
       <header className="bg-slate-900 text-white pt-12 pb-8 px-6 rounded-b-[40px] shadow-2xl flex-shrink-0">
         <div className="flex items-center justify-between mb-6">
           <button onClick={() => navigate('/apps')} className="p-2 bg-white/10 rounded-full active:scale-90 transition-all">
             <ChevronLeft size={24} />
           </button>
           <div className="text-right">
-            <h1 className="text-2xl font-black tracking-tighter uppercase leading-none">Ofrendar</h1>
+            <h1 className="text-2xl font-black tracking-tighter uppercase leading-none italic">Ofrendar</h1>
             <p className="text-[10px] font-bold text-brand-400 uppercase tracking-[0.2em]">Ministerio CDS</p>
           </div>
         </div>
@@ -77,7 +79,7 @@ export default function Ofrendar() {
             <Heart size={24} fill="currentColor" />
           </div>
           <p className="text-[11px] font-medium text-slate-300 leading-snug">
-            "Cada uno dé como propuso en su corazón, no con tristeza, sino con alegría."
+            "Honra al Señor con tus bienes y con las primicias de tus frutos."
           </p>
         </div>
       </header>
@@ -86,39 +88,37 @@ export default function Ofrendar() {
         {step === 1 ? (
           <div className="space-y-5 animate-fade-in">
             <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-4 tracking-widest">Nombre del Dador</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-4 tracking-widest">Dador</label>
               <input 
                 value={formData.name}
                 onChange={(e) => setFormData({...formData, name: e.target.value})}
-                className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[28px] font-bold text-slate-800 focus:border-brand-500 outline-none shadow-inner transition-all"
-                placeholder="Tu nombre completo"
+                className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[28px] font-bold text-slate-800 focus:border-brand-500 outline-none transition-all shadow-inner"
+                placeholder="Nombre completo"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-4 tracking-widest">Monto a Sembrar</label>
-              <div className="relative">
-                <span className="absolute left-5 top-1/2 -translate-y-1/2 font-black text-slate-400 text-xl">$</span>
-                <input 
-                  type="text" // Cambiado a text para soportar los puntos/comas visuales
-                  value={formatNumber(formData.amount)}
-                  onChange={(e) => setFormData({...formData, amount: e.target.value})}
-                  className="w-full p-5 pl-10 bg-slate-50 border-2 border-slate-100 rounded-[28px] font-black text-2xl text-slate-900 focus:border-brand-500 outline-none shadow-inner"
-                  placeholder="0.00"
-                />
-              </div>
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-4 tracking-widest">Monto $</label>
+              <input 
+                type="text"
+                value={formatVisualAmount(formData.amount)}
+                onChange={(e) => setFormData({...formData, amount: e.target.value})}
+                className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[28px] font-black text-3xl text-slate-900 focus:border-brand-500 outline-none shadow-inner"
+                placeholder="0"
+              />
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-4 tracking-widest">Pedido de Oración</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-4 tracking-widest">Motivo de Oración</label>
               <textarea 
                 value={formData.prayer}
                 onChange={(e) => setFormData({...formData, prayer: e.target.value})}
                 className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[28px] font-bold text-slate-700 text-sm h-32 resize-none focus:border-brand-500 outline-none shadow-inner"
-                placeholder="¿Por qué te gustaría que oremos?"
+                placeholder="Escribí aquí tu pedido..."
               />
             </div>
 
+            {/* ✅ BOTÓN CON ICONO DE CARGA */}
             <button 
               onClick={handleRegister}
               disabled={isSubmitting || !formData.amount}
@@ -127,32 +127,40 @@ export default function Ofrendar() {
               {isSubmitting ? (
                 <> <Loader2 size={20} className="animate-spin" /> Procesando... </>
               ) : (
-                <> Confirmar Datos <ArrowRight size={20}/> </>
+                <> Continuar <ArrowRight size={20}/> </>
               )}
             </button>
           </div>
         ) : (
           <div className="space-y-4 animate-slide-up">
-            <div className="bg-slate-50 border-2 border-slate-100 p-6 rounded-[40px] relative overflow-hidden active:scale-[0.98] transition-transform cursor-pointer" onClick={copyAlias}>
-              <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[8px] font-black px-5 py-1.5 rounded-bl-2xl uppercase tracking-tighter">Recomendado</div>
-              <div className="flex items-center gap-4 mb-4">
-                <div className="bg-white p-3 rounded-2xl shadow-sm"><Wallet className="text-slate-900" size={24}/></div>
-                <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Alias Bancario</p>
-                  <p className="font-mono font-black text-lg text-slate-800">braigomez</p>
-                </div>
-              </div>
-              <button className={`w-full py-4 rounded-2xl font-black text-xs uppercase flex items-center justify-center gap-2 transition-all ${copied ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white'}`}>
-                {copied ? <><Check size={16}/> Copiado</> : <><Copy size={16}/> Copiar Alias</>}
-              </button>
+            <div className="p-4 bg-emerald-50 rounded-3xl border border-emerald-100">
+               <p className="text-[10px] font-black text-emerald-600 text-center uppercase">Datos registrados correctamente</p>
             </div>
 
-            {/* ✅ CORRECCIÓN LINK: Se agregó https:// para evitar error de rutas internas */}
+            {/* CARD: ALIAS (100% PARA LA IGLESIA) */}
+            <div 
+              onClick={copyAlias}
+              className="bg-slate-900 text-white p-6 rounded-[40px] relative overflow-hidden active:scale-[0.98] transition-all cursor-pointer shadow-xl shadow-slate-200"
+            >
+              <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[8px] font-black px-5 py-1.5 rounded-bl-2xl uppercase tracking-tighter">Sin comisiones</div>
+              <div className="flex items-center gap-4 mb-4">
+                <div className="bg-white/10 p-3 rounded-2xl"><Wallet className="text-brand-400" size={24}/></div>
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Transferir al Alias</p>
+                  <p className="font-mono font-black text-lg">CASA.DE.DIOS.OK</p>
+                </div>
+              </div>
+              <div className={`w-full py-4 rounded-2xl font-black text-xs uppercase flex items-center justify-center gap-2 transition-all ${copied ? 'bg-emerald-500' : 'bg-white/10'}`}>
+                {copied ? <><Check size={16}/> Copiado</> : <><Copy size={16}/> Copiar para transferir</>}
+              </div>
+            </div>
+
+            {/* ✅ BOTÓN CORREGIDO: SE AGREGÓ HTTPS:// */}
             <a 
               href="https://link.mercadopago.com.ar/proyectbro"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-5 p-6 bg-[#009EE3] text-white rounded-[40px] shadow-lg active:scale-95 transition-all"
+              className="flex items-center gap-5 p-6 bg-[#009EE3] text-white rounded-[40px] shadow-lg shadow-blue-100 active:scale-95 transition-all"
             >
               <div className="bg-white/20 p-4 rounded-2xl"><Smartphone size={28}/></div>
               <div className="text-left">
