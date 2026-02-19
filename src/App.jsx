@@ -115,12 +115,18 @@ function App() {
     );
   }
 
-  return (
+return (
     <BrowserRouter>
       <NavigationHandler /> 
       <Toaster richColors position="top-center" />
       <Routes>
+        {/* 🔓 RUTAS PÚBLICAS: Accesibles para todos (con o sin cuenta) */}
         <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
+        
+        {/* 🔥 RUTA DE OFRENDAR: Fuera del MainLayout para que el QR funcione siempre */}
+        <Route path="/ofrendar" element={<Ofrendar />} /> 
+
+        {/* 🔐 RUTAS PROTEGIDAS: Solo accesibles si el usuario inició sesión */}
         <Route element={user ? <MainLayout /> : <Navigate to="/login" />}>
           <Route path="/" element={<Home />} />
           <Route path="/post/:postId" element={<PostDetail />} />
@@ -132,7 +138,6 @@ function App() {
           <Route path="/apps" element={<AppsHub />} />
           <Route path="/perfil" element={<Profile />} /> 
           <Route path="/directorio" element={<Directory />} />
-          <Route path="/ofrendar" element={<Ofrendar />} />
         </Route>
       </Routes>
     </BrowserRouter>
