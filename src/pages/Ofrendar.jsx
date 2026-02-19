@@ -139,7 +139,7 @@ export default function Ofrendar() {
                 <div className="bg-white p-3 rounded-2xl shadow-sm"><Wallet className="text-slate-900" size={24}/></div>
                 <div>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Alias Bancario</p>
-                  <p className="font-mono font-black text-lg text-slate-800">CASA.DE.DIOS.OK</p>
+                  <p className="font-mono font-black text-lg text-slate-800">braigomez</p>
                 </div>
               </div>
               <button className={`w-full py-4 rounded-2xl font-black text-xs uppercase flex items-center justify-center gap-2 transition-all ${copied ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white'}`}>
