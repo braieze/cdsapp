@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Users, Heart, History, GraduationCap, Video, 
-  Calendar, RefreshCw, AlertCircle, 
-  Music, DollarSign // ✅ Íconos agregados aquí para corregir el error
+  Calendar, RefreshCw, Music, HeartHandshake // ✅ Cambié DollarSign por HeartHandshake para más calidez
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -37,33 +36,36 @@ export default function AppsHub() {
     { id: 'classroom', name: 'Escuela', icon: GraduationCap, color: 'text-emerald-600', bg: 'bg-emerald-50', path: '#' },
     { id: 'visitacion', name: 'Visitación', icon: Heart, color: 'text-rose-600', bg: 'bg-rose-50', path: '#' },
     { id: 'alabanza', name: 'Cancionero', icon: Music, color: 'text-pink-600', bg: 'bg-pink-50', path: '#' },
-    { id: 'tesoreria', name: 'Ofrendar', icon: DollarSign, color: 'text-amber-600', bg: 'bg-amber-50', path: '#' },
+    
+    // ✅ ACTUALIZADO: Apunta a /ofrendar y usa un estilo CDS moderno
+    { id: 'tesoreria', name: 'Ofrendar', icon: HeartHandshake, color: 'text-brand-600', bg: 'bg-brand-50', path: '/ofrendar' },
+    
     { id: 'multimedia', name: 'Multimedia', icon: Video, color: 'text-cyan-600', bg: 'bg-cyan-50', path: '#' },
   ];
 
   return (
-    <div className="pb-24 pt-4 px-4 animate-fade-in bg-slate-50 min-h-screen">
-      <div className="mb-6 flex justify-between items-end">
+    <div className="pb-32 pt-4 px-4 animate-fade-in bg-slate-50 min-h-screen font-outfit">
+      <div className="mb-8 flex justify-between items-end px-2">
         <div>
-          <h2 className="text-xl font-black text-slate-800">Aplicaciones</h2>
-          <p className="text-sm text-slate-500 mt-1 font-medium">Todas las herramientas</p>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tighter uppercase leading-none">Aplicaciones</h2>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Ministerio CDS</p>
         </div>
-        <span className="text-[10px] text-slate-300 font-bold uppercase tracking-widest">v1.2</span>
+        <span className="text-[10px] text-slate-300 font-bold uppercase tracking-widest bg-white px-3 py-1 rounded-full shadow-sm border border-slate-100">v1.2</span>
       </div>
 
-      <div className="grid grid-cols-3 gap-y-8 gap-x-4">
+      <div className="grid grid-cols-3 gap-y-10 gap-x-4">
         {apps.map((app) => {
           const InnerContent = () => (
             <>
-              <div className={`w-16 h-16 rounded-2xl ${app.bg} flex items-center justify-center mb-2 shadow-sm border border-white group-hover:shadow-md transition-all group-hover:-translate-y-1 relative`}>
-                <app.icon className={`${app.color} transition-transform group-hover:scale-110 ${app.id === 'refresh' && updateAvailable ? 'animate-spin' : ''}`} size={28} strokeWidth={2} />
+              <div className={`w-16 h-16 rounded-[22px] ${app.bg} flex items-center justify-center mb-3 shadow-sm border-2 border-white group-hover:shadow-md transition-all group-hover:-translate-y-1 relative`}>
+                <app.icon className={`${app.color} transition-transform group-hover:scale-110 ${app.id === 'refresh' && updateAvailable ? 'animate-spin' : ''}`} size={28} strokeWidth={2.5} />
                 {app.hasBadge && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-white rounded-full flex items-center justify-center shadow-sm">
-                    <span className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse"></span>
+                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-white rounded-full flex items-center justify-center shadow-md">
+                    <span className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>
                   </span>
                 )}
               </div>
-              <span className={`text-[11px] font-bold text-center leading-tight px-1 ${app.hasBadge ? 'text-red-600 animate-pulse' : 'text-slate-600'}`}>
+              <span className={`text-[10px] font-black text-center leading-tight px-1 uppercase tracking-tight ${app.hasBadge ? 'text-red-600 animate-pulse' : 'text-slate-500'}`}>
                 {app.name}
               </span>
             </>
@@ -71,31 +73,33 @@ export default function AppsHub() {
 
           if (app.isAction) {
             return (
-              <button key={app.id} onClick={handleRefresh} className="flex flex-col items-center group cursor-pointer active:scale-95 transition-transform">
+              <button key={app.id} onClick={handleRefresh} className="flex flex-col items-center group cursor-pointer active:scale-90 transition-transform">
                 <InnerContent />
               </button>
             );
           }
 
           return (
-            <Link key={app.id} to={app.path} className="flex flex-col items-center group cursor-pointer active:scale-95 transition-transform">
+            <Link key={app.id} to={app.path} className="flex flex-col items-center group cursor-pointer active:scale-90 transition-transform">
               <InnerContent />
             </Link>
           );
         })}
       </div>
 
-      <div className="mt-10 bg-gradient-to-r from-brand-600 to-brand-500 rounded-2xl p-5 text-white shadow-lg relative overflow-hidden">
+      {/* BANNER INFERIOR CDS */}
+      <div className="mt-12 bg-slate-900 rounded-[35px] p-6 text-white shadow-2xl relative overflow-hidden border-b-4 border-brand-600">
         <div className="relative z-10">
-          <h3 className="font-bold mb-1 text-lg">¿Necesitas ayuda?</h3>
-          <p className="text-xs text-brand-50 mb-4 max-w-[200px] font-medium leading-relaxed">
-            El equipo pastoral está aquí para orar por ti y acompañarte.
+          <div className="bg-brand-500 w-10 h-1 rounded-full mb-3"></div>
+          <h3 className="font-black text-xl tracking-tighter uppercase mb-1">¿Necesitas ayuda?</h3>
+          <p className="text-[10px] text-slate-400 mb-6 max-w-[200px] font-bold uppercase tracking-widest leading-relaxed">
+            El equipo pastoral está para orar por ti y acompañarte.
           </p>
-          <button className="bg-white text-brand-700 text-xs font-bold px-5 py-2.5 rounded-full shadow-sm hover:bg-brand-50 transition-colors">
+          <button className="bg-white text-slate-900 text-[10px] font-black uppercase tracking-widest px-6 py-3 rounded-2xl shadow-lg active:scale-95 transition-all">
             Contactar ahora
           </button>
         </div>
-        <Heart className="absolute -right-4 -bottom-4 text-white opacity-20 rotate-12" size={120} />
+        <Heart className="absolute -right-6 -bottom-6 text-brand-600 opacity-20 rotate-12" size={140} />
       </div>
     </div>
   );

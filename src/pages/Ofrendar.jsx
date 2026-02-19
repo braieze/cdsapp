@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { db, auth } from '../firebase';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
-import { Heart, Copy, Check, Wallet, Smartphone, Info, ArrowRight } from 'lucide-react';
+import { Heart, Copy, Check, ChevronLeft, Wallet, Smartphone, ArrowRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export default function Ofrendar() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [step, setStep] = useState(1);
   const [copied, setCopied] = useState(false);
@@ -20,104 +22,130 @@ export default function Ofrendar() {
   }, []);
 
   const handleRegister = async () => {
-    if (!formData.name || !formData.amount) return alert("Completá nombre y monto");
+    if (!formData.name || !formData.amount) return;
     try {
-      // ✅ REGISTRO AUTOMÁTICO EN FIREBASE
       await addDoc(collection(db, 'offerings'), {
         fullName: formData.name,
         prayerRequest: formData.prayer,
         amount: Number(formData.amount),
         uid: user?.uid || 'guest',
-        date: serverTimestamp(), // 🔥 Fecha y hora automática
+        date: serverTimestamp(), // 🔥 Registro automático
         status: 'intent'
       });
       setStep(2);
     } catch (e) { console.error(e); }
   };
 
-  return (
-    <div className="max-w-md mx-auto p-4 font-outfit min-h-screen bg-white">
-      {step === 1 ? (
-        <div className="space-y-6 pt-10">
-          <div className="text-center">
-            <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Ofrendar</h1>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Ministerio Casa de Dios</p>
-          </div>
+  const copyAlias = () => {
+    navigator.clipboard.writeText("CASA.DE.DIOS.OK");
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
-          <div className="space-y-4">
-            <input 
-              placeholder="Nombre y Apellido" 
-              className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold"
-              value={formData.name}
-              onChange={(e) => setFormData({...formData, name: e.target.value})}
-            />
-            <input 
-              type="number" 
-              placeholder="Monto $ 0.00" 
-              className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-2xl"
-              value={formData.amount}
-              onChange={(e) => setFormData({...formData, amount: e.target.value})}
-            />
-            <textarea 
-              placeholder="Pedido de oración (Opcional)" 
-              className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl h-32 resize-none"
-              value={formData.prayer}
-              onChange={(e) => setFormData({...formData, prayer: e.target.value})}
-            />
-            <button onClick={handleRegister} className="w-full bg-slate-900 text-white py-5 rounded-[30px] font-black uppercase text-xs shadow-xl flex items-center justify-center gap-2">
-              Confirmar y Ofrendar <ArrowRight size={16}/>
+  return (
+    <div className="fixed inset-0 bg-white flex flex-col z-[100] font-outfit">
+      {/* 🚀 CABECERA ESTILO CDS */}
+      <header className="bg-slate-900 text-white pt-12 pb-8 px-6 rounded-b-[40px] shadow-2xl flex-shrink-0">
+        <div className="flex items-center justify-between mb-6">
+          <button onClick={() => navigate('/apps')} className="p-2 bg-white/10 rounded-full active:scale-90 transition-all">
+            <ChevronLeft size={24} />
+          </button>
+          <div className="text-right">
+            <h1 className="text-2xl font-black tracking-tighter uppercase leading-none">Ofrendar</h1>
+            <p className="text-[10px] font-bold text-brand-400 uppercase tracking-[0.2em]">Ministerio CDS</p>
+          </div>
+        </div>
+        <div className="bg-white/5 border border-white/10 p-4 rounded-3xl flex items-center gap-4">
+          <div className="bg-brand-500/20 p-3 rounded-2xl text-brand-400 animate-pulse">
+            <Heart size={24} fill="currentColor" />
+          </div>
+          <p className="text-[11px] font-medium text-slate-300 leading-snug">
+            "Cada uno dé como propuso en su corazón, no con tristeza, sino con alegría."
+          </p>
+        </div>
+      </header>
+
+      <main className="flex-1 overflow-y-auto p-6 space-y-6">
+        {step === 1 ? (
+          <div className="space-y-5 animate-fade-in">
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-4 tracking-widest">Nombre del Dador</label>
+              <input 
+                value={formData.name}
+                onChange={(e) => setFormData({...formData, name: e.target.value})}
+                className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[28px] font-bold text-slate-800 focus:border-brand-500 outline-none transition-all shadow-inner"
+                placeholder="Tu nombre completo"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-4 tracking-widest">Monto a Sembrar</label>
+              <div className="relative">
+                <span className="absolute left-5 top-1/2 -translate-y-1/2 font-black text-slate-400 text-xl">$</span>
+                <input 
+                  type="number"
+                  value={formData.amount}
+                  onChange={(e) => setFormData({...formData, amount: e.target.value})}
+                  className="w-full p-5 pl-10 bg-slate-50 border-2 border-slate-100 rounded-[28px] font-black text-2xl text-slate-900 focus:border-brand-500 outline-none shadow-inner"
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-4 tracking-widest">Pedido de Oración</label>
+              <textarea 
+                value={formData.prayer}
+                onChange={(e) => setFormData({...formData, prayer: e.target.value})}
+                className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[28px] font-bold text-slate-700 text-sm h-32 resize-none focus:border-brand-500 outline-none shadow-inner"
+                placeholder="¿Por qué te gustaría que oremos?"
+              />
+            </div>
+
+            <button 
+              onClick={handleRegister}
+              className="w-full bg-slate-900 text-white py-6 rounded-[32px] font-black uppercase text-sm shadow-xl shadow-slate-200 flex items-center justify-center gap-3 active:scale-95 transition-all mt-4"
+            >
+              Confirmar Datos <ArrowRight size={20}/>
             </button>
           </div>
-        </div>
-      ) : (
-        <div className="space-y-4 animate-slide-up pt-10">
-          <div className="bg-emerald-50 p-6 rounded-[35px] border-2 border-emerald-100 text-center">
-             <h2 className="text-xl font-black text-emerald-700">¡Casi listo!</h2>
-             <p className="text-xs font-bold text-emerald-600/70">Elegí cómo completar tu ofrenda:</p>
-          </div>
-
-          {/* OPCIÓN 1: ABRIR MERCADO PAGO DIRECTO */}
-          <a 
-            href="https://link.mercadopago.com.ar/TU_LINK" // 🔥 ACÁ VA EL LINK
-            className="flex items-center gap-4 p-5 bg-blue-600 text-white rounded-[30px] shadow-lg shadow-blue-100 active:scale-95 transition-all"
-          >
-            <div className="bg-white/20 p-3 rounded-2xl"><Smartphone size={24}/></div>
-            <div className="text-left">
-              <p className="font-black text-sm">Abrir Mercado Pago</p>
-              <p className="text-[9px] font-bold opacity-70 uppercase">Ideal para pagar ahora mismo</p>
+        ) : (
+          <div className="space-y-4 animate-slide-up">
+            {/* CARD: TRANSFERENCIA (ALIAS) */}
+            <div className="bg-slate-50 border-2 border-slate-100 p-6 rounded-[40px] relative overflow-hidden group active:bg-slate-100 transition-colors cursor-pointer" onClick={copyAlias}>
+              <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[8px] font-black px-5 py-1.5 rounded-bl-2xl uppercase tracking-tighter">100% para la obra</div>
+              <div className="flex items-center gap-4 mb-4">
+                <div className="bg-white p-3 rounded-2xl shadow-sm"><Wallet className="text-slate-900" size={24}/></div>
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Alias Bancario</p>
+                  <p className="font-mono font-black text-lg text-slate-800">CASA.DE.DIOS.OK</p>
+                </div>
+              </div>
+              <button 
+                className={`w-full py-4 rounded-2xl font-black text-xs uppercase flex items-center justify-center gap-2 transition-all ${copied ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white'}`}
+              >
+                {copied ? <><Check size={16}/> Copiado</> : <><Copy size={16}/> Copiar Alias</>}
+              </button>
+              <p className="text-[9px] text-slate-400 font-bold mt-4 text-center">Ideal para transferir desde cualquier Banco o Billetera.</p>
             </div>
-          </a>
 
-          {/* OPCIÓN 2: COPIAR ALIAS (PARA CUALQUIER BANCO) */}
-          <div className="p-6 bg-slate-50 rounded-[35px] border-2 border-slate-100 space-y-3">
-             <div className="flex items-center gap-2 text-slate-400 mb-1">
-               <Wallet size={16}/>
-               <span className="text-[10px] font-black uppercase tracking-widest">Transferencia Bancaria</span>
-             </div>
-             <div className="flex items-center justify-between bg-white p-4 rounded-2xl shadow-sm">
-               <span className="font-mono font-black text-slate-700">braigomez</span>
-               <button 
-                onClick={() => {
-                  navigator.clipboard.writeText("braigomez");
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 2000);
-                }}
-                className={`p-2 rounded-xl transition-all ${copied ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'}`}
-               >
-                 {copied ? <Check size={18}/> : <Copy size={18}/>}
-               </button>
-             </div>
-             <div className="flex items-start gap-2 p-3 bg-amber-50 rounded-2xl border border-amber-100">
-               <Info size={14} className="text-amber-600 mt-0.5 flex-shrink-0"/>
-               <p className="text-[9px] font-bold text-amber-700 leading-tight">
-                 Copiá el alias, abrí tu App de banco y pegalo. Con este método el 100% de tu ofrenda llega a la iglesia.
-               </p>
-             </div>
+            {/* CARD: MERCADO PAGO */}
+            <a 
+              href="https://link.mercadopago.com.ar/TU_LINK"
+              target="_blank"
+              className="flex items-center gap-5 p-6 bg-[#009EE3] text-white rounded-[40px] shadow-lg shadow-blue-100 active:scale-95 transition-all"
+            >
+              <div className="bg-white/20 p-4 rounded-2xl"><Smartphone size={28}/></div>
+              <div className="text-left">
+                <p className="text-[10px] font-black opacity-60 uppercase tracking-widest">Pagar con</p>
+                <p className="font-black text-xl leading-none">Mercado Pago</p>
+              </div>
+            </a>
+
+            <button onClick={() => setStep(1)} className="w-full py-4 text-slate-400 font-black text-[10px] uppercase tracking-widest">← Modificar información</button>
           </div>
-
-          <button onClick={() => setStep(1)} className="w-full py-4 text-slate-300 font-black text-[10px] uppercase tracking-[0.2em]">← Modificar datos</button>
-        </div>
-      )}
+        )}
+      </main>
     </div>
   );
 }
