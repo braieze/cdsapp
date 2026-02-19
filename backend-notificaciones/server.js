@@ -4,7 +4,6 @@ const admin = require('firebase-admin');
 
 const app = express();
 
-// Configuración de CORS para permitir peticiones desde tu App
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'OPTIONS'],
@@ -13,7 +12,7 @@ app.use(cors({
 
 app.use(express.json());
 
-// --- LÓGICA DE CREDENCIALES ---
+// --- LÓGICA DE FIREBASE (Mantenida) ---
 let serviceAccount;
 try {
   serviceAccount = require('./service-account.json');
@@ -29,33 +28,50 @@ if (!admin.apps.length && serviceAccount) {
   });
 }
 
-// Ruta para mantener el servidor despierto
 app.get('/ping', (req, res) => res.send('pong'));
 
-// 🔔 RUTA DE ENVÍO DE NOTIFICACIONES
-// server.js (Render)
-app.post('/send-notification', async (req, res) => {
-  const { title, body, tokens, url } = req.body;
+// ✅ NUEVA RUTA: ENVÍO MEDIANTE ONESIGNAL (Seguro y Masivo)
+app.post('/send-onesignal', async (req, res) => {
+  const { userIds, title, message, url } = req.body;
 
-  if (!tokens || !tokens.length) return res.status(400).send('Faltan tokens');
+  if (!userIds || !userIds.length) return res.status(400).send('Faltan IDs de usuario');
 
   try {
-    const response = await admin.messaging().sendEachForMulticast({
-      // ✅ Metemos todo en 'data' y forzamos que sean Strings
-      data: { 
-        title: String(title || "Nuevo Aviso"), 
-        body: String(body || "Toca para ver el contenido"),
-        url: String(url || '/') // Ej: "/post/123"
+    const response = await fetch("https://onesignal.com/api/v1/notifications", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Basic os_v2_app_oqvgftlncvbh7c5llodvt6v5bizleim6w4cefan3kucbz63ch6kslgr5rvlaoicnpzicabq3natbwjhks37jm2vjdr4bn7i225ejyui" // ✅ Llave segura en backend
       },
-      tokens: tokens,
+      body: JSON.stringify({
+        app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
+        include_external_user_ids: userIds, // Usamos los UIDs de Firebase
+        headings: { "es": title },
+        contents: { "es": message },
+        url: url || "https://tu-app-mceh.web.app/servicios"
+      })
     });
-    
-    console.log(`✅ Enviados: ${response.successCount}`);
-    res.json({ success: true });
+
+    const data = await response.json();
+    console.log("✅ OneSignal Response:", data);
+    res.json({ success: true, data });
   } catch (error) {
-    console.error("🔥 Error:", error);
+    console.error("🔥 Error OneSignal:", error);
     res.status(500).json({ error: error.message });
   }
+});
+
+// Ruta original de Firebase (por si la sigues usando en otras partes)
+app.post('/send-notification', async (req, res) => {
+  const { title, body, tokens, url } = req.body;
+  if (!tokens || !tokens.length) return res.status(400).send('Faltan tokens');
+  try {
+    const response = await admin.messaging().sendEachForMulticast({
+      data: { title: String(title), body: String(body), url: String(url || '/') },
+      tokens: tokens,
+    });
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 const PORT = process.env.PORT || 3000;

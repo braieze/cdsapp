@@ -107,36 +107,35 @@ export default function EventDetails() {
 
   // ✅ 2. ENVÍO MASIVO CON ONESIGNAL (Con tu REST API Key Real)
   const notifyNewAssignments = async (newAssignments) => {
-    try {
-      const oldAssigned = Object.values(event.assignments || {}).flat();
-      const currentAssigned = Object.values(newAssignments).flat();
-      const newlyAddedNames = currentAssigned.filter(name => !oldAssigned.includes(name));
+  try {
+    const oldAssigned = Object.values(event.assignments || {}).flat();
+    const currentAssigned = Object.values(newAssignments).flat();
+    const newlyAddedNames = currentAssigned.filter(name => !oldAssigned.includes(name));
 
-      if (newlyAddedNames.length === 0) return;
+    if (newlyAddedNames.length === 0) return;
 
-      const targetUserIds = users
-        .filter(u => newlyAddedNames.includes(u.displayName))
-        .map(u => u.id);
+    const targetUserIds = users
+      .filter(u => newlyAddedNames.includes(u.displayName))
+      .map(u => u.id);
 
-      if (targetUserIds.length === 0) return;
+    if (targetUserIds.length === 0) return;
 
-      await fetch("https://onesignal.com/api/v1/notifications", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Basic os_v2_app_oqvgftlncvbh7c5llodvt6v5bizleim6w4cefan3kucbz63ch6kslgr5rvlaoicnpzicabq3natbwjhks37jm2vjdr4bn7i225ejyui" //
-        },
-        body: JSON.stringify({
-          app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a", //
-          include_external_user_ids: targetUserIds,
-          headings: { "es": "📍 Nueva tarea asignada" },
-          contents: { "es": `Fuiste asignado en: ${event.title}. Revisa tus turnos.` },
-          url: "https://tu-app-mceh.web.app/servicios" // Cambia por tu URL real
-        })
-      });
-      setToast({ message: "Notificaciones enviadas", type: "success" });
-    } catch (error) { console.error("Error OneSignal:", error); }
-  };
+    // ✅ LLAMADA SEGURA A TU BACKEND DE RENDER
+    await fetch("https://backend-notificaciones-mceh.onrender.com/send-onesignal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userIds: targetUserIds,
+        title: "📍 Nueva tarea asignada",
+        message: `Fuiste asignado en: ${event.title}. Revisa tus turnos.`
+      })
+    });
+    
+    setToast({ message: "Servidores notificados", type: "success" });
+  } catch (error) { 
+    console.error("Error al notificar:", error); 
+  }
+};
 
   const handleSaveAssignments = async () => {
     setIsSaving(true);
