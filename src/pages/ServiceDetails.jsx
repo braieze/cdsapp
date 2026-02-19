@@ -10,11 +10,12 @@ import {
   Calendar, Clock, CheckCircle, XCircle, 
   ChevronLeft, Loader2, Users, 
   Send, MessageSquare, Eye, Image as ImageIcon,
-  Pin, X, EyeOff, Trash2, ListPlus, Square, CheckSquare, Download, Maximize2, ExternalLink
+  Pin, X, EyeOff, Trash2, ListPlus, Square, CheckSquare, Download, Maximize2, ExternalLink, Info
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import imageCompression from 'browser-image-compression';
+import OneSignal from 'react-onesignal'; // ✅ Integración OneSignal
 
 export default function ServiceDetails() {
   const { id } = useParams();
@@ -25,6 +26,7 @@ export default function ServiceDetails() {
   const [newMessage, setNewMessage] = useState('');
   const [userRole, setUserRole] = useState(null);
   const [allUsers, setAllUsers] = useState([]);
+  const [toast, setToast] = useState(null);
   
   const [selectedFile, setSelectedFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -41,6 +43,32 @@ export default function ServiceDetails() {
 
   const CLOUD_NAME = "djmkggzjp"; 
   const UPLOAD_PRESET = "ml_default";
+
+  // ✅ 1. INICIALIZACIÓN SILENCIOSA DE ONESIGNAL
+  useEffect(() => {
+    const initOneSignal = async () => {
+      try {
+        if (typeof window !== 'undefined' && window.OneSignal && !OneSignal.initialized) {
+          await OneSignal.init({
+            appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
+            allowLocalhostAsSecureOrigin: true,
+            notifyButton: { enable: false }
+          });
+        }
+        if (currentUser && window.OneSignal) {
+          await OneSignal.login(currentUser.uid);
+        }
+      } catch (e) { console.error("OneSignal Init Error:", e); }
+    };
+    initOneSignal();
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -97,27 +125,38 @@ export default function ServiceDetails() {
     } catch (e) { alert("Error"); }
   };
 
+  // ✅ 2. LÓGICA DE NOTIFICACIÓN MEJORADA (USANDO TU BACKEND DE RENDER)
   const sendChatNotification = async (text, hasImage, hasChecklist) => {
     try {
-      let tokens = [];
-      const assigned = Object.values(event.assignments || {}).flat();
-      if (userRole === 'pastor') {
-        allUsers.forEach(u => { if (assigned.includes(u.displayName) && u.fcmTokens) tokens.push(...u.fcmTokens); });
-      } else {
-        allUsers.forEach(u => { if (u.role === 'pastor' && u.fcmTokens) tokens.push(...u.fcmTokens); });
-      }
-      const unique = [...new Set(tokens)].filter(t => t?.length > 10);
-      if (unique.length === 0) return;
+      let targetUserIds = [];
+      const assignedNames = Object.values(event.assignments || {}).flat();
 
-      await fetch("https://backend-notificaciones-mceh.onrender.com/send-notification", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+      if (userRole === 'pastor') {
+        // El Pastor notifica a todos los asignados
+        targetUserIds = allUsers
+          .filter(u => assignedNames.includes(u.displayName) && u.id !== currentUser.uid)
+          .map(u => u.id);
+      } else {
+        // El Servidor solo notifica a los Pastores
+        targetUserIds = allUsers
+          .filter(u => u.role === 'pastor' && u.id !== currentUser.uid)
+          .map(u => u.id);
+      }
+
+      if (targetUserIds.length === 0) return;
+
+      // Llamada segura a tu backend de Render
+      await fetch("https://backend-notificaciones-mceh.onrender.com/send-onesignal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          userIds: targetUserIds,
           title: userRole === 'pastor' ? `Nota del Pastor: ${event.title}` : `${currentUser.displayName} en ${event.title}`,
-          body: hasImage ? "📷 Imagen enviada" : hasChecklist ? "📋 Lista de tareas" : text,
-          tokens: unique, url: `/servicios/${id}`
+          message: hasImage ? "📷 Imagen enviada" : hasChecklist ? "📋 Lista de tareas" : text,
+          url: `/servicios/${id}`
         })
       });
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("Error al enviar push chat:", e); }
   };
 
   const handleSendMessage = async () => {
@@ -145,7 +184,10 @@ export default function ServiceDetails() {
         sender: currentUser.displayName, uid: currentUser.uid,
         createdAt: serverTimestamp(), readBy: [currentUser.uid], isPinned: false
       });
+      
+      // ✅ Disparar notificación OneSignal
       sendChatNotification(txt, !!imageUrl, !!checklist);
+      
       setNewMessage(''); setSelectedFile(null); setImagePreview(null);
       setShowChecklistCreator(false); setTempTasks(['']);
     } catch (e) { console.error(e); } finally { setIsSending(false); }
@@ -201,10 +243,9 @@ export default function ServiceDetails() {
   };
 
   return (
-    /* ✅ PANTALLA COMPLETA: Oculta el bottom nav tapándolo con z-index */
     <div className="fixed inset-0 bg-white flex flex-col overflow-hidden animate-fade-in z-[100]">
       
-      {/* 🚀 CABECERA FIJA SUPERIOR */}
+      {/* 🚀 CABECERA */}
       <header className="bg-slate-900 text-white pt-12 pb-4 px-5 rounded-b-[40px] shadow-xl z-50 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
           <button onClick={() => navigate('/servicios')} className="p-2 bg-white/10 rounded-full"><ChevronLeft size={22} /></button>
@@ -233,10 +274,8 @@ export default function ServiceDetails() {
         )}
       </header>
 
-      {/* 💬 ÁREA DE CHAT (CENTRAL SCROLLABLE) */}
+      {/* 💬 CHAT */}
       <main className="flex-1 overflow-hidden flex flex-col relative bg-white">
-        
-        {/* Pinned Sticky */}
         <div className="bg-slate-50/95 backdrop-blur-md z-40 border-b border-slate-200 flex-shrink-0">
             <div className="p-4 flex items-center justify-between">
               <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><MessageSquare size={14} className="text-brand-500"/> Notas de Equipo</h3>
@@ -244,13 +283,12 @@ export default function ServiceDetails() {
             </div>
             {pinnedMessage && (
               <div onClick={() => scrollToOriginalMessage(pinnedMessage.id)} className="bg-brand-600 text-white p-4 shadow-lg flex items-start gap-3 animate-slide-down cursor-pointer max-h-40 overflow-y-auto">
-                <Pin size={18} className="flex-shrink-0 mt-1 opacity-60"/><div className="flex-1"><p className="text-[9px] font-black uppercase opacity-40 mb-1">Mensaje Fijado (Toca para ir)</p><MessageContent m={pinnedMessage} isPinnedView={true} /></div>
+                <Pin size={18} className="flex-shrink-0 mt-1 opacity-60"/><div className="flex-1"><p className="text-[9px] font-black uppercase opacity-40 mb-1">Fijado</p><MessageContent m={pinnedMessage} isPinnedView={true} /></div>
                 {userRole === 'pastor' && <button onClick={(e) => { e.stopPropagation(); togglePin(pinnedMessage.id, true); }} className="p-1"><X size={18}/></button>}
               </div>
             )}
         </div>
 
-        {/* Scroll Mensajes */}
         <div className="flex-1 overflow-y-auto p-5 space-y-6 scroll-smooth">
           {messages.map((m) => {
               const isMy = m.uid === currentUser.uid;
@@ -261,12 +299,12 @@ export default function ServiceDetails() {
                         <div className="relative group max-w-[85%]">
                           <MessageContent m={m} />
                           <div className={`absolute top-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity ${isMy ? '-left-14' : '-right-14'}`}>
-                             {(userRole === 'pastor' || isMy) && <button onClick={() => deleteMessage(m.id)} className="p-1.5 bg-red-50 text-red-500 rounded-full shadow-sm"><Trash2 size={12}/></button>}
+                             {(userRole === 'pastor' || isMy) && <button onClick={() => deleteMessage(m.id)} className="p-1.5 bg-red-50 text-red-500 rounded-full"><Trash2 size={12}/></button>}
                              {userRole === 'pastor' && <button onClick={() => togglePin(m.id, m.isPinned)} className={`p-1.5 rounded-full ${m.isPinned ? 'bg-brand-600 text-white' : 'bg-brand-50 text-brand-600'}`}><Pin size={12}/></button>}
                           </div>
                         </div>
-                        <div className={`flex flex-col mt-1 px-1 ${isMy ? 'items-end' : 'items-start'}`}>
-                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{m.sender?.split(' ')[0]}</span>
+                        <div className={`mt-1 px-1 flex flex-col ${isMy ? 'items-end' : 'items-start'}`}>
+                          <span className="text-[8px] font-black text-slate-400 uppercase">{m.sender?.split(' ')[0]}</span>
                           {!hideReceipts && readers.length > 0 && <button onClick={() => setShowReadersId(m.id)} className="text-[7px] font-bold text-slate-300 mt-0.5 flex items-center gap-1"><Eye size={8} /> Visto por {readers.length}</button>}
                         </div>
                     </div>
@@ -277,8 +315,8 @@ export default function ServiceDetails() {
         </div>
       </main>
 
-      {/* 🛠 CONSOLA INFERIOR BLOQUEADA */}
-      <footer className="bg-white border-t border-slate-100 p-4 pb-8 z-50 flex-shrink-0 shadow-[0_-10px_25px_-5px_rgba(0,0,0,0.05)] relative">
+      {/* 🛠 INPUTS */}
+      <footer className="bg-white border-t border-slate-100 p-4 pb-8 z-50 flex-shrink-0 shadow-xl relative">
         {imagePreview && (
           <div className="absolute bottom-full left-4 mb-3 animate-scale-in">
             <img src={imagePreview} className="w-16 h-16 object-cover rounded-xl border-2 border-white shadow-lg" />
@@ -287,36 +325,46 @@ export default function ServiceDetails() {
         )}
         {showChecklistCreator && (
           <div className="absolute bottom-full left-4 right-4 bg-white border border-slate-200 rounded-xl p-3 mb-3 space-y-2 shadow-2xl animate-slide-up">
-            <div className="flex justify-between items-center"><span className="text-[9px] font-black text-slate-500 uppercase tracking-tighter">Nueva Lista</span><button onClick={() => setShowChecklistCreator(false)}><X size={12}/></button></div>
+            <div className="flex justify-between items-center"><span className="text-[9px] font-black text-slate-500 uppercase">Nueva Lista</span><button onClick={() => setShowChecklistCreator(false)}><X size={12}/></button></div>
             {tempTasks.map((t, i) => (
               <input key={i} type="text" value={t} onChange={(e) => {
                 const newT = [...tempTasks]; newT[i] = e.target.value; 
                 if (i === tempTasks.length - 1 && e.target.value !== '') newT.push('');
                 setTempTasks(newT);
-              }} placeholder="Tarea..." className="w-full text-xs p-1 bg-transparent outline-none border-b border-slate-200 focus:border-brand-500 font-bold" />
+              }} placeholder="Tarea..." className="w-full text-xs p-1 bg-transparent outline-none border-b border-slate-200 font-bold" />
             ))}
           </div>
         )}
 
         <div className="flex items-end gap-2">
           <div className="flex gap-1.5">
-            <label className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-slate-400 cursor-pointer active:scale-90 transition-transform"><ImageIcon size={18}/><input type="file" className="hidden" accept="image/*" onChange={handleFileSelect} /></label>
-            <button onClick={() => setShowChecklistCreator(!showChecklistCreator)} className={`p-3 border rounded-xl active:scale-90 transition-transform ${showChecklistCreator ? 'bg-brand-600 text-white border-brand-600' : 'bg-slate-50 text-slate-400 border-slate-100'}`}><ListPlus size={18}/></button>
+            <label className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-slate-400 cursor-pointer"><ImageIcon size={18}/><input type="file" className="hidden" accept="image/*" onChange={handleFileSelect} /></label>
+            <button onClick={() => setShowChecklistCreator(!showChecklistCreator)} className={`p-3 border rounded-xl ${showChecklistCreator ? 'bg-brand-600 text-white' : 'bg-slate-50 text-slate-400'}`}><ListPlus size={18}/></button>
           </div>
-          <textarea ref={textareaRef} rows="1" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Escribir nota..." className="flex-1 bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-500/20 outline-none resize-none max-h-32 shadow-inner" />
-          <button onClick={handleSendMessage} disabled={isSending || (!newMessage.trim() && !selectedFile && !showChecklistCreator)} className="bg-brand-600 text-white p-3.5 rounded-xl shadow-lg active:scale-90 disabled:opacity-50 transition-all">{isSending ? <Loader2 size={18} className="animate-spin"/> : <Send size={18}/>}</button>
+          <textarea ref={textareaRef} rows="1" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Nota..." className="flex-1 bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm outline-none resize-none max-h-32" />
+          <button onClick={handleSendMessage} disabled={isSending || (!newMessage.trim() && !selectedFile && !showChecklistCreator)} className="bg-brand-600 text-white p-3.5 rounded-xl shadow-lg disabled:opacity-50">{isSending ? <Loader2 size={18} className="animate-spin"/> : <Send size={18}/>}</button>
         </div>
       </footer>
 
+      {/* ✅ TOASTS */}
+      {toast && (
+        <div className="fixed bottom-24 left-6 right-6 z-[400] animate-slide-up">
+          <div className={`flex items-center gap-4 px-8 py-5 rounded-[30px] shadow-2xl border-2 ${toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-400' : 'bg-slate-900 text-white border-slate-700'}`}>
+            {toast.type === 'success' ? <CheckCircle size={24}/> : <AlertCircle size={24}/>}
+            <span className="text-[11px] font-black uppercase tracking-widest">{toast.message}</span>
+          </div>
+        </div>
+      )}
+
       {/* MODALES */}
       {viewingImage && (
-        <div className="fixed inset-0 z-[150] bg-black/95 flex flex-col items-center justify-center p-4 animate-fade-in" onClick={() => setViewingImage(null)}>
+        <div className="fixed inset-0 z-[150] bg-black/95 flex items-center justify-center p-4" onClick={() => setViewingImage(null)}>
           <div className="absolute top-8 right-6 flex gap-4"><button onClick={(e) => { e.stopPropagation(); handleDownload(viewingImage); }} className="p-3 bg-white/10 rounded-full text-white"><Download size={22}/></button><button onClick={() => setViewingImage(null)} className="p-3 bg-white/10 rounded-full text-white"><X size={22}/></button></div>
-          <img src={viewingImage} className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl" onClick={e => e.stopPropagation()} />
+          <img src={viewingImage} className="max-w-full max-h-[80vh] object-contain rounded-xl" onClick={e => e.stopPropagation()} />
         </div>
       )}
       {showReadersId && (
-        <div className="fixed inset-0 z-[120] bg-black/40 flex items-center justify-center p-6 animate-fade-in" onClick={() => setShowReadersId(null)}>
+        <div className="fixed inset-0 z-[120] bg-black/40 flex items-center justify-center p-6" onClick={() => setShowReadersId(null)}>
           <div className="bg-white w-full max-w-xs rounded-[32px] p-6 shadow-2xl animate-scale-in" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4 pb-2 border-b"><h4 className="font-black text-slate-800 text-[11px] uppercase tracking-widest">Visto por</h4><button onClick={() => setShowReadersId(null)}><X size={16}/></button></div>
             <div className="space-y-3 max-h-60 overflow-y-auto">{allUsers.filter(u => messages.find(m => m.id === showReadersId)?.readBy?.includes(u.id) && u.id !== messages.find(m => m.id === showReadersId)?.uid).map(u => (
