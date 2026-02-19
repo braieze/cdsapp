@@ -1,8 +1,13 @@
 {
   "rewrites": [
     {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+      "source": "/OneSignalSDKWorker.js",
+      "destination": "/OneSignalSDKWorker.js"
+    },
+    {
+      "source": "/OneSignalSDK.sw.js",
+      "destination": "/OneSignalSDK.sw.js"
+    },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
