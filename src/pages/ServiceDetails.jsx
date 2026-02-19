@@ -45,21 +45,40 @@ export default function ServiceDetails() {
   const UPLOAD_PRESET = "ml_default";
 
   // ✅ 1. INICIALIZACIÓN SILENCIOSA DE ONESIGNAL
+  // ✅ INICIALIZACIÓN DE ONESIGNAL BLINDADA (Evita el "Already Initialized")
   useEffect(() => {
     const initOneSignal = async () => {
       try {
-        if (typeof window !== 'undefined' && window.OneSignal && !OneSignal.initialized) {
-          await OneSignal.init({
-            appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
-            allowLocalhostAsSecureOrigin: true,
-            notifyButton: { enable: false }
-          });
+        // 1. Verificamos si OneSignal ya existe en el window y si NO ha sido inicializado aún
+        if (typeof window !== 'undefined' && window.OneSignal) {
+          
+          // Usamos el flag interno de OneSignal para saber si ya arrancó
+          if (!window.OneSignal.initialized) {
+            await OneSignal.init({
+              appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
+              allowLocalhostAsSecureOrigin: true,
+              notifyButton: { enable: false }
+            });
+            console.log("🚀 OneSignal inicializado por primera vez");
+          }
+
+          // 2. Siempre intentamos vincular al usuario si existe, 
+          // esto es seguro hacerlo múltiples veces.
+          if (currentUser) {
+            await OneSignal.login(currentUser.uid);
+            console.log("👤 Usuario vinculado:", currentUser.uid);
+          }
         }
-        if (currentUser && window.OneSignal) {
-          await OneSignal.login(currentUser.uid);
+      } catch (e) {
+        // Si a pesar de todo sale el error de "already initialized", lo capturamos y silenciamos
+        if (e.message && e.message.includes("already initialized")) {
+          console.warn("⚠️ OneSignal ya estaba activo, ignorando re-init.");
+        } else {
+          console.error("❌ Error real en OneSignal:", e);
         }
-      } catch (e) { console.error("OneSignal Init Error:", e); }
+      }
     };
+
     initOneSignal();
   }, [currentUser]);
 
