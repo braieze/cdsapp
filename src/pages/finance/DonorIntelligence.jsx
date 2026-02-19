@@ -2,38 +2,40 @@ import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   MessageSquare, Heart, Calendar, Search, 
-  TrendingUp, User, ChevronRight, Filter 
+  User, Copy, Check, Filter, Sparkles, ClipboardList
 } from 'lucide-react';
 
 export default function DonorIntelligence({ movements = [] }) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [filter, setFilter] = useState('year'); // month, year, all
+  const [filter, setFilter] = useState('week'); // week, month, year, all
+  const [copied, setCopied] = useState(false);
 
-  // ✅ PROCESAMIENTO PASTORAL: Agrupar por nombre y acumular oraciones
+  // ✅ 1. PROCESAMIENTO INTELIGENTE DE DATOS
   const donors = useMemo(() => {
     const map = {};
     const now = new Date();
+    
+    // Calcular inicio de semana (domingo pasado)
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    startOfWeek.setHours(0,0,0,0);
 
     movements
-      .filter(m => m.total > 0) // Solo ingresos (siembras/diezmos)
+      .filter(m => m.total > 0) // Solo ingresos
       .forEach(m => {
         const name = m.fullName || m.concept?.replace("Transferencia: ", "") || "Dador Anónimo";
         const mDate = m.date?.seconds ? new Date(m.date.seconds * 1000) : new Date();
 
-        // Aplicar filtro de tiempo
-        let passFilter = true;
+        // Lógica de Filtros Pro
+        let passFilter = false;
+        if (filter === 'week') passFilter = mDate >= startOfWeek;
         if (filter === 'month') passFilter = mDate.getMonth() === now.getMonth() && mDate.getFullYear() === now.getFullYear();
         if (filter === 'year') passFilter = mDate.getFullYear() === now.getFullYear();
+        if (filter === 'all') passFilter = true;
 
         if (passFilter) {
           if (!map[name]) {
-            map[name] = { 
-              name, 
-              count: 0, 
-              total: 0, 
-              lastDate: mDate,
-              prayers: [] 
-            };
+            map[name] = { name, count: 0, total: 0, lastDate: mDate, prayers: [] };
           }
           map[name].count++;
           map[name].total += m.total;
@@ -47,100 +49,150 @@ export default function DonorIntelligence({ movements = [] }) {
       .sort((a, b) => b.total - a.total);
   }, [movements, searchTerm, filter]);
 
+  // ✅ 2. FUNCIÓN: COPIAR TODOS LOS PEDIDOS DE LA SEMANA
+  const handleCopyWeeklyPrayers = () => {
+    const weeklyPrayers = donors
+      .filter(d => d.prayers.length > 0)
+      .map(d => `🙏 ${d.name.toUpperCase()}:\n"${d.prayers[d.prayers.length - 1].text}"`)
+      .join('\n\n');
+
+    if (!weeklyPrayers) return;
+
+    navigator.clipboard.writeText(`📖 MOTIVOS DE ORACIÓN - CDS\nPeriodo: ${filter.toUpperCase()}\n\n${weeklyPrayers}`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
-    <div className="space-y-6 pt-4 pb-24 animate-fade-in">
-      {/* 🔍 BARRA DE BÚSQUEDA Y FILTROS */}
+    <div className="space-y-6 pt-4 pb-24 animate-fade-in text-left">
+      
+      {/* 🔍 HEADER CON BUSCADOR Y ACCIÓN DE COPIADO */}
       <header className="space-y-4 px-2">
         <div className="flex justify-between items-end">
-          <div className="text-left">
-            <h2 className="text-2xl font-black italic text-white uppercase tracking-tighter">Inteligencia</h2>
-            <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Seguimiento de Fidelidad</p>
+          <div>
+            <h2 className="text-2xl font-black italic text-white uppercase tracking-tighter leading-none">Inteligencia</h2>
+            <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mt-1">Gestión Pastoral</p>
           </div>
-          <div className="bg-blue-600/20 px-4 py-2 rounded-2xl border border-blue-500/20 text-blue-400 font-black text-[10px] uppercase">
-            {donors.length} Familias Activas
-          </div>
+          
+          {/* ✅ BOTÓN COPIAR ORACIONES PROFESIONAL */}
+          <button 
+            onClick={handleCopyWeeklyPrayers}
+            className={`p-4 rounded-2xl border transition-all flex items-center gap-2 active:scale-90 ${copied ? 'bg-emerald-500 border-emerald-400 text-white' : 'bg-blue-600/20 border-blue-500/30 text-blue-400'}`}
+          >
+            {copied ? <Check size={18} /> : <ClipboardList size={18} />}
+            <span className="text-[10px] font-black uppercase tracking-tighter">Copiar Clamor</span>
+          </button>
         </div>
 
-        <div className="flex gap-2">
-          <div className="flex-1 relative">
+        <div className="flex flex-col gap-3">
+          <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
             <input 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Buscar diezmante..."
-              className="w-full bg-slate-900/50 border border-white/5 rounded-2xl py-4 pl-12 pr-4 text-xs font-bold text-white outline-none focus:border-blue-500 transition-all"
+              placeholder="Buscar por nombre o familia..."
+              className="w-full bg-slate-900/50 border border-white/5 rounded-2xl py-4 pl-12 pr-4 text-xs font-bold text-white outline-none focus:border-blue-500 transition-all shadow-inner"
             />
           </div>
-          <div className="flex bg-slate-900/50 p-1 rounded-2xl border border-white/5">
-            {['month', 'year', 'all'].map((f) => (
+          
+          {/* FILTROS DE TIEMPO */}
+          <div className="flex bg-slate-900/50 p-1.5 rounded-2xl border border-white/5">
+            {[
+              { id: 'week', label: 'Semana' },
+              { id: 'month', label: 'Mes' },
+              { id: 'year', label: 'Año' },
+              { id: 'all', label: 'Todo' }
+            ].map((f) => (
               <button 
-                key={f} onClick={() => setFilter(f)}
-                className={`px-4 py-2 rounded-xl text-[8px] font-black uppercase transition-all ${filter === f ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500'}`}
+                key={f.id} onClick={() => setFilter(f.id)}
+                className={`flex-1 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${filter === f.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-500'}`}
               >
-                {f === 'month' ? 'Mes' : f === 'year' ? 'Año' : 'Todo'}
+                {f.label}
               </button>
             ))}
           </div>
         </div>
       </header>
 
-      {/* 📋 LISTA DE DADORES (PASTORAL) */}
-      <div className="space-y-4">
-        {donors.map((d, i) => (
-          <motion.div 
-            key={i}
-            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-            className="bg-slate-900/60 backdrop-blur-xl border border-white/5 p-6 rounded-[45px] shadow-xl relative overflow-hidden"
-          >
-            {/* Header del Dador */}
-            <div className="flex justify-between items-start mb-6">
-              <div className="flex gap-4 items-center">
-                <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-blue-400 rounded-[22px] flex items-center justify-center text-white font-black text-xl italic shadow-lg shadow-blue-500/20">
-                  {d.name[0]}
-                </div>
-                <div className="text-left">
-                  <h4 className="text-lg font-black text-white italic tracking-tight leading-none mb-1">{d.name}</h4>
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-1 bg-emerald-500/10 text-emerald-500 rounded-lg text-[8px] font-black uppercase tracking-tighter">
-                      Frecuencia: {d.count} veces
-                    </span>
-                    <span className="text-[8px] font-bold text-slate-500 uppercase">Última: {d.lastDate.toLocaleDateString()}</span>
+      {/* 📋 LISTA DE DIEZMANTES (CRYPZONE STYLE) */}
+      <div className="space-y-4 px-1">
+        <AnimatePresence>
+          {donors.map((d, i) => (
+            <motion.div 
+              key={d.name}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ delay: i * 0.05 }}
+              className="bg-slate-900/60 backdrop-blur-xl border border-white/5 p-6 rounded-[40px] shadow-2xl relative overflow-hidden group"
+            >
+              {/* Luz de fondo sutil al pasar el dedo */}
+              <div className="absolute inset-0 bg-blue-500/5 opacity-0 group-active:opacity-100 transition-opacity" />
+
+              <div className="flex justify-between items-start mb-6 relative z-10">
+                <div className="flex gap-4 items-center">
+                  <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-blue-400 rounded-[22px] flex items-center justify-center text-white font-black text-xl italic shadow-lg shadow-blue-500/30">
+                    {d.name[0]}
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-black text-white italic tracking-tight leading-none mb-1">{d.name}</h4>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="px-2 py-1 bg-emerald-500/10 text-emerald-400 rounded-lg text-[8px] font-black uppercase tracking-tighter border border-emerald-500/10">
+                        {d.count} Siembras
+                      </span>
+                      <span className="text-[8px] font-bold text-slate-500 uppercase flex items-center gap-1">
+                        <Calendar size={10}/> {d.lastDate.toLocaleDateString()}
+                      </span>
+                    </div>
                   </div>
                 </div>
+                <div className="text-right">
+                    <p className="text-xl font-black text-blue-400 italic leading-none">${d.total.toLocaleString('es-AR')}</p>
+                    <p className="text-[8px] font-black text-slate-600 uppercase mt-1">Total Periodo</p>
+                </div>
               </div>
-              <p className="text-xl font-black text-blue-400 italic">${d.total.toLocaleString('es-AR')}</p>
-            </div>
 
-            {/* 🕊️ MURO DE CLAMOR (Historial de Oración) */}
-            <div className="space-y-3 pt-4 border-t border-white/5">
-              <div className="flex items-center gap-2 px-2">
-                <MessageSquare size={12} className="text-slate-500" />
-                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Historial de Clamor</p>
-              </div>
-              
-              <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
-                {d.prayers.length > 0 ? (
-                  d.prayers.map((p, idx) => (
-                    <div key={idx} className="bg-slate-950/50 p-4 rounded-[25px] border border-white/5 text-left">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-[8px] font-black text-blue-500 uppercase italic">
-                          {new Date(p.date).toLocaleDateString()}
-                        </span>
+              {/* 🕊️ HISTORIAL DE CLAMOR INTERACTIVO */}
+              <div className="space-y-3 pt-4 border-t border-white/5 relative z-10">
+                <div className="flex items-center justify-between px-2">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare size={12} className="text-blue-500" />
+                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Muro de Clamor</p>
+                  </div>
+                  <Sparkles size={12} className="text-blue-500/40 animate-pulse" />
+                </div>
+                
+                <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                  {d.prayers.length > 0 ? (
+                    d.prayers.map((p, idx) => (
+                      <div key={idx} className="bg-slate-950/50 p-4 rounded-[28px] border border-white/5 group/prayer transition-all hover:border-blue-500/30">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-[8px] font-black text-blue-500 uppercase italic bg-blue-500/10 px-2 py-1 rounded-md">
+                            {new Date(p.date).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <p className="text-xs font-medium text-slate-300 italic leading-relaxed">
+                          "{p.text}"
+                        </p>
                       </div>
-                      <p className="text-[11px] font-medium text-slate-300 italic leading-relaxed">"{p.text}"</p>
+                    )).reverse()
+                  ) : (
+                    <div className="py-6 text-center border-2 border-dashed border-white/5 rounded-[28px]">
+                        <p className="text-[10px] text-slate-700 font-bold uppercase tracking-widest">Sin peticiones registradas</p>
                     </div>
-                  )).reverse()
-                ) : (
-                  <p className="text-[10px] text-slate-700 italic py-2 text-center">Sin pedidos registrados</p>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
-          </motion.div>
-        ))}
+            </motion.div>
+          ))}
+        </AnimatePresence>
 
         {donors.length === 0 && (
-          <div className="py-20 text-center opacity-30 italic text-sm text-white uppercase tracking-widest">
-            Sin datos para este periodo
+          <div className="py-24 text-center">
+            <div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center mx-auto mb-4 border border-white/5 opacity-20">
+                <User size={32} />
+            </div>
+            <p className="text-[10px] font-black text-slate-700 uppercase tracking-[0.4em]">Sin registros hallados</p>
           </div>
         )}
       </div>
