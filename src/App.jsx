@@ -19,6 +19,7 @@ import AppsHub from './pages/AppsHub';
 import Login from './pages/Login';
 import Profile from './pages/Profile';
 import Directory from './pages/Directory';
+import Ofrendar from './pages/Ofrendar'; // O la ruta donde hayas guardado el archivo
 
 // COMPONENTE DESPERTADOR
 function NavigationHandler() {
@@ -131,6 +132,7 @@ function App() {
           <Route path="/apps" element={<AppsHub />} />
           <Route path="/perfil" element={<Profile />} /> 
           <Route path="/directorio" element={<Directory />} />
+          <Route path="/ofrendar" element={<Ofrendar />} />
         </Route>
       </Routes>
     </BrowserRouter>
