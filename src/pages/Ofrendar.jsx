@@ -162,7 +162,7 @@ export default function Ofrendar() {
               <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/5 to-transparent"></div>
               <p className="text-[10px] font-black text-brand-400 uppercase tracking-[0.3em] mb-4 relative z-10">Alias de la Iglesia</p>
               <div className="flex items-center justify-between mb-6 relative z-10">
-                <span className="font-mono font-black text-2xl tracking-tight">CASA.DE.DIOS.OK</span>
+                <span className="font-mono font-black text-2xl tracking-tight">cds.iglesia</span>
                 <div className={`p-4 rounded-2xl transition-all ${copied ? 'bg-emerald-500' : 'bg-white/10'}`}>
                     {copied ? <Check size={24}/> : <Copy size={24}/>}
                 </div>
