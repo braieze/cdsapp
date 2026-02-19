@@ -131,7 +131,7 @@ export default function Ofrendar() {
 
             {/* CARD: MERCADO PAGO */}
             <a 
-              href="https://link.mercadopago.com.ar/TU_LINK"
+              href="link.mercadopago.com.ar/proyectbro"
               target="_blank"
               className="flex items-center gap-5 p-6 bg-[#009EE3] text-white rounded-[40px] shadow-lg shadow-blue-100 active:scale-95 transition-all"
             >
