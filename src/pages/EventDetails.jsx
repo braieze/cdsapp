@@ -37,10 +37,10 @@ export default function EventDetails() {
     const initOneSignal = async () => {
       try {
         // Verificamos si ya está inicializado para evitar el error de re-init
-        await OneSignal.init({
+         await OneSignal.init({
           appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
           allowLocalhostAsSecureOrigin: true,
-          serviceWorkerPath: "OneSignalSDKWorker.js", // ✅ Forzamos la ruta raíz
+          // Eliminamos serviceWorkerPath para que OneSignal use sus rutas por defecto de forma automática
           notifyButton: { enable: false },
         });
 
