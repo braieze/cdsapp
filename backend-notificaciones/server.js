@@ -34,7 +34,13 @@ app.get('/ping', (req, res) => res.send('pong'));
 app.post('/send-onesignal', async (req, res) => {
   const { userIds, title, message, url } = req.body;
 
-  if (!userIds || !userIds.length) return res.status(400).send('Faltan IDs de usuario');
+  // Registro de entrada para depuración
+  console.log("📡 Solicitud OneSignal recibida para IDs:", userIds);
+
+  if (!userIds || !userIds.length) {
+    console.error("❌ Error: Se intentó enviar una notificación sin userIds.");
+    return res.status(400).send('Faltan IDs de usuario');
+  }
 
   try {
     const response = await fetch("https://onesignal.com/api/v1/notifications", {
@@ -45,18 +51,28 @@ app.post('/send-onesignal', async (req, res) => {
       },
       body: JSON.stringify({
         app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
-        include_external_user_ids: userIds, // Usamos los UIDs de Firebase
+        include_external_user_ids: userIds, // Usamos los UIDs de Firebase vinculados con OneSignal.login()
         headings: { "es": title },
         contents: { "es": message },
-        url: url || "https://tu-app-mceh.web.app/servicios"
+        url: url || "https://tu-app-mceh.web.app/servicios",
+        // Forzar prioridad alta para asegurar la entrega
+        priority: 10,
+        android_accent_color: "FF3B82F6"
       })
     });
 
     const data = await response.json();
-    console.log("✅ OneSignal Response:", data);
+    
+    // Verificación de respuesta de OneSignal
+    if (data.errors) {
+        console.warn("⚠️ OneSignal respondió con errores:", data.errors);
+    } else {
+        console.log("✅ OneSignal Response:", data);
+    }
+
     res.json({ success: true, data });
   } catch (error) {
-    console.error("🔥 Error OneSignal:", error);
+    console.error("🔥 Error crítico en OneSignal (Backend):", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -71,7 +87,10 @@ app.post('/send-notification', async (req, res) => {
       tokens: tokens,
     });
     res.json({ success: true });
-  } catch (error) { res.status(500).json({ error: error.message }); }
+  } catch (error) { 
+    console.error("🔥 Error Firebase Notification:", error);
+    res.status(500).json({ error: error.message }); 
+  }
 });
 
 const PORT = process.env.PORT || 3000;
