@@ -33,10 +33,13 @@ export default function EventDetails() {
   const myUid = currentUser?.uid;
 
   // ✅ 1. INICIALIZACIÓN DE ONESIGNAL (Versión Estabilizada)
-  // ✅ 1. INICIALIZACIÓN DE ONESIGNAL (Versión Silenciosa)
+  // ✅ 1. INICIALIZACIÓN DE ONESIGNAL (Versión v16 Final)
   useEffect(() => {
     const initOneSignal = async () => {
       try {
+        // Evitamos re-inicializar si ya existe
+        if (window.OneSignal && window.OneSignal.initialized) return;
+
         await OneSignal.init({
           appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
           allowLocalhostAsSecureOrigin: true,
@@ -44,18 +47,21 @@ export default function EventDetails() {
         });
 
         if (currentUser) {
-          // Obtenemos el ID externo actual para evitar el conflicto 409
-          const currentExternalId = await OneSignal.getExternalId();
+          // ✅ CORRECCIÓN: En v16 el ID se obtiene desde el objeto User
+          const currentExternalId = OneSignal.User.getExternalId();
           
           if (currentExternalId !== currentUser.uid) {
             await OneSignal.login(currentUser.uid);
-            console.log("OneSignal: Nueva vinculación exitosa");
+            console.log("OneSignal: Identidad vinculada correctamente");
           } else {
-            console.log("OneSignal: Usuario ya estaba vinculado");
+            console.log("OneSignal: Sesión de usuario activa");
           }
         }
       } catch (e) { 
-        console.error("Error OneSignal Init:", e); 
+        // Silenciamos errores menores de inicialización que no afectan el envío
+        if (!e.message?.includes('already has an active login')) {
+          console.error("Error OneSignal Init:", e); 
+        }
       }
     };
     initOneSignal();
