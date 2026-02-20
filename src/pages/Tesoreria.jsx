@@ -10,7 +10,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable'; // ✅ Corregido para evitar el error de importación
 
 // Sub-componentes
 import FinanceOverview from './finance/FinanceOverview';
@@ -18,6 +18,7 @@ import PendingList from './finance/PendingList';
 import MovementHistory from './finance/MovementHistory';
 import DonorIntelligence from './finance/DonorIntelligence';
 import AdminModals from './finance/AdminModals';
+import ModuloPastoral from './finance/ModuloPastoral'; // ✅ Importado
 
 export default function Tesoreria() {
   const navigate = useNavigate();
@@ -25,23 +26,24 @@ export default function Tesoreria() {
   const [pin, setPin] = useState("");
   const [activeTab, setActiveTab] = useState('resumen');
   
-  // ✅ Estados de Filtro de Tiempo Maestro (Nueva Idea)
+  // ✅ Estados de Filtro de Tiempo Maestro
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
-  // ✅ Estados de Control de Menús (Respetados)
+  // ✅ Estados de Control de Menús y Modales
   const [showRegMenu, setShowRegMenu] = useState(false); 
   const [showDownMenu, setShowDownMenu] = useState(false); 
+  const [showSalaryModule, setShowSalaryModule] = useState(false); // ✅ Nuevo: Control Módulo Pastoral
   const [modalType, setModalType] = useState(null); 
   const [customAlert, setCustomAlert] = useState(null); 
+  const [editingRecord, setEditingRecord] = useState(null); // ✅ Nuevo: Estado para Edición
 
   const [finances, setFinances] = useState([]);
   const [pendingOfferings, setPendingOfferings] = useState([]);
 
-  // --- 1. ESCUCHA DE DATOS (Orden Cronológico Respetado) ---
+  // --- 1. ESCUCHA DE DATOS ---
   useEffect(() => {
     if (isLocked) return;
-    // La consulta ya ordena por fecha descendente (más reciente primero)
     const unsubFin = onSnapshot(query(collection(db, 'finances'), orderBy('date', 'desc')), (snap) => {
       setFinances(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
@@ -51,20 +53,17 @@ export default function Tesoreria() {
     return () => { unsubFin(); unsubPend(); };
   }, [isLocked]);
 
-  // --- 2. ESTADÍSTICAS (Cálculo Corregido del Diezmo Nacional) ---
+  // --- 2. ESTADÍSTICAS (Cálculo del Diezmo Nacional Respetado) ---
   const stats = useMemo(() => {
-    let balanceNeto = 0; // Lo que hay en caja
-    let ingresosBrutos = 0; // Acumulado de ingresos para el Diezmo Nacional
+    let balanceNeto = 0; 
+    let ingresosBrutos = 0; 
     let egresosMes = 0;
 
     finances.forEach(m => {
       const amt = Number(m.total || 0);
       const mDate = m.date?.seconds ? new Date(m.date.seconds * 1000) : new Date();
-      
-      // Balance total histórico
       balanceNeto += amt;
 
-      // Filtrar por Mes/Año seleccionado para el Diezmo Nacional e Ingresos/Egresos
       if (mDate.getMonth() === selectedMonth && mDate.getFullYear() === selectedYear) {
         if (amt > 0) ingresosBrutos += amt; 
         else egresosMes += Math.abs(amt);
@@ -75,11 +74,11 @@ export default function Tesoreria() {
       total: balanceNeto, 
       ingresos: ingresosBrutos, 
       egresos: egresosMes,
-      diezmoNacional: ingresosBrutos * 0.10 // ✅ Corregido: 10% del acumulado de ingresos
+      diezmoNacional: ingresosBrutos * 0.10 
     };
   }, [finances, selectedMonth, selectedYear]);
 
-  // --- 3. FUNCIONES DE EXPORTACIÓN (Con opción de eventos) ---
+  // --- 3. FUNCIONES DE EXPORTACIÓN (Corregido: autoTable) ---
   const exportarPDF = (tipo, eventData = null) => {
     const doc = new jsPDF();
     const titulo = eventData ? `CIERRE: ${eventData.concept.toUpperCase()}` : `REPORTE ${tipo.toUpperCase()} - CDS`;
@@ -96,7 +95,8 @@ export default function Tesoreria() {
       `$${Math.abs(m.total).toLocaleString('es-AR')}`
     ]);
 
-    doc.autoTable({ head: [['Fecha', 'Detalle', 'Tipo', 'Monto']], body: data, startY: 20 });
+    // ✅ Llamada corregida a autoTable para evitar el error de consola
+    autoTable(doc, { head: [['Fecha', 'Detalle', 'Tipo', 'Monto']], body: data, startY: 20 });
     doc.save(`CDS_${tipo}_${Date.now()}.pdf`);
     setShowDownMenu(false);
   };
@@ -106,12 +106,18 @@ export default function Tesoreria() {
     else { setPin(""); alert("PIN Incorrecto"); }
   };
 
+  // ✅ Función para manejar la edición
+  const handleEdit = (record) => {
+    setEditingRecord(record);
+    setModalType(record.type); // Abre el modal de ingreso o gasto según el registro
+  };
+
   if (isLocked) {
     return (
       <div className="fixed inset-0 bg-slate-950 z-[300] flex flex-col items-center justify-center p-8 font-outfit text-white">
         <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-sm bg-slate-900/50 backdrop-blur-xl border border-white/10 p-10 rounded-[40px] text-center shadow-2xl">
           <Shield className="text-blue-500 mx-auto mb-6" size={48} />
-          <h2 className="text-2xl font-black uppercase italic tracking-tighter mb-8 text-white">Acceso Protegido</h2>
+          <h2 className="text-2xl font-black uppercase italic tracking-tighter mb-8 text-white text-center">Acceso Protegido</h2>
           <input 
             type="password" value={pin} onChange={e => setPin(e.target.value)} maxLength={4}
             className="w-full bg-slate-950/50 border-2 border-slate-800 rounded-3xl p-6 text-center text-4xl tracking-[0.5em] font-black mb-6 outline-none focus:border-blue-500 text-white"
@@ -125,20 +131,19 @@ export default function Tesoreria() {
   }
 
   return (
-    <div className="fixed inset-0 bg-slate-950 z-[250] flex flex-col font-outfit text-white overflow-hidden">
+    <div className="fixed inset-0 bg-slate-950 z-[250] flex flex-col font-outfit text-white overflow-hidden text-left">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(37,99,235,0.12),transparent)] pointer-events-none" />
 
-      {/* 🛰️ HEADER DINÁMICO (Z-INDEX Corregido para Menú Descarga) */}
+      {/* 🛰️ HEADER DINÁMICO (Z-INDEX Corregido) */}
       <header className="flex items-center justify-between px-6 pt-12 pb-6 relative z-[60]">
         <button onClick={() => navigate('/apps')} className="p-3 bg-white/5 rounded-2xl border border-white/10 active:scale-90 transition-all text-white"><ChevronLeft size={24} /></button>
         
         <div className="text-center">
           <h1 className="text-xl font-black italic tracking-tighter uppercase leading-none text-white">Caja CDS</h1>
-          <p className="text-[8px] font-bold text-blue-400 uppercase tracking-[0.3em] mt-1">Bóveda Digital</p>
+          <p className="text-[8px] font-bold text-blue-400 uppercase tracking-[0.3em] mt-1 text-center">Bóveda Digital</p>
         </div>
 
         <div className="flex gap-2 relative">
-          {/* ✅ Menú de Descargas Profesional (Z-INDEX Alto) */}
           <button onClick={() => setShowDownMenu(!showDownMenu)} className={`p-3 rounded-2xl border transition-all z-10 ${showDownMenu ? 'bg-blue-600 border-blue-500 text-white' : 'bg-blue-600/20 border-blue-500/30 text-blue-400'}`}>
             <Download size={20} />
           </button>
@@ -154,39 +159,62 @@ export default function Tesoreria() {
             )}
           </AnimatePresence>
 
-          <button className="p-3 bg-white/5 rounded-2xl border border-white/10 text-slate-400 active:scale-90 transition-all"><UserCircle size={20} /></button>
+          {/* ✅ BOTÓN PERFIL: AHORA DISPARA MÓDULO PASTORAL */}
+          <button 
+            onClick={() => setShowSalaryModule(true)}
+            className={`p-3 rounded-2xl border border-white/10 active:scale-90 transition-all ${showSalaryModule ? 'bg-blue-600 text-white' : 'bg-white/5 text-slate-400'}`}
+          >
+            <UserCircle size={20} />
+          </button>
         </div>
       </header>
 
-      {/* 📅 SELECTOR DE PERIODO DE AUDITORÍA (Nueva Idea) */}
-      <div className="px-6 pb-4 flex gap-2 relative z-50">
-          <select 
-            value={selectedMonth} 
-            onChange={(e) => setSelectedMonth(Number(e.target.value))}
-            className="flex-1 bg-slate-900/50 border border-white/5 rounded-xl p-3 text-[10px] font-black uppercase text-blue-400 outline-none"
-          >
-            {["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"].map((m, i) => <option key={i} value={i}>{m}</option>)}
-          </select>
-          <select 
-            value={selectedYear} 
-            onChange={(e) => setSelectedYear(Number(e.target.value))}
-            className="w-24 bg-slate-900/50 border border-white/5 rounded-xl p-3 text-[10px] font-black uppercase text-blue-400 outline-none"
-          >
-            {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-      </div>
+      {/* ✅ SELECTOR DE PERIODO CONDICIONAL (Solo en Historial e Inteligencia) */}
+      {(activeTab === 'historial' || activeTab === 'pastoral') && (
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="px-6 pb-4 flex gap-2 relative z-50">
+            <select 
+              value={selectedMonth} 
+              onChange={(e) => setSelectedMonth(Number(e.target.value))}
+              className="flex-1 bg-slate-900/50 border border-white/5 rounded-xl p-3 text-[10px] font-black uppercase text-blue-400 outline-none"
+            >
+              {["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"].map((m, i) => <option key={i} value={i}>{m}</option>)}
+            </select>
+            <select 
+              value={selectedYear} 
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              className="w-24 bg-slate-900/50 border border-white/5 rounded-xl p-3 text-[10px] font-black uppercase text-blue-400 outline-none"
+            >
+              {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+        </motion.div>
+      )}
 
       {/* 📊 ÁREA DE CONTENIDO */}
       <main className="flex-1 overflow-y-auto px-6 pb-40 relative z-10 custom-scrollbar text-left">
         <AnimatePresence mode="wait">
           {activeTab === 'resumen' && <FinanceOverview key="resumen" stats={stats} finances={finances} />}
           {activeTab === 'pendientes' && <PendingList key="pendientes" items={pendingOfferings} />}
-          {activeTab === 'historial' && <MovementHistory key="historial" movements={finances} setCustomAlert={setCustomAlert} />}
-          {activeTab === 'pastoral' && <DonorIntelligence key="pastoral" movements={finances} setCustomAlert={setCustomAlert} selectedMonth={selectedMonth} selectedYear={selectedYear} />}
+          {activeTab === 'historial' && (
+            <MovementHistory 
+                key="historial" 
+                movements={finances} 
+                setCustomAlert={setCustomAlert} 
+                onEdit={handleEdit} // ✅ Pasada función de edición
+            />
+          )}
+          {activeTab === 'pastoral' && (
+            <DonorIntelligence 
+                key="pastoral" 
+                movements={finances} 
+                setCustomAlert={setCustomAlert} 
+                selectedMonth={selectedMonth} 
+                selectedYear={selectedYear} 
+            />
+          )}
         </AnimatePresence>
       </main>
 
-      {/* 🛸 NAVEGACIÓN CRYPZONE (Respetada) */}
+      {/* 🛸 NAVEGACIÓN CRYPZONE */}
       <nav className="absolute bottom-8 left-6 right-6 h-20 bg-slate-900/80 backdrop-blur-2xl rounded-[35px] border border-white/10 flex items-center justify-around px-2 shadow-2xl z-20">
         {[
           { id: 'resumen', icon: BarChart3 },
@@ -196,7 +224,7 @@ export default function Tesoreria() {
         ].map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)} className={`flex flex-col items-center justify-center flex-1 h-full rounded-2xl transition-all relative ${activeTab === t.id ? 'text-blue-400' : 'text-slate-500'}`}>
             <div className={`p-2 rounded-xl ${activeTab === t.id ? 'bg-blue-500/10 scale-110' : ''}`}><t.icon size={24} /></div>
-            {t.badge > 0 && <span className="absolute top-4 right-4 bg-red-500 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-slate-900 animate-pulse">{t.badge}</span>}
+            {t.badge > 0 && <span className="absolute top-4 right-4 bg-red-500 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-slate-900 animate-pulse text-center">{t.badge}</span>}
           </button>
         ))}
         
@@ -215,18 +243,25 @@ export default function Tesoreria() {
         </div>
       </nav>
 
-      {/* ✅ MODALES (Se pasa setCustomAlert correctamente) */}
+      {/* ✅ MODALES (Soporte para Edición e Inclusión de ModuloPastoral) */}
       <AnimatePresence>
         {modalType && (
           <AdminModals 
             type={modalType} 
-            onClose={() => setModalType(null)} 
+            onClose={() => {setModalType(null); setEditingRecord(null);}} 
             setCustomAlert={setCustomAlert} 
+            editData={editingRecord} // ✅ Pasado dato para editar
+          />
+        )}
+        {showSalaryModule && (
+          <ModuloPastoral 
+            onClose={() => setShowSalaryModule(false)} 
+            setCustomAlert={setCustomAlert} 
+            finances={finances}
           />
         )}
       </AnimatePresence>
 
-      {/* ✅ SISTEMA DE ALERTA (Respetado) */}
       <AnimatePresence>
         {customAlert && (
           <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-slate-950/60 backdrop-blur-sm">
