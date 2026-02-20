@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   MessageSquare, Heart, Calendar, Search, 
   User, Copy, Check, Filter, Sparkles, ClipboardList, Trash2,
-  Wallet, Banknote, CreditCard, ArrowRight, Users, Ticket, ChevronDown
+  Wallet, Banknote, CreditCard, ArrowRight, Users, Ticket, ChevronDown,
+  Activity, Star
 } from 'lucide-react';
 import { db } from '../../firebase';
 import { doc, deleteDoc } from 'firebase/firestore';
@@ -15,27 +16,28 @@ export default function DonorIntelligence({ movements = [], setCustomAlert, sele
   const [eventFilter, setEventFilter] = useState(''); 
   const [copied, setCopied] = useState(false);
 
-  // ✅ 1. PROCESAMIENTO INTELIGENTE (SINCRONIZADO CON MES/AÑO)
+  // ✅ 1. PROCESAMIENTO INTELIGENTE (VISTA DE ALTAR + NORMALIZACIÓN)
   const donorsData = useMemo(() => {
     const map = {};
     const now = new Date();
     let totalARS = 0;
     const uniqueEvents = new Set();
     
+    // Datos específicos para el Cierre de Culto (Fase 3)
+    let eventSummary = { total: 0, count: 0, prayers: [] };
+
     const startOfWeek = new Date(now);
     startOfWeek.setDate(now.getDate() - now.getDay());
     startOfWeek.setHours(0,0,0,0);
 
-    // Filtrado base por periodo maestro
     const filteredMovements = movements.filter(m => {
         const mDate = m.date?.seconds ? new Date(m.date.seconds * 1000) : new Date();
         const mMonth = mDate.getMonth();
         const mYear = mDate.getFullYear();
 
-        // Solo ingresos
         if (Number(m.total) <= 0) return false;
 
-        // Filtro estricto por Mes/Año seleccionado en Tesoreria.jsx
+        // Filtro estricto por periodo maestro
         if (filter === 'month' && (mMonth !== Number(selectedMonth) || mYear !== Number(selectedYear))) return false;
         if (filter === 'year' && mYear !== Number(selectedYear)) return false;
         if (filter === 'week' && mDate < startOfWeek) return false;
@@ -46,37 +48,44 @@ export default function DonorIntelligence({ movements = [], setCustomAlert, sele
     filteredMovements.forEach(m => {
         const mDate = m.date?.seconds ? new Date(m.date.seconds * 1000) : new Date();
         
-        // Registrar eventos disponibles en este periodo
         if (m.concept?.includes("Cierre") || m.eventId) {
             const eventName = m.concept.replace("Cierre: ", "").replace("Cierre de Caja: ", "").trim();
             uniqueEvents.add(eventName);
         }
 
-        // Filtrado por Tipo (Diezmo/Ofrenda) y Filtro de Evento
         const currentSubType = m.subType || (m.fullName ? 'diezmo' : 'ofrenda');
         const matchesType = subView === 'diezmos' ? currentSubType === 'diezmo' : currentSubType === 'ofrenda';
         const matchesEvent = eventFilter === '' || m.concept?.toLowerCase().includes(eventFilter.toLowerCase());
 
         if (matchesType && matchesEvent) {
-          const name = m.fullName || m.concept?.replace("Transferencia: ", "").replace("Diezmo: ", "").replace("Ofrenda: ", "") || "Dador Anónimo";
+          const rawName = m.fullName || m.concept?.replace("Transferencia: ", "").replace("Diezmo: ", "").replace("Ofrenda: ", "") || "Dador Anónimo";
+          const cleanKey = rawName.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
           
-          if (!map[name]) {
-            map[name] = { 
-              name, count: 0, total: 0, lastDate: mDate, prayers: [], transactionIds: [],
+          if (!map[cleanKey]) {
+            map[cleanKey] = { 
+              name: rawName.trim(), count: 0, total: 0, lastDate: mDate, prayers: [], transactionIds: [],
               cash: 0, virtual: 0 
             };
           }
-          map[name].count++;
-          map[name].total += Number(m.total);
-          map[name].transactionIds.push(m.id);
           
-          if (m.method === 'Efectivo') map[name].cash += Number(m.total);
-          else map[name].virtual += Number(m.total);
+          map[cleanKey].count++;
+          map[cleanKey].total += Number(m.total);
+          map[cleanKey].transactionIds.push(m.id);
+          
+          if (m.method === 'Efectivo') map[cleanKey].cash += Number(m.total);
+          else map[cleanKey].virtual += Number(m.total);
 
-          if (mDate > map[name].lastDate) map[name].lastDate = mDate;
-          if (m.prayer) map[name].prayers.push({ date: mDate, text: m.prayer });
+          if (mDate > map[cleanKey].lastDate) map[cleanKey].lastDate = mDate;
+          if (m.prayer) {
+              map[cleanKey].prayers.push({ date: mDate, text: m.prayer });
+              if (eventFilter) eventSummary.prayers.push({ name: rawName.trim(), text: m.prayer });
+          }
           
           totalARS += Number(m.total);
+          if (eventFilter) {
+              eventSummary.total += Number(m.total);
+              eventSummary.count++;
+          }
         }
     });
 
@@ -84,7 +93,7 @@ export default function DonorIntelligence({ movements = [], setCustomAlert, sele
       .filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()))
       .sort((a, b) => b.total - a.total);
 
-    return { list, totalARS, count: list.length, availableEvents: Array.from(uniqueEvents) };
+    return { list, totalARS, count: list.length, availableEvents: Array.from(uniqueEvents), eventSummary };
   }, [movements, searchTerm, filter, subView, eventFilter, selectedMonth, selectedYear]);
 
   // ✅ 2. ELIMINAR (RESPETADO)
@@ -92,7 +101,7 @@ export default function DonorIntelligence({ movements = [], setCustomAlert, sele
     if (typeof setCustomAlert !== 'function') return;
     setCustomAlert({
       title: "Eliminar registros",
-      message: `¿Borrar ingresos de "${donor.name}" en este periodo?`,
+      message: `¿Borrar ingresos de "${donor.name}"?`,
       type: "confirm",
       onConfirm: async () => {
         try {
@@ -103,13 +112,18 @@ export default function DonorIntelligence({ movements = [], setCustomAlert, sele
     });
   };
 
+  // ✅ 3. COPIAR PEDIDOS PREMIUM (FASE 3)
   const handleCopyWeeklyPrayers = () => {
     const weeklyPrayers = donorsData.list
       .filter(d => d.prayers.length > 0)
       .map(d => `🙏 ${d.name.toUpperCase()}:\n"${d.prayers[d.prayers.length - 1].text}"`)
       .join('\n\n');
+      
     if (!weeklyPrayers) return;
-    navigator.clipboard.writeText(`📖 MOTIVOS DE ORACIÓN\nPeriodo: ${filter.toUpperCase()}\n\n${weeklyPrayers}`);
+
+    const fullMessage = `¡Hola Equipo! 🙌 Aquí compartimos los motivos de oración registrados en la Bóveda para interceder juntos esta semana:\n\n📖 MOTIVOS DE ORACIÓN - CDS\nPeriodo: ${eventFilter || filter.toUpperCase()}\n\n${weeklyPrayers}\n\n🙏 ¡Unidos en un mismo espíritu!`;
+
+    navigator.clipboard.writeText(fullMessage);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -117,25 +131,54 @@ export default function DonorIntelligence({ movements = [], setCustomAlert, sele
   return (
     <div className="space-y-6 pt-4 pb-24 animate-fade-in text-left">
       
-      {/* 📊 PANEL DE TOTALES (CIERRE DE CAJA DINÁMICO) */}
-      <section className="px-2 grid grid-cols-2 gap-3">
-        <div className="bg-slate-900/40 border border-white/5 p-5 rounded-[35px] backdrop-blur-xl shadow-2xl relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-3 opacity-5 group-hover:opacity-10 transition-opacity"><Banknote size={40}/></div>
-            <div className="flex items-center gap-2 mb-1">
-                <Wallet size={12} className="text-blue-500" />
-                <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic">Total {subView}</span>
+      {/* ✅ VISTA DE ALTAR: RESUMEN DE CIERRE (NUEVO FASE 3) */}
+      <AnimatePresence>
+        {eventFilter && (
+            <motion.section initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="px-2">
+                <div className="bg-gradient-to-r from-blue-600/20 to-cyan-500/20 border border-cyan-500/30 p-6 rounded-[40px] backdrop-blur-xl shadow-[0_0_30px_rgba(34,211,238,0.1)] relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-6 opacity-10"><Activity size={60} className="text-cyan-400" /></div>
+                    <div className="relative z-10 space-y-4">
+                        <div className="flex items-center gap-2">
+                            <Star size={14} className="text-cyan-400 fill-cyan-400 animate-pulse" />
+                            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-cyan-400">Resumen de Altar</h3>
+                        </div>
+                        <div className="flex justify-between items-end">
+                            <div>
+                                <p className="text-[8px] font-bold text-slate-500 uppercase mb-1">Total Recaudado en Culto</p>
+                                <h4 className="text-3xl font-black text-white italic tracking-tighter">${donorsData.eventSummary.total.toLocaleString('es-AR')}</h4>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-[8px] font-bold text-slate-500 uppercase mb-1">Siembras Hoy</p>
+                                <p className="text-xl font-black text-cyan-400 italic leading-none">{donorsData.eventSummary.count}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </motion.section>
+        )}
+      </AnimatePresence>
+
+      {/* 📊 PANEL DE TOTALES GENERALES */}
+      {!eventFilter && (
+          <section className="px-2 grid grid-cols-2 gap-3">
+            <div className="bg-slate-900/40 border border-white/5 p-5 rounded-[35px] backdrop-blur-xl shadow-2xl relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-3 opacity-5 group-hover:opacity-10 transition-opacity"><Banknote size={40}/></div>
+                <div className="flex items-center gap-2 mb-1">
+                    <Wallet size={12} className="text-blue-500" />
+                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic leading-none">Total {subView}</span>
+                </div>
+                <p className="text-2xl font-black italic text-white tracking-tighter">${donorsData.totalARS.toLocaleString('es-AR')}</p>
             </div>
-            <p className="text-2xl font-black italic text-white tracking-tighter">${donorsData.totalARS.toLocaleString('es-AR')}</p>
-        </div>
-        <div className="bg-slate-900/40 border border-white/5 p-5 rounded-[35px] backdrop-blur-xl shadow-2xl relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-3 opacity-5 group-hover:opacity-10 transition-opacity"><Users size={40}/></div>
-            <div className="flex items-center gap-2 mb-1">
-                <Users size={12} className="text-emerald-500" />
-                <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic">Personas</span>
+            <div className="bg-slate-900/40 border border-white/5 p-5 rounded-[35px] backdrop-blur-xl shadow-2xl relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-3 opacity-5 group-hover:opacity-10 transition-opacity"><Users size={40}/></div>
+                <div className="flex items-center gap-2 mb-1">
+                    <Users size={12} className="text-emerald-500" />
+                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest italic leading-none">Personas</span>
+                </div>
+                <p className="text-2xl font-black italic text-white tracking-tighter">{donorsData.count}</p>
             </div>
-            <p className="text-2xl font-black italic text-white tracking-tighter">{donorsData.count}</p>
-        </div>
-      </section>
+          </section>
+      )}
 
       {/* 🔍 HEADER Y FILTROS */}
       <header className="space-y-4 px-2">
@@ -146,7 +189,7 @@ export default function DonorIntelligence({ movements = [], setCustomAlert, sele
                 {eventFilter ? `Filtrando: ${eventFilter}` : 'Gestión Pastoral'}
             </p>
           </div>
-          <button onClick={handleCopyWeeklyPrayers} className={`p-4 rounded-2xl border transition-all flex items-center gap-2 active:scale-90 ${copied ? 'bg-emerald-500 border-emerald-400 text-white' : 'bg-blue-600/20 border-blue-500/30 text-blue-400'}`}>
+          <button onClick={handleCopyWeeklyPrayers} className={`p-4 rounded-2xl border transition-all flex items-center gap-2 active:scale-90 ${copied ? 'bg-emerald-500 border-emerald-400 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 'bg-blue-600/20 border-blue-500/30 text-blue-400'}`}>
             {copied ? <Check size={18} /> : <ClipboardList size={18} />}
             <span className="text-[10px] font-black uppercase tracking-tighter">Copiar Clamor</span>
           </button>
@@ -174,15 +217,15 @@ export default function DonorIntelligence({ movements = [], setCustomAlert, sele
                 ))}
             </div>
             
-            {/* ✅ SELECTOR DE CULTO REDISEÑADO (MODERNO) */}
+            {/* ✅ SELECTOR DE CULTO PREMIUM (REDISEÑADO FASE 3) */}
             <div className="relative group">
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-500/50 group-hover:text-blue-400 transition-colors pointer-events-none">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-cyan-500/50 group-hover:text-cyan-400 transition-colors pointer-events-none">
                     <Ticket size={14} />
                 </div>
                 <select 
                     value={eventFilter} 
                     onChange={(e) => setEventFilter(e.target.value)} 
-                    className="w-full bg-slate-900/50 border border-white/5 rounded-2xl py-3.5 pl-9 pr-8 text-[9px] font-black uppercase text-blue-400 outline-none appearance-none hover:bg-slate-800 transition-all cursor-pointer"
+                    className="w-full bg-slate-900/80 border border-cyan-500/20 rounded-2xl py-3.5 pl-9 pr-8 text-[9px] font-black uppercase text-cyan-400 outline-none appearance-none hover:bg-slate-800 hover:border-cyan-500/40 transition-all cursor-pointer shadow-lg"
                 >
                     <option value="">Todos los Cultos</option>
                     {donorsData.availableEvents.map(ev => <option key={ev} value={ev}>{ev}</option>)}
@@ -195,7 +238,7 @@ export default function DonorIntelligence({ movements = [], setCustomAlert, sele
         </div>
       </header>
 
-      {/* 📋 LISTA DE DADORES (INDIVIDUALES) */}
+      {/* 📋 LISTA DE DADORES */}
       <div className="space-y-4 px-1">
         <AnimatePresence mode="popLayout">
           {donorsData.list.map((d, i) => (
@@ -237,7 +280,7 @@ export default function DonorIntelligence({ movements = [], setCustomAlert, sele
                   {d.prayers.length > 0 ? d.prayers.map((p, idx) => (
                     <div key={idx} className="bg-slate-950/40 p-4 rounded-[28px] border border-white/5 group/prayer transition-all hover:border-blue-500/30 text-left shadow-inner">
                         <p className="text-[8px] font-black text-blue-500 uppercase italic mb-1">{new Date(p.date).toLocaleDateString()}</p>
-                        <p className="text-xs font-medium text-slate-400 italic leading-relaxed text-left">"{p.text}"</p>
+                        <p className="text-xs font-medium text-slate-300 italic leading-relaxed text-left">"{p.text}"</p>
                     </div>
                   )).reverse() : (
                     <div className="py-6 text-center border-2 border-dashed border-white/5 rounded-[28px]">
@@ -253,9 +296,9 @@ export default function DonorIntelligence({ movements = [], setCustomAlert, sele
         {donorsData.list.length === 0 && (
           <div className="py-32 text-center flex flex-col items-center gap-4">
             <div className="w-20 h-20 bg-slate-900 rounded-full flex items-center justify-center border border-white/5 opacity-20 shadow-inner"><Ticket size={40} className="text-slate-500" /></div>
-            <div className="space-y-1">
+            <div className="space-y-1 text-center">
                 <p className="text-[11px] font-black text-slate-700 uppercase tracking-[0.4em]">Bóveda Vacía</p>
-                <p className="text-[9px] font-bold text-slate-800 uppercase italic">Sin registros para {selectedMonth + 1}/{selectedYear}</p>
+                <p className="text-[9px] font-bold text-slate-800 uppercase italic">Sin registros para {Number(selectedMonth) + 1}/{selectedYear}</p>
             </div>
           </div>
         )}
