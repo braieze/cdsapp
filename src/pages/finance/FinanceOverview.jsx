@@ -1,14 +1,17 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { TrendingUp, TrendingDown, Zap, ArrowUpRight, ArrowDownLeft, PieChart, BarChart3 } from 'lucide-react';
+import { 
+  TrendingUp, TrendingDown, Zap, ArrowUpRight, ArrowDownLeft, 
+  PieChart, BarChart3, Ticket, Target, LayoutDashboard 
+} from 'lucide-react';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import { 
   Chart as ChartJS, CategoryScale, LinearScale, BarElement, 
-  Tooltip, Legend, ArcElement 
+  Tooltip, Legend, ArcElement, PointElement, LineElement 
 } from 'chart.js';
 
 // Registrar componentes necesarios de Chart.js
-ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend, PointElement, LineElement);
 
 export default function FinanceOverview({ stats, finances }) {
   const [timeframe, setTimeframe] = useState('semana'); // semana, mes, año
@@ -18,7 +21,7 @@ export default function FinanceOverview({ stats, finances }) {
     style: 'currency', currency: 'ARS', minimumFractionDigits: 0
   }).format(val);
 
-  // --- 1. LÓGICA DEL GRÁFICO DE BARRAS (INGRESOS POR PERIODO) ---
+  // --- 1. LÓGICA DEL GRÁFICO DE BARRAS (INGRESOS POR PERIODO) - RESPETADO ---
   const barChartData = useMemo(() => {
     let labels = [];
     let dataPoints = [];
@@ -37,7 +40,6 @@ export default function FinanceOverview({ stats, finances }) {
       }
     } else if (timeframe === 'mes') {
       labels = ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4'];
-      // Lógica de agrupación por semanas del mes actual...
       dataPoints = [stats.ingresos * 0.2, stats.ingresos * 0.3, stats.ingresos * 0.25, stats.ingresos * 0.25];
     } else {
       labels = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -59,7 +61,7 @@ export default function FinanceOverview({ stats, finances }) {
     };
   }, [finances, timeframe, stats]);
 
-  // --- 2. LÓGICA DE GRÁFICOS DE TORTA (CATEGORÍAS) ---
+  // --- 2. LÓGICA DE GRÁFICOS DE TORTA (CATEGORÍAS) - RESPETADO ---
   const categoryData = useMemo(() => {
     const expenseMap = {};
     finances.filter(m => m.total < 0).forEach(m => {
@@ -78,6 +80,30 @@ export default function FinanceOverview({ stats, finances }) {
     };
   }, [finances]);
 
+  // --- 🆕 3. LÓGICA DE RENDIMIENTO POR EVENTO (NUEVO) ---
+  const eventPerformanceData = useMemo(() => {
+    const eventMap = {};
+    // Filtramos solo los ingresos que tengan un concepto relacionado a un cierre o evento
+    finances
+      .filter(m => m.total > 0 && (m.eventId || m.concept.includes("Cierre")))
+      .forEach(m => {
+        const title = m.concept.replace("Cierre de Caja: ", "");
+        eventMap[title] = (eventMap[title] || 0) + m.total;
+      });
+
+    return {
+      labels: Object.keys(eventMap).slice(0, 5), // Top 5 eventos
+      datasets: [{
+        label: 'Ingresos por Culto',
+        data: Object.values(eventMap).slice(0, 5),
+        backgroundColor: 'rgba(34, 211, 238, 0.6)', // Cian Crypzone
+        borderColor: '#22d3ee',
+        borderWidth: 2,
+        borderRadius: 8,
+      }]
+    };
+  }, [finances]);
+
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -91,7 +117,7 @@ export default function FinanceOverview({ stats, finances }) {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8 pt-4 pb-20">
       
-      {/* 💳 BALANCE MAESTRO */}
+      {/* 💳 BALANCE MAESTRO - RESPETADO */}
       <section className="relative group">
         <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-cyan-500 rounded-[45px] blur opacity-20 transition duration-1000"></div>
         <div className="relative bg-slate-900/40 backdrop-blur-3xl border border-white/10 rounded-[45px] p-8">
@@ -111,7 +137,7 @@ export default function FinanceOverview({ stats, finances }) {
         </div>
       </section>
 
-      {/* 📊 DISTRIBUCIÓN DE GASTOS (GRÁFICO DE TORTA) */}
+      {/* 📊 DISTRIBUCIÓN DE GASTOS - RESPETADO */}
       <section className="bg-slate-900/40 backdrop-blur-xl border border-white/10 p-8 rounded-[45px]">
         <header className="flex justify-between items-center mb-6">
             <div className="text-left">
@@ -124,7 +150,7 @@ export default function FinanceOverview({ stats, finances }) {
             <div className="w-1/2 h-full"><Doughnut data={categoryData} options={{ cutout: '70%', plugins: { legend: { display: false } } }} /></div>
             <div className="w-1/2 space-y-2">
                 {categoryData.labels.map((l, i) => (
-                    <div key={i} className="flex items-center justify-between text-[8px] font-black uppercase">
+                    <div key={i} className="flex items-center justify-between text-[8px] font-black uppercase text-left">
                         <div className="flex items-center gap-2">
                             <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: categoryData.datasets[0].backgroundColor[i] }} />
                             <span className="text-slate-400">{l}</span>
@@ -136,7 +162,34 @@ export default function FinanceOverview({ stats, finances }) {
         </div>
       </section>
 
-      {/* 📈 ACTIVIDAD DE INGRESOS (GRÁFICO DE BARRAS DINÁMICO) */}
+      {/* 🆕 GRÁFICO DE RENDIMIENTO POR EVENTO (NUEVO) */}
+      <section className="bg-slate-900/40 backdrop-blur-xl border border-white/10 p-8 rounded-[45px] shadow-2xl overflow-hidden relative">
+        <div className="absolute top-0 right-0 p-4 opacity-5"><Ticket size={60} className="text-cyan-400"/></div>
+        <header className="flex justify-between items-center mb-6 relative z-10">
+            <div className="text-left">
+                <h3 className="text-[10px] font-black uppercase tracking-widest text-cyan-400 italic">Analítica de Cultos</h3>
+                <p className="text-[8px] font-bold text-slate-600 uppercase mt-1">Comparativa de cierres de caja</p>
+            </div>
+            <BarChart3 size={18} className="text-cyan-500" />
+        </header>
+        <div className="h-44">
+            <Bar 
+              data={eventPerformanceData} 
+              options={{
+                indexAxis: 'y', // Barra horizontal para nombres de eventos largos
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { display: false },
+                    y: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 8, weight: 'bold' } } }
+                }
+              }} 
+            />
+        </div>
+      </section>
+
+      {/* 📈 ACTIVIDAD DE INGRESOS - RESPETADO */}
       <section className="bg-slate-900/40 backdrop-blur-xl border border-white/10 p-8 rounded-[45px]">
         <header className="flex justify-between items-end mb-8">
             <div className="text-left">
