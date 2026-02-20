@@ -30,7 +30,7 @@ if (!admin.apps.length && serviceAccount) {
 
 app.get('/ping', (req, res) => res.send('pong'));
 
-// ✅ RUTA ONESIGNAL: AHORA USA LA VARIABLE SEGURA DE RENDER
+// ✅ RUTA ONESIGNAL: CORREGIDA PARA CUMPLIR CON EL IDIOMA "EN" REQUERIDO
 app.post('/send-onesignal', async (req, res) => {
   const { userIds, title, message, url } = req.body;
 
@@ -41,7 +41,6 @@ app.post('/send-onesignal', async (req, res) => {
     return res.status(400).send('Faltan IDs de usuario');
   }
 
-  // Extraemos la llave desde el sistema seguro de Render que acabas de configurar
   const restApiKey = process.env.ONESIGNAL_REST_API_KEY;
 
   if (!restApiKey) {
@@ -54,14 +53,14 @@ app.post('/send-onesignal', async (req, res) => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        // ✅ USAMOS LA VARIABLE: Ahora OneSignal no podrá detectar tu llave en GitHub
         "Authorization": `Basic ${restApiKey}` 
       },
       body: JSON.stringify({
         app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
         include_external_user_ids: userIds,
-        headings: { "es": title },
-        contents: { "es": message },
+        // ✅ CORRECCIÓN: Se usa "en" como clave obligatoria para OneSignal
+        headings: { "en": title }, 
+        contents: { "en": message }, 
         url: url || "https://cdsapp.vercel.app/servicios",
         priority: 10,
         android_accent_color: "FF3B82F6"
