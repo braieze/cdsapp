@@ -2,7 +2,8 @@ import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   TrendingUp, TrendingDown, Zap, ArrowUpRight, ArrowDownLeft, 
-  PieChart, BarChart3, Ticket, Target, LayoutDashboard 
+  PieChart, BarChart3, Ticket, Target, LayoutDashboard,
+  Banknote, CreditCard, HeartHandshake, UserCheck
 } from 'lucide-react';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import { 
@@ -80,28 +81,44 @@ export default function FinanceOverview({ stats, finances }) {
     };
   }, [finances]);
 
-  // --- 🆕 3. LÓGICA DE RENDIMIENTO POR EVENTO (NUEVO) ---
+  // --- 3. LÓGICA DE RENDIMIENTO POR EVENTO (RESPETADO Y MEJORADO) ---
   const eventPerformanceData = useMemo(() => {
     const eventMap = {};
-    // Filtramos solo los ingresos que tengan un concepto relacionado a un cierre o evento
     finances
       .filter(m => m.total > 0 && (m.eventId || m.concept.includes("Cierre")))
       .forEach(m => {
-        const title = m.concept.replace("Cierre de Caja: ", "");
+        const title = m.concept.replace("Cierre: ", "");
         eventMap[title] = (eventMap[title] || 0) + m.total;
       });
 
     return {
-      labels: Object.keys(eventMap).slice(0, 5), // Top 5 eventos
+      labels: Object.keys(eventMap).slice(0, 5),
       datasets: [{
         label: 'Ingresos por Culto',
         data: Object.values(eventMap).slice(0, 5),
-        backgroundColor: 'rgba(34, 211, 238, 0.6)', // Cian Crypzone
+        backgroundColor: 'rgba(34, 211, 238, 0.6)',
         borderColor: '#22d3ee',
         borderWidth: 2,
         borderRadius: 8,
       }]
     };
+  }, [finances]);
+
+  // --- 🆕 4. LÓGICA DE DISTRIBUCIÓN BILLETE VS VIRTUAL Y DIEZMO VS OFRENDA (NUEVO) ---
+  const incomeDetails = useMemo(() => {
+    let billete = 0, virtual = 0, diezmos = 0, ofrendas = 0;
+    
+    finances.filter(m => m.total > 0).forEach(m => {
+        // Por método
+        if (m.method === 'Efectivo') billete += m.total;
+        else virtual += m.total;
+        
+        // Por tipo
+        if (m.subType === 'diezmo') diezmos += m.total;
+        else ofrendas += m.total;
+    });
+
+    return { billete, virtual, diezmos, ofrendas };
   }, [finances]);
 
   const chartOptions = {
@@ -126,14 +143,57 @@ export default function FinanceOverview({ stats, finances }) {
           <h2 className="text-5xl font-black italic tracking-tighter text-white mb-8 text-left">{formatValue(stats.total)}</h2>
           <div className="flex gap-4">
             <div className="flex-1 bg-white/5 rounded-2xl p-4 border border-white/5 text-left">
-                <p className="text-[8px] font-bold text-slate-500 uppercase mb-1">Diezmo Nac.</p>
-                <p className="text-sm font-black text-blue-400">{formatValue(stats.total * 0.10)}</p>
+                <p className="text-[8px] font-bold text-slate-500 uppercase mb-1">Diezmo Nac. (10%)</p>
+                <p className="text-sm font-black text-blue-400">{formatValue(stats.diezmoNacional)}</p>
             </div>
             <div className="flex-1 bg-white/5 rounded-2xl p-4 border border-white/5 text-left">
                 <p className="text-[8px] font-bold text-slate-500 uppercase mb-1">Crecimiento</p>
                 <div className="flex items-center gap-1 text-emerald-400 font-black text-sm"><TrendingUp size={14}/> +14.5%</div>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* 🆕 ANALÍTICA DE FIDELIDAD (MÉTODO Y TIPO) - NUEVO */}
+      <section className="grid grid-cols-1 gap-4 px-2">
+        <div className="bg-slate-900/40 border border-white/5 p-6 rounded-[40px] backdrop-blur-xl">
+            <header className="flex justify-between items-center mb-6">
+                <div className="text-left">
+                    <h3 className="text-[10px] font-black uppercase tracking-widest text-emerald-400 italic">Origen de Ingresos</h3>
+                    <p className="text-[8px] font-bold text-slate-600 uppercase mt-1">Billete vs Virtual</p>
+                </div>
+                <Banknote size={16} className="text-emerald-500" />
+            </header>
+            <div className="space-y-4">
+                <div className="flex justify-between items-end mb-1">
+                    <span className="text-[10px] font-black text-slate-400 uppercase">Billete: {formatValue(incomeDetails.billete)}</span>
+                    <span className="text-[10px] font-black text-blue-400 uppercase">Virtual: {formatValue(incomeDetails.virtual)}</span>
+                </div>
+                <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden flex">
+                    <div style={{ width: `${(incomeDetails.billete / stats.ingresos) * 100}%` }} className="h-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
+                    <div className="h-full flex-1 bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
+                </div>
+            </div>
+        </div>
+
+        <div className="bg-slate-900/40 border border-white/5 p-6 rounded-[40px] backdrop-blur-xl">
+            <header className="flex justify-between items-center mb-6">
+                <div className="text-left">
+                    <h3 className="text-[10px] font-black uppercase tracking-widest text-blue-400 italic">Distribución de Vida</h3>
+                    <p className="text-[8px] font-bold text-slate-600 uppercase mt-1">Diezmos vs Ofrendas</p>
+                </div>
+                <HeartHandshake size={16} className="text-blue-500" />
+            </header>
+            <div className="space-y-4">
+                <div className="flex justify-between items-end mb-1">
+                    <span className="text-[10px] font-black text-slate-400 uppercase">Diezmos: {formatValue(incomeDetails.diezmos)}</span>
+                    <span className="text-[10px] font-black text-rose-400 uppercase">Ofrendas: {formatValue(incomeDetails.ofrendas)}</span>
+                </div>
+                <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden flex">
+                    <div style={{ width: `${(incomeDetails.diezmos / stats.ingresos) * 100}%` }} className="h-full bg-blue-500" />
+                    <div className="h-full flex-1 bg-rose-500" />
+                </div>
+            </div>
         </div>
       </section>
 
@@ -162,7 +222,7 @@ export default function FinanceOverview({ stats, finances }) {
         </div>
       </section>
 
-      {/* 🆕 GRÁFICO DE RENDIMIENTO POR EVENTO (NUEVO) */}
+      {/* 🆕 GRÁFICO DE RENDIMIENTO POR EVENTO - RESPETADO */}
       <section className="bg-slate-900/40 backdrop-blur-xl border border-white/10 p-8 rounded-[45px] shadow-2xl overflow-hidden relative">
         <div className="absolute top-0 right-0 p-4 opacity-5"><Ticket size={60} className="text-cyan-400"/></div>
         <header className="flex justify-between items-center mb-6 relative z-10">
@@ -176,7 +236,7 @@ export default function FinanceOverview({ stats, finances }) {
             <Bar 
               data={eventPerformanceData} 
               options={{
-                indexAxis: 'y', // Barra horizontal para nombres de eventos largos
+                indexAxis: 'y',
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
