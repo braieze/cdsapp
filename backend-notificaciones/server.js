@@ -30,11 +30,10 @@ if (!admin.apps.length && serviceAccount) {
 
 app.get('/ping', (req, res) => res.send('pong'));
 
-// ✅ RUTA ONESIGNAL: CORREGIDA CON TU NUEVA REST API KEY
+// ✅ RUTA ONESIGNAL: AHORA USA LA VARIABLE SEGURA DE RENDER
 app.post('/send-onesignal', async (req, res) => {
   const { userIds, title, message, url } = req.body;
 
-  // Log para monitorear en Render
   console.log("📡 Solicitud OneSignal recibida para IDs:", userIds);
 
   if (!userIds || !userIds.length) {
@@ -42,20 +41,28 @@ app.post('/send-onesignal', async (req, res) => {
     return res.status(400).send('Faltan IDs de usuario');
   }
 
+  // Extraemos la llave desde el sistema seguro de Render que acabas de configurar
+  const restApiKey = process.env.ONESIGNAL_REST_API_KEY;
+
+  if (!restApiKey) {
+    console.error("❌ Error Crítico: No se encontró ONESIGNAL_REST_API_KEY en Render");
+    return res.status(500).send('Error de configuración del servidor');
+  }
+
   try {
     const response = await fetch("https://onesignal.com/api/v1/notifications", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        // ✅ CLAVE ACTUALIZADA: Vinculada a tu App ID 742a62cd...
-        "Authorization": "Basic os_v2_app_oqvgftlncvbh7c5llodvt6v5bihjgq3widce3sfgndcyrvpt6o5op6up3on7vxqddka77dzqmlci32s36c6tbhfhplsvuyeiaof2rgq" 
+        // ✅ USAMOS LA VARIABLE: Ahora OneSignal no podrá detectar tu llave en GitHub
+        "Authorization": `Basic ${restApiKey}` 
       },
       body: JSON.stringify({
         app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
         include_external_user_ids: userIds,
         headings: { "es": title },
         contents: { "es": message },
-        url: url || "https://tu-app-mceh.web.app/servicios",
+        url: url || "https://cdsapp.vercel.app/servicios",
         priority: 10,
         android_accent_color: "FF3B82F6"
       })
@@ -63,7 +70,6 @@ app.post('/send-onesignal', async (req, res) => {
 
     const data = await response.json();
     
-    // Verificación de éxito/error en la consola de Render
     if (data.errors) {
         console.warn("⚠️ OneSignal respondió con errores:", data.errors);
     } else {
@@ -77,7 +83,6 @@ app.post('/send-onesignal', async (req, res) => {
   }
 });
 
-// Ruta original de Firebase (Mantenida intacta)
 app.post('/send-notification', async (req, res) => {
   const { title, body, tokens, url } = req.body;
   if (!tokens || !tokens.length) return res.status(400).send('Faltan tokens');
