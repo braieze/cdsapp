@@ -8,7 +8,7 @@ import { format, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
 import html2canvas from 'html2canvas'; 
 import jsPDF from 'jspdf'; 
-import OneSignal from 'react-onesignal'; // ✅ OneSignal para notificaciones robustas
+import OneSignal from 'react-onesignal'; 
 
 export default function EventDetails() {
   const { id } = useParams();
@@ -32,20 +32,26 @@ export default function EventDetails() {
   const currentUser = auth.currentUser;
   const myUid = currentUser?.uid;
 
-  // ✅ 1. INICIALIZACIÓN DE ONESIGNAL (Con tu App ID Real)
+  // ✅ 1. INICIALIZACIÓN DE ONESIGNAL ROBUSTA (Corregido)
   useEffect(() => {
     const initOneSignal = async () => {
       try {
+        // Verificamos si ya está inicializado para evitar el error de re-init
         await OneSignal.init({
-          appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a", //
+          appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
           allowLocalhostAsSecureOrigin: true,
+          serviceWorkerPath: "OneSignalSDKWorker.js", // ✅ Forzamos la ruta raíz
           notifyButton: { enable: false },
         });
+
         if (currentUser) {
-          // Vinculamos el UID de Firebase para que OneSignal sepa a quién notificar
+          // ✅ Sincronizamos el External ID para que el backend lo encuentre
           await OneSignal.login(currentUser.uid);
+          console.log("OneSignal: Usuario vinculado con ID", currentUser.uid);
         }
-      } catch (e) { console.error("Error OneSignal Init:", e); }
+      } catch (e) { 
+        console.error("Error OneSignal Init:", e); 
+      }
     };
     initOneSignal();
   }, [currentUser]);
@@ -105,47 +111,67 @@ export default function EventDetails() {
     return Object.values(assignments).flat().includes(name);
   };
 
-  // ✅ 2. ENVÍO MASIVO CON ONESIGNAL (Con tu REST API Key Real)
+  // ✅ 2. ENVÍO DE NOTIFICACIÓN (Corregido y con Logs)
   const notifyNewAssignments = async (newAssignments) => {
-  try {
-    const oldAssigned = Object.values(event.assignments || {}).flat();
-    const currentAssigned = Object.values(newAssignments).flat();
-    const newlyAddedNames = currentAssigned.filter(name => !oldAssigned.includes(name));
+    try {
+      const oldAssigned = Object.values(event.assignments || {}).flat();
+      const currentAssigned = Object.values(newAssignments).flat();
+      
+      // Filtramos quiénes son los nuevos para no spamear a los que ya estaban
+      const newlyAddedNames = currentAssigned.filter(name => !oldAssigned.includes(name));
 
-    if (newlyAddedNames.length === 0) return;
+      if (newlyAddedNames.length === 0) {
+        console.log("No hay nuevos servidores para notificar.");
+        return;
+      }
 
-    const targetUserIds = users
-      .filter(u => newlyAddedNames.includes(u.displayName))
-      .map(u => u.id);
+      const targetUserIds = users
+        .filter(u => newlyAddedNames.includes(u.displayName))
+        .map(u => u.id);
 
-    if (targetUserIds.length === 0) return;
+      if (targetUserIds.length === 0) {
+        console.warn("No se encontraron IDs de OneSignal para los nombres asignados.");
+        return;
+      }
 
-    // ✅ LLAMADA SEGURA A TU BACKEND DE RENDER
-    await fetch("https://backend-notificaciones-mceh.onrender.com/send-onesignal", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        userIds: targetUserIds,
-        title: "📍 Nueva tarea asignada",
-        message: `Fuiste asignado en: ${event.title}. Revisa tus turnos.`
-      })
-    });
-    
-    setToast({ message: "Servidores notificados", type: "success" });
-  } catch (error) { 
-    console.error("Error al notificar:", error); 
-  }
-};
+      console.log("Notificando a los IDs:", targetUserIds);
+
+      const response = await fetch("https://backend-notificaciones-mceh.onrender.com/send-onesignal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userIds: targetUserIds,
+          title: "📍 Nueva tarea asignada",
+          message: `Fuiste asignado en: ${event.title}. Revisa tu agenda.`
+        })
+      });
+
+      if (response.ok) {
+        setToast({ message: "Servidores notificados", type: "success" });
+      } else {
+        throw new Error("Fallo en la respuesta del servidor de notificaciones");
+      }
+      
+    } catch (error) { 
+      console.error("Error al notificar:", error);
+      setToast({ message: "Error al enviar notificaciones", type: "error" });
+    }
+  };
 
   const handleSaveAssignments = async () => {
     setIsSaving(true);
     try {
       await updateDoc(doc(db, 'events', id), { assignments });
+      // Ejecutamos la notificación después de asegurar que se guardó en DB
       await notifyNewAssignments(assignments); 
       setEvent(prev => ({ ...prev, assignments }));
       setToast({ message: "Asignaciones guardadas", type: "success" });
       setIsEditing(false);
-    } catch (error) { setToast({ message: "Error al guardar", type: "error" }); } finally { setIsSaving(false); }
+    } catch (error) { 
+      setToast({ message: "Error al guardar", type: "error" }); 
+    } finally { 
+      setIsSaving(false); 
+    }
   };
 
   const handleToggleTask = async (taskIndex) => {
@@ -252,7 +278,7 @@ export default function EventDetails() {
                 )}
             </div>
 
-            {/* SECCIONES PREMIUM (PASTORAL, ALABANZA, OPERATIVO, MULTIMEDIA) */}
+            {/* SECCIONES PREMIUM */}
             <div className="space-y-6 pb-20">
               {getStructure(event.type).map((section, idx) => (
                   <div key={idx} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
@@ -301,7 +327,7 @@ export default function EventDetails() {
           </div>
       )}
 
-      {/* MODAL SELECTOR CON BLINDAJE Y FILTRO POR MINISTERIO */}
+      {/* MODAL SELECTOR */}
       {isSelectorOpen && (
           <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in" onClick={() => setIsSelectorOpen(false)}>
               <div className="bg-white w-full sm:max-w-sm rounded-t-[40px] sm:rounded-[40px] max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
@@ -323,7 +349,6 @@ export default function EventDetails() {
                           const userArea = (u.area || u.ministerio || '').toLowerCase();
                           const userRoleType = (u.role || '').toLowerCase();
 
-                          // ✅ FILTROS SOLICITADOS
                           if (roleLabel.includes('predica')) return userRoleType === 'pastor' || userRoleType === 'lider';
                           if (roleLabel.includes('alabanza')) return userArea === 'alabanza';
                           if (roleLabel.includes('multimedia')) return userArea === 'multimedia';
