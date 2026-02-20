@@ -10,7 +10,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable'; // ✅ Corregido para evitar el error de importación
+import autoTable from 'jspdf-autotable'; // ✅ Importación forzada para evitar el TypeError
 
 // Sub-componentes
 import FinanceOverview from './finance/FinanceOverview';
@@ -18,7 +18,7 @@ import PendingList from './finance/PendingList';
 import MovementHistory from './finance/MovementHistory';
 import DonorIntelligence from './finance/DonorIntelligence';
 import AdminModals from './finance/AdminModals';
-import ModuloPastoral from './finance/ModuloPastoral'; // ✅ Importado
+import ModuloPastoral from './finance/ModuloPastoral';
 
 export default function Tesoreria() {
   const navigate = useNavigate();
@@ -26,17 +26,17 @@ export default function Tesoreria() {
   const [pin, setPin] = useState("");
   const [activeTab, setActiveTab] = useState('resumen');
   
-  // ✅ Estados de Filtro de Tiempo Maestro
+  // ✅ Estados de Filtro de Tiempo Maestro (Respetados)
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
-  // ✅ Estados de Control de Menús y Modales
+  // ✅ Estados de Control de Menús y Modales (Respetados)
   const [showRegMenu, setShowRegMenu] = useState(false); 
   const [showDownMenu, setShowDownMenu] = useState(false); 
-  const [showSalaryModule, setShowSalaryModule] = useState(false); // ✅ Nuevo: Control Módulo Pastoral
+  const [showSalaryModule, setShowSalaryModule] = useState(false); 
   const [modalType, setModalType] = useState(null); 
   const [customAlert, setCustomAlert] = useState(null); 
-  const [editingRecord, setEditingRecord] = useState(null); // ✅ Nuevo: Estado para Edición
+  const [editingRecord, setEditingRecord] = useState(null); // ✅ Estado para Edición
 
   const [finances, setFinances] = useState([]);
   const [pendingOfferings, setPendingOfferings] = useState([]);
@@ -78,27 +78,32 @@ export default function Tesoreria() {
     };
   }, [finances, selectedMonth, selectedYear]);
 
-  // --- 3. FUNCIONES DE EXPORTACIÓN (Corregido: autoTable) ---
+  // --- 3. FUNCIONES DE EXPORTACIÓN (Corregido con autoTable) ---
   const exportarPDF = (tipo, eventData = null) => {
-    const doc = new jsPDF();
-    const titulo = eventData ? `CIERRE: ${eventData.concept.toUpperCase()}` : `REPORTE ${tipo.toUpperCase()} - CDS`;
-    doc.text(titulo, 14, 15);
-    
-    const dataFiltrada = eventData 
-      ? finances.filter(m => m.eventId === eventData.eventId || m.concept === eventData.concept)
-      : finances;
+    try {
+        const doc = new jsPDF();
+        const titulo = eventData ? `CIERRE: ${eventData.concept.toUpperCase()}` : `REPORTE ${tipo.toUpperCase()} - CDS`;
+        doc.text(titulo, 14, 15);
+        
+        const dataFiltrada = eventData 
+          ? finances.filter(m => m.eventId === eventData.eventId || m.concept === eventData.concept)
+          : finances;
 
-    const data = dataFiltrada.map(m => [
-      new Date(m.date?.seconds * 1000).toLocaleDateString(),
-      m.concept,
-      m.total > 0 ? 'Ingreso' : 'Egreso',
-      `$${Math.abs(m.total).toLocaleString('es-AR')}`
-    ]);
+        const data = dataFiltrada.map(m => [
+          new Date(m.date?.seconds * 1000).toLocaleDateString(),
+          m.concept,
+          m.total > 0 ? 'Ingreso' : 'Egreso',
+          `$${Math.abs(m.total).toLocaleString('es-AR')}`
+        ]);
 
-    // ✅ Llamada corregida a autoTable para evitar el error de consola
-    autoTable(doc, { head: [['Fecha', 'Detalle', 'Tipo', 'Monto']], body: data, startY: 20 });
-    doc.save(`CDS_${tipo}_${Date.now()}.pdf`);
-    setShowDownMenu(false);
+        // ✅ Uso de autoTable corregido para eliminar el error de consola
+        autoTable(doc, { head: [['Fecha', 'Detalle', 'Tipo', 'Monto']], body: data, startY: 20 });
+        doc.save(`CDS_${tipo}_${Date.now()}.pdf`);
+        setShowDownMenu(false);
+    } catch (e) {
+        console.error("Error PDF:", e);
+        alert("Fallo al generar el PDF. Verifique los datos.");
+    }
   };
 
   const handleUnlock = () => {
@@ -106,10 +111,10 @@ export default function Tesoreria() {
     else { setPin(""); alert("PIN Incorrecto"); }
   };
 
-  // ✅ Función para manejar la edición
+  // ✅ Función para manejar la edición (Paso 1)
   const handleEdit = (record) => {
     setEditingRecord(record);
-    setModalType(record.type); // Abre el modal de ingreso o gasto según el registro
+    setModalType(record.type); 
   };
 
   if (isLocked) {
@@ -134,7 +139,7 @@ export default function Tesoreria() {
     <div className="fixed inset-0 bg-slate-950 z-[250] flex flex-col font-outfit text-white overflow-hidden text-left">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(37,99,235,0.12),transparent)] pointer-events-none" />
 
-      {/* 🛰️ HEADER DINÁMICO (Z-INDEX Corregido) */}
+      {/* 🛰️ HEADER DINÁMICO */}
       <header className="flex items-center justify-between px-6 pt-12 pb-6 relative z-[60]">
         <button onClick={() => navigate('/apps')} className="p-3 bg-white/5 rounded-2xl border border-white/10 active:scale-90 transition-all text-white"><ChevronLeft size={24} /></button>
         
@@ -159,11 +164,7 @@ export default function Tesoreria() {
             )}
           </AnimatePresence>
 
-          {/* ✅ BOTÓN PERFIL: AHORA DISPARA MÓDULO PASTORAL */}
-          <button 
-            onClick={() => setShowSalaryModule(true)}
-            className={`p-3 rounded-2xl border border-white/10 active:scale-90 transition-all ${showSalaryModule ? 'bg-blue-600 text-white' : 'bg-white/5 text-slate-400'}`}
-          >
+          <button onClick={() => setShowSalaryModule(true)} className={`p-3 rounded-2xl border border-white/10 active:scale-90 transition-all ${showSalaryModule ? 'bg-blue-600 text-white' : 'bg-white/5 text-slate-400'}`}>
             <UserCircle size={20} />
           </button>
         </div>
@@ -172,49 +173,42 @@ export default function Tesoreria() {
       {/* ✅ SELECTOR DE PERIODO CONDICIONAL (Solo en Historial e Inteligencia) */}
       {(activeTab === 'historial' || activeTab === 'pastoral') && (
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="px-6 pb-4 flex gap-2 relative z-50">
-            <select 
-              value={selectedMonth} 
-              onChange={(e) => setSelectedMonth(Number(e.target.value))}
-              className="flex-1 bg-slate-900/50 border border-white/5 rounded-xl p-3 text-[10px] font-black uppercase text-blue-400 outline-none"
-            >
-              {["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"].map((m, i) => <option key={i} value={i}>{m}</option>)}
+            <select value={selectedMonth} onChange={(e) => setSelectedMonth(Number(e.target.value))} className="flex-1 bg-slate-900/50 border border-white/5 rounded-xl p-3 text-[10px] font-black uppercase text-blue-400 outline-none">
+                {["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"].map((m, i) => <option key={i} value={i}>{m}</option>)}
             </select>
-            <select 
-              value={selectedYear} 
-              onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="w-24 bg-slate-900/50 border border-white/5 rounded-xl p-3 text-[10px] font-black uppercase text-blue-400 outline-none"
-            >
-              {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+            <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className="w-24 bg-slate-900/50 border border-white/5 rounded-xl p-3 text-[10px] font-black uppercase text-blue-400 outline-none">
+                {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
             </select>
         </motion.div>
       )}
 
-      {/* 📊 ÁREA DE CONTENIDO */}
+      {/* 📊 ÁREA DE CONTENIDO (Sincronización de Periodos) */}
       <main className="flex-1 overflow-y-auto px-6 pb-40 relative z-10 custom-scrollbar text-left">
         <AnimatePresence mode="wait">
           {activeTab === 'resumen' && <FinanceOverview key="resumen" stats={stats} finances={finances} />}
           {activeTab === 'pendientes' && <PendingList key="pendientes" items={pendingOfferings} />}
           {activeTab === 'historial' && (
             <MovementHistory 
-                key="historial" 
-                movements={finances} 
-                setCustomAlert={setCustomAlert} 
-                onEdit={handleEdit} // ✅ Pasada función de edición
+              key="historial" 
+              movements={finances} 
+              setCustomAlert={setCustomAlert} 
+              onEdit={handleEdit} 
+              selectedMonth={selectedMonth} 
+              selectedYear={selectedYear} 
             />
           )}
           {activeTab === 'pastoral' && (
             <DonorIntelligence 
-                key="pastoral" 
-                movements={finances} 
-                setCustomAlert={setCustomAlert} 
-                selectedMonth={selectedMonth} 
-                selectedYear={selectedYear} 
+              key="pastoral" 
+              movements={finances} 
+              setCustomAlert={setCustomAlert} 
+              selectedMonth={selectedMonth} 
+              selectedYear={selectedYear} 
             />
           )}
         </AnimatePresence>
       </main>
 
-      {/* 🛸 NAVEGACIÓN CRYPZONE */}
       <nav className="absolute bottom-8 left-6 right-6 h-20 bg-slate-900/80 backdrop-blur-2xl rounded-[35px] border border-white/10 flex items-center justify-around px-2 shadow-2xl z-20">
         {[
           { id: 'resumen', icon: BarChart3 },
@@ -243,35 +237,30 @@ export default function Tesoreria() {
         </div>
       </nav>
 
-      {/* ✅ MODALES (Soporte para Edición e Inclusión de ModuloPastoral) */}
       <AnimatePresence>
         {modalType && (
           <AdminModals 
             type={modalType} 
             onClose={() => {setModalType(null); setEditingRecord(null);}} 
             setCustomAlert={setCustomAlert} 
-            editData={editingRecord} // ✅ Pasado dato para editar
+            editData={editingRecord}
           />
         )}
         {showSalaryModule && (
-          <ModuloPastoral 
-            onClose={() => setShowSalaryModule(false)} 
-            setCustomAlert={setCustomAlert} 
-            finances={finances}
-          />
+          <ModuloPastoral onClose={() => setShowSalaryModule(false)} setCustomAlert={setCustomAlert} finances={finances} />
         )}
       </AnimatePresence>
 
       <AnimatePresence>
         {customAlert && (
           <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-slate-950/60 backdrop-blur-sm">
-            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-slate-900 border border-white/10 p-8 rounded-[40px] w-full max-w-xs text-center shadow-2xl">
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-slate-900 border border-white/10 p-8 rounded-[40px] w-full max-w-xs text-center shadow-2xl text-white">
               {customAlert.type === 'confirm' ? <AlertCircle className="mx-auto mb-4 text-rose-500" size={40}/> : <CheckCircle2 className="mx-auto mb-4 text-emerald-500" size={40}/>}
-              <h4 className="text-white font-black uppercase italic tracking-tighter text-lg mb-2 text-center">{customAlert.title}</h4>
+              <h4 className="font-black uppercase italic tracking-tighter text-lg mb-2 text-center text-white">{customAlert.title}</h4>
               <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-8 leading-relaxed text-center">{customAlert.message}</p>
               <div className="flex gap-2">
                 <button onClick={() => setCustomAlert(null)} className="flex-1 py-4 bg-white/5 rounded-2xl text-[10px] font-black uppercase text-slate-500">Cancelar</button>
-                <button onClick={() => {customAlert.onConfirm(); setCustomAlert(null)}} className={`flex-1 py-4 rounded-2xl text-[10px] font-black uppercase text-white ${customAlert.type === 'confirm' ? 'bg-rose-500' : 'bg-emerald-500'}`}>Aceptar</button>
+                <button onClick={() => {if(customAlert.onConfirm) customAlert.onConfirm(); setCustomAlert(null)}} className={`flex-1 py-4 rounded-2xl text-[10px] font-black uppercase text-white ${customAlert.type === 'confirm' ? 'bg-rose-500' : 'bg-emerald-500'}`}>Aceptar</button>
               </div>
             </motion.div>
           </div>
