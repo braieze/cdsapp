@@ -10,7 +10,7 @@ import {
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
-export default function MovementHistory({ movements = [], setCustomAlert }) {
+export default function MovementHistory({ movements = [], setCustomAlert, onEdit }) { // ✅ onEdit agregado a las props
   const [filter, setFilter] = useState('all'); // all, income, expense
   const [search, setSearch] = useState("");
 
@@ -38,7 +38,7 @@ export default function MovementHistory({ movements = [], setCustomAlert }) {
     }
   };
 
-  // ✅ 3. ELIMINAR CON ALERTA PREMIUM (MEJORADO)
+  // ✅ 3. ELIMINAR CON ALERTA PREMIUM (RESPETADO)
   const handleDeleteRequest = (id) => {
     triggerAlert({
       title: "Eliminar Registro",
@@ -79,7 +79,7 @@ export default function MovementHistory({ movements = [], setCustomAlert }) {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
           <input 
             value={search}
-            onChange={(e) => setSearch(e.target.value)} // ✅ Corregido el bug de e.search
+            onChange={(e) => setSearch(e.target.value)} 
             placeholder="Buscar por concepto o detalle..."
             className="w-full bg-slate-900/50 border border-white/5 rounded-2xl py-4 pl-12 pr-4 text-xs font-bold text-white outline-none focus:border-blue-500 transition-all shadow-inner"
           />
@@ -113,7 +113,7 @@ export default function MovementHistory({ movements = [], setCustomAlert }) {
               exit={{ opacity: 0, x: 20 }}
               className="group relative bg-slate-900/40 backdrop-blur-xl border border-white/5 p-5 rounded-[35px] flex justify-between items-center transition-all hover:bg-slate-800/50 shadow-sm"
             >
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 text-left">
                 <div className={`p-3 rounded-2xl ${m.total > 0 ? 'bg-emerald-500/10 text-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.1)]' : 'bg-rose-500/10 text-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.1)]'}`}>
                   {m.total > 0 ? <TrendingUp size={20}/> : <TrendingDown size={20}/>}
                 </div>
@@ -141,9 +141,12 @@ export default function MovementHistory({ movements = [], setCustomAlert }) {
                   </p>
                 </div>
                 
-                {/* BOTONES DE ACCIÓN (RESPETADO) */}
+                {/* BOTONES DE ACCIÓN (CONEXIÓN DE EDICIÓN ESTABLECIDA) */}
                 <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-all scale-90 group-hover:scale-100">
-                  <button className="p-2 bg-white/5 text-slate-500 hover:text-blue-400 rounded-xl transition-colors">
+                  <button 
+                    onClick={() => onEdit && onEdit(m)} // ✅ Conectado con la apertura del modal
+                    className="p-2 bg-white/5 text-slate-500 hover:text-blue-400 rounded-xl transition-colors"
+                  >
                     <Edit3 size={14} />
                   </button>
                   <button 
