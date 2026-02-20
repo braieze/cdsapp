@@ -33,22 +33,26 @@ export default function EventDetails() {
   const myUid = currentUser?.uid;
 
   // ✅ 1. INICIALIZACIÓN DE ONESIGNAL (Versión Estabilizada)
+  // ✅ 1. INICIALIZACIÓN DE ONESIGNAL (Versión Silenciosa)
   useEffect(() => {
     const initOneSignal = async () => {
       try {
-        // Si ya está inicializado, no volvemos a hacerlo
-        if (window.OneSignal && window.OneSignal.initialized) return;
-
         await OneSignal.init({
           appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
           allowLocalhostAsSecureOrigin: true,
-          // Eliminamos serviceWorkerPath para que use la ruta raíz por defecto
           notifyButton: { enable: false },
         });
 
         if (currentUser) {
-          await OneSignal.login(currentUser.uid);
-          console.log("OneSignal: Vinculado con UID", currentUser.uid);
+          // Obtenemos el ID externo actual para evitar el conflicto 409
+          const currentExternalId = await OneSignal.getExternalId();
+          
+          if (currentExternalId !== currentUser.uid) {
+            await OneSignal.login(currentUser.uid);
+            console.log("OneSignal: Nueva vinculación exitosa");
+          } else {
+            console.log("OneSignal: Usuario ya estaba vinculado");
+          }
         }
       } catch (e) { 
         console.error("Error OneSignal Init:", e); 
