@@ -30,15 +30,15 @@ if (!admin.apps.length && serviceAccount) {
 
 app.get('/ping', (req, res) => res.send('pong'));
 
-// ✅ NUEVA RUTA: ENVÍO MEDIANTE ONESIGNAL (Seguro y Masivo)
+// ✅ RUTA ONESIGNAL: CORREGIDA CON TU NUEVA REST API KEY
 app.post('/send-onesignal', async (req, res) => {
   const { userIds, title, message, url } = req.body;
 
-  // Registro de entrada para depuración
+  // Log para monitorear en Render
   console.log("📡 Solicitud OneSignal recibida para IDs:", userIds);
 
   if (!userIds || !userIds.length) {
-    console.error("❌ Error: Se intentó enviar una notificación sin userIds.");
+    console.error("❌ Error: Faltan userIds");
     return res.status(400).send('Faltan IDs de usuario');
   }
 
@@ -47,15 +47,15 @@ app.post('/send-onesignal', async (req, res) => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": "Basic os_v2_app_oqvgftlncvbh7c5llodvt6v5bizleim6w4cefan3kucbz63ch6kslgr5rvlaoicnpzicabq3natbwjhks37jm2vjdr4bn7i225ejyui" // ✅ Llave segura en backend
+        // ✅ CLAVE ACTUALIZADA: Vinculada a tu App ID 742a62cd...
+        "Authorization": "Basic os_v2_app_oqvgftlncvbh7c5llodvt6v5bihjgq3widce3sfgndcyrvpt6o5op6up3on7vxqddka77dzqmlci32s36c6tbhfhplsvuyeiaof2rgq" 
       },
       body: JSON.stringify({
         app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
-        include_external_user_ids: userIds, // Usamos los UIDs de Firebase vinculados con OneSignal.login()
+        include_external_user_ids: userIds,
         headings: { "es": title },
         contents: { "es": message },
         url: url || "https://tu-app-mceh.web.app/servicios",
-        // Forzar prioridad alta para asegurar la entrega
         priority: 10,
         android_accent_color: "FF3B82F6"
       })
@@ -63,21 +63,21 @@ app.post('/send-onesignal', async (req, res) => {
 
     const data = await response.json();
     
-    // Verificación de respuesta de OneSignal
+    // Verificación de éxito/error en la consola de Render
     if (data.errors) {
         console.warn("⚠️ OneSignal respondió con errores:", data.errors);
     } else {
-        console.log("✅ OneSignal Response:", data);
+        console.log("✅ OneSignal Response (Envío Exitoso):", data);
     }
 
     res.json({ success: true, data });
   } catch (error) {
-    console.error("🔥 Error crítico en OneSignal (Backend):", error);
+    console.error("🔥 Error OneSignal (Backend):", error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Ruta original de Firebase (por si la sigues usando en otras partes)
+// Ruta original de Firebase (Mantenida intacta)
 app.post('/send-notification', async (req, res) => {
   const { title, body, tokens, url } = req.body;
   if (!tokens || !tokens.length) return res.status(400).send('Faltan tokens');
