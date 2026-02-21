@@ -33,11 +33,10 @@ export default function EventDetails() {
   const myUid = currentUser?.uid;
 
   // ✅ 1. INICIALIZACIÓN DE ONESIGNAL (Versión Estabilizada)
-  // ✅ 1. INICIALIZACIÓN DE ONESIGNAL (Solución al TypeError)
+  // ✅ 1. INICIALIZACIÓN DE ONESIGNAL (Versión de Suscripción Forzada)
   useEffect(() => {
     const initOneSignal = async () => {
       try {
-        // Evitamos re-inicializar si ya está activo
         if (window.OneSignal && window.OneSignal.initialized) return;
 
         await OneSignal.init({
@@ -47,28 +46,23 @@ export default function EventDetails() {
         });
 
         if (currentUser) {
-          // 🛡️ DETECCIÓN SEGURA DE IDENTIDAD (Evita Nm.User.getExternalId error)
-          let currentExternalId = null;
+          // 1. Identificamos al usuario
+          await OneSignal.login(currentUser.uid);
           
-          // Intentamos obtener el ID recorriendo la nueva estructura de la v16
-          if (OneSignal.User && OneSignal.User.Identity) {
-              currentExternalId = OneSignal.User.Identity.getExternalId();
-          } else if (OneSignal.User) {
-              currentExternalId = typeof OneSignal.User.getExternalId === 'function' 
-                  ? OneSignal.User.getExternalId() 
-                  : null;
+          // 2. Verificamos si tiene el permiso habilitado
+          const isPushEnabled = OneSignal.Notifications.permission;
+          
+          if (!isPushEnabled || isPushEnabled === 'default') {
+            console.log("OneSignal: Solicitando permisos de notificación...");
+            // Forzamos la aparición del cartel nativo del navegador
+            await OneSignal.Notifications.requestPermission();
           }
 
-          // Solo logueamos si el ID es diferente o si no pudimos verificarlo
-          if (currentExternalId !== currentUser.uid) {
-            await OneSignal.login(currentUser.uid);
-            console.log("OneSignal: Identidad sincronizada con éxito");
-          }
+          console.log("OneSignal: Proceso de vinculación completado para", currentUser.uid);
         }
       } catch (e) { 
-        // Si el error es solo un "409 Conflict" (ya logueado), lo ignoramos silenciosamente
-        if (!e.message?.includes('409') && !e.message?.includes('Conflict')) {
-          console.error("Información de OneSignal:", e.message); 
+        if (!e.message?.includes('Conflict')) {
+          console.error("Información OneSignal:", e.message); 
         }
       }
     };
