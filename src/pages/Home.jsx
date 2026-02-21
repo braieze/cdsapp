@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom'; 
-import { Cake, BookOpen, Pin, Link as LinkIcon, ExternalLink, MessageCircle, MoreVertical, X, Edit3, Trash2, PlusCircle, AlertTriangle, Calendar, Heart, Send, AlertCircle, CheckCircle } from 'lucide-react'; // ✅ Añadido AlertCircle y CheckCircle
+import { Cake, BookOpen, Pin, Link as LinkIcon, ExternalLink, MessageCircle, MoreVertical, X, Edit3, Trash2, PlusCircle, AlertTriangle, Calendar, Heart, Send, AlertCircle, CheckCircle } from 'lucide-react';
 import CreatePostModal from '../components/CreatePostModal';
-import TopBar from '../components/TopBar'; 
+import TopBar from '../components/TopBar';
 import BirthdayModal from '../components/BirthdayModal';
 import { db, auth } from '../firebase';
 import { collection, query, orderBy, onSnapshot, deleteDoc, doc, updateDoc, limit } from 'firebase/firestore';
-import OneSignal from 'react-onesignal'; // ✅ Añadido OneSignal
+import { Capacitor } from '@capacitor/core'; // ✅ Detecta si es App Nativa
+import OneSignalWeb from 'react-onesignal'; // ✅ Renombrado para diferenciar de la nativa
 
-// --- SKELETON LOADER ---
+// --- SKELETON LOADER ----
 const PostSkeleton = () => (
   <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm animate-pulse mb-4">
     <div className="flex gap-3 mb-4">
@@ -37,55 +38,71 @@ const EmptyState = () => (
 );
 
 export default function Home() {
-  const navigate = useNavigate(); 
+  const navigate = useNavigate();
   const { dbUser } = useOutletContext();
   const currentUser = auth.currentUser;
   const canCreatePost = dbUser?.role === 'pastor' || dbUser?.area === 'recepcion';
   const isPastor = dbUser?.role === 'pastor';
-  
+  const isNative = Capacitor.isNativePlatform(); // ✅ Detecta si es Android APK
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBirthdayModalOpen, setIsBirthdayModalOpen] = useState(false);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('Todo');
   const [birthdays, setBirthdays] = useState([]);
-  const [toast, setToast] = useState(null); // ✅ Añadido estado de Toast
+  const [toast, setToast] = useState(null);
 
   // Estados de Interfaz
-  const [expandedPosts, setExpandedPosts] = useState(new Set()); 
-  const [reactionPickerOpen, setReactionPickerOpen] = useState(null); 
-  const [menuOpenId, setMenuOpenId] = useState(null); 
-  
+  const [expandedPosts, setExpandedPosts] = useState(new Set());
+  const [reactionPickerOpen, setReactionPickerOpen] = useState(null);
+  const [menuOpenId, setMenuOpenId] = useState(null);
+
   // Modales de Acción
-  const [editingPost, setEditingPost] = useState(null); 
-  const [postToDelete, setPostToDelete] = useState(null); 
-  const [fullImage, setFullImage] = useState(null); 
+  const [editingPost, setEditingPost] = useState(null);
+  const [postToDelete, setPostToDelete] = useState(null);
+  const [fullImage, setFullImage] = useState(null);
   const [showReactionsFor, setShowReactionsFor] = useState(null);
 
   const REACTION_TYPES = ['👍', '❤️', '🔥', '🙏', '😢', '😂'];
 
-  // 🔥 PASO 4: "EL DESPERTADOR"
+  // 🔥 "EL DESPERTADOR" DUAL (Web + Nativo)
   useEffect(() => {
-    if ('serviceWorker' in navigator) {
+    // 1. Lógica para PWA (iOS/Mamá)
+    if (!isNative && 'serviceWorker' in navigator) {
       const handleMessage = (event) => {
         if (event.data && event.data.type === 'NAVIGATE') {
-          console.log("🚀 Navegación forzada desde Notificación:", event.data.url);
+          console.log("🚀 PWA: Navegando a:", event.data.url);
           navigate(event.data.url);
         }
       };
       navigator.serviceWorker.addEventListener('message', handleMessage);
       return () => navigator.serviceWorker.removeEventListener('message', handleMessage);
     }
-  }, [navigate]);
+
+    // 2. Lógica para APK (Android/Ezequiel)
+    if (isNative) {
+      const OneSignal = window.OneSignal || (window.plugins && window.plugins.OneSignal);
+      if (OneSignal) {
+        OneSignal.setNotificationOpenedHandler((jsonData) => {
+          const url = jsonData.notification.additionalData?.url;
+          if (url) {
+            console.log("🚀 Nativo: Navegando a:", url);
+            navigate(url);
+          }
+        });
+      }
+    }
+  }, [navigate, isNative]);
 
   // 1. CARGAR POSTS
   useEffect(() => {
     const q = query(
-      collection(db, 'posts'), 
+      collection(db, 'posts'),
       orderBy('createdAt', 'desc'),
-      limit(15) 
+      limit(15)
     );
-    
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const postsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       postsData.sort((a, b) => (a.isPinned === b.isPinned ? 0 : a.isPinned ? -1 : 1));
@@ -95,27 +112,37 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // ✅ FUNCIÓN DE RESET TOTAL (Implementada)
+  // ✅ FUNCIÓN DE RESET TOTAL DUAL (Reparada)
   const handleHardResetNotifications = async () => {
     try {
       setToast({ message: "Reiniciando sistema...", type: "info" });
-      
-      // 1. Cerramos sesión en OneSignal para limpiar el caché de identidad
-      await OneSignal.logout();
-      
-      // 2. Forzamos la petición de permiso
-      const permission = await OneSignal.Notifications.requestPermission();
-      
-      if (permission === 'granted') {
-        // 3. Si aceptó, volvemos a vincular al usuario
-        await OneSignal.login(currentUser.uid);
-        setToast({ message: "¡Suscripción reactivada con éxito!", type: "success" });
+
+      if (isNative) {
+        // Lógica para el APK de Android
+        const OneSignal = window.OneSignal || (window.plugins && window.plugins.OneSignal);
+        if (OneSignal) {
+          // Desactivamos y reactivamos para forzar registro
+          OneSignal.disablePush(true);
+          setTimeout(() => {
+            OneSignal.disablePush(false);
+            OneSignal.setExternalUserId(currentUser.uid);
+            setToast({ message: "¡Suscripción Android reparada!", type: "success" });
+          }, 1000);
+        }
       } else {
-        setToast({ message: "Debes permitir las notificaciones", type: "error" });
+        // Lógica para la PWA de iOS
+        await OneSignalWeb.logout();
+        const permission = await OneSignalWeb.Notifications.requestPermission();
+        if (permission === 'granted') {
+          await OneSignalWeb.login(currentUser.uid);
+          setToast({ message: "¡Suscripción Web/PWA reactivada!", type: "success" });
+        } else {
+          setToast({ message: "Permiso denegado por el navegador", type: "error" });
+        }
       }
     } catch (e) {
       console.error("Error en Reset:", e);
-      setToast({ message: "Error al reiniciar", type: "error" });
+      setToast({ message: "Error técnico al reiniciar", type: "error" });
     }
   };
 
@@ -128,7 +155,7 @@ export default function Home() {
       snapshot.forEach(doc => {
         const userData = doc.data();
         if (userData.birthday) {
-          const userMonthDay = userData.birthday.slice(5); 
+          const userMonthDay = userData.birthday.slice(5);
           if (userMonthDay === currentMonthDay) {
             birthdayPeople.push({
                 id: doc.id,
@@ -158,7 +185,7 @@ export default function Home() {
   }, [menuOpenId]);
 
   const handleLinkClick = (e, url) => {
-    e.preventDefault(); e.stopPropagation(); 
+    e.preventDefault(); e.stopPropagation();
     if (!url) return;
     if (url.startsWith('/')) { navigate(url); } else { window.open(url, '_blank', 'noopener,noreferrer'); }
   };
@@ -171,7 +198,7 @@ export default function Home() {
 
   const handleReaction = async (post, emoji) => {
     const postRef = doc(db, 'posts', post.id);
-    const currentReactions = post.reactions || []; 
+    const currentReactions = post.reactions || [];
     const myIndex = currentReactions.findIndex(r => r.uid === currentUser.uid);
     let newReactions = [...currentReactions];
     if (myIndex >= 0) {
@@ -206,7 +233,7 @@ export default function Home() {
   const getGroupedReactions = (reactions = []) => {
     const groups = {};
     reactions.forEach(r => { groups[r.emoji] = (groups[r.emoji] || 0) + 1; });
-    return Object.entries(groups); 
+    return Object.entries(groups);
   };
 
   const getBirthdayText = () => {
@@ -222,9 +249,9 @@ export default function Home() {
       <TopBar />
 
       <div className="px-4 mt-4 space-y-4">
-          {/* ✅ BOTÓN DE REPARACIÓN (Implementado arriba de cumpleaños) */}
+          {/* ✅ BOTÓN DE REPARACIÓN DUAL */}
           <div className="flex justify-center">
-            <button 
+            <button
                 onClick={handleHardResetNotifications}
                 className="flex items-center gap-2 px-6 py-3 bg-amber-50 text-amber-600 rounded-2xl border border-amber-200 text-[10px] font-black uppercase tracking-[0.2em] active:scale-95 transition-all shadow-sm"
             >
@@ -233,7 +260,7 @@ export default function Home() {
             </button>
           </div>
 
-          <div 
+          <div
             onClick={() => { if (birthdays.length > 0) setIsBirthdayModalOpen(true); }}
             className={`bg-white p-5 border border-slate-100 rounded-2xl flex items-center justify-between shadow-sm transition-all ${birthdays.length > 0 ? 'cursor-pointer hover:bg-slate-50 hover:shadow-md active:scale-[0.98]' : ''}`}
           >
@@ -399,7 +426,7 @@ export default function Home() {
                       <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
                         <p className="text-xs font-bold text-slate-500 uppercase mb-3">Encuesta</p>
                         {post.poll.options.map((opt, idx) => {
-                          const totalVotes = post.poll.voters.length || 1; 
+                          const totalVotes = post.poll.voters.length || 1;
                           const percent = Math.round((opt.votes / totalVotes) * 100);
                           return (
                             <button key={idx} onClick={() => handleVote(post, idx)} disabled={post.poll.voters.includes(currentUser.uid)} className="w-full relative mb-3 h-10 rounded-lg overflow-hidden bg-white border border-slate-200 text-left hover:bg-slate-50 transition-colors shadow-sm">
@@ -425,7 +452,7 @@ export default function Home() {
         </button>
       )}
 
-      {/* TOAST FEEDBACK (Añadido) */}
+      {/* TOAST FEEDBACK */}
       {toast && (
         <div className="fixed bottom-24 left-6 right-6 z-[400] animate-slide-up">
           <div className={`flex items-center gap-4 px-8 py-5 rounded-[30px] shadow-2xl border-2 ${toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-400' : toast.type === 'info' ? 'bg-amber-500 text-white border-amber-300' : 'bg-slate-900 text-white border-slate-700'}`}>
@@ -464,9 +491,9 @@ export default function Home() {
 
 function CommentPreview({ postId, onClick }) {
   const [previewComments, setPreviewComments] = useState([]);
-  
+
   useEffect(() => {
-    if (!postId) return; 
+    if (!postId) return;
     const q = query(collection(db, `posts/${postId}/comments`), orderBy('createdAt', 'desc'), limit(2));
     const unsubscribe = onSnapshot(q, (snap) => setPreviewComments(snap.docs.map(d => d.data())));
     return () => unsubscribe();
