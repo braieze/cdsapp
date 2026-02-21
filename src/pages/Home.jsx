@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom'; 
-import { Cake, BookOpen, Pin, Link as LinkIcon, ExternalLink, MessageCircle, MoreVertical, X, Edit3, Trash2, PlusCircle, AlertTriangle, Calendar, Heart, Send } from 'lucide-react';
+import { Cake, BookOpen, Pin, Link as LinkIcon, ExternalLink, MessageCircle, MoreVertical, X, Edit3, Trash2, PlusCircle, AlertTriangle, Calendar, Heart, Send, AlertCircle, CheckCircle } from 'lucide-react'; // ✅ Añadido AlertCircle y CheckCircle
 import CreatePostModal from '../components/CreatePostModal';
 import TopBar from '../components/TopBar'; 
 import BirthdayModal from '../components/BirthdayModal';
 import { db, auth } from '../firebase';
 import { collection, query, orderBy, onSnapshot, deleteDoc, doc, updateDoc, limit } from 'firebase/firestore';
+import OneSignal from 'react-onesignal'; // ✅ Añadido OneSignal
 
 // --- SKELETON LOADER ---
 const PostSkeleton = () => (
@@ -48,6 +49,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('Todo');
   const [birthdays, setBirthdays] = useState([]);
+  const [toast, setToast] = useState(null); // ✅ Añadido estado de Toast
 
   // Estados de Interfaz
   const [expandedPosts, setExpandedPosts] = useState(new Set()); 
@@ -62,8 +64,7 @@ export default function Home() {
 
   const REACTION_TYPES = ['👍', '❤️', '🔥', '🙏', '😢', '😂'];
 
-  // 🔥 PASO 4: "EL DESPERTADOR" (Escuchador de Navegación)
-  // Este código soluciona que la app no reaccione a notificaciones cuando está abierta.
+  // 🔥 PASO 4: "EL DESPERTADOR"
   useEffect(() => {
     if ('serviceWorker' in navigator) {
       const handleMessage = (event) => {
@@ -77,9 +78,8 @@ export default function Home() {
     }
   }, [navigate]);
 
-  // 1. CARGAR POSTS (Optimizado con limit)
+  // 1. CARGAR POSTS
   useEffect(() => {
-    // ✅ Añadimos limit(15) para máxima velocidad de carga
     const q = query(
       collection(db, 'posts'), 
       orderBy('createdAt', 'desc'),
@@ -94,6 +94,30 @@ export default function Home() {
     });
     return () => unsubscribe();
   }, []);
+
+  // ✅ FUNCIÓN DE RESET TOTAL (Implementada)
+  const handleHardResetNotifications = async () => {
+    try {
+      setToast({ message: "Reiniciando sistema...", type: "info" });
+      
+      // 1. Cerramos sesión en OneSignal para limpiar el caché de identidad
+      await OneSignal.logout();
+      
+      // 2. Forzamos la petición de permiso
+      const permission = await OneSignal.Notifications.requestPermission();
+      
+      if (permission === 'granted') {
+        // 3. Si aceptó, volvemos a vincular al usuario
+        await OneSignal.login(currentUser.uid);
+        setToast({ message: "¡Suscripción reactivada con éxito!", type: "success" });
+      } else {
+        setToast({ message: "Debes permitir las notificaciones", type: "error" });
+      }
+    } catch (e) {
+      console.error("Error en Reset:", e);
+      setToast({ message: "Error al reiniciar", type: "error" });
+    }
+  };
 
   // 2. CARGAR CUMPLEAÑOS
   useEffect(() => {
@@ -120,7 +144,12 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // ... (Resto del código de funciones: handleReaction, handleConfirmDelete, etc. se mantiene igual)
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   useEffect(() => {
     const closeMenu = () => setMenuOpenId(null);
@@ -192,10 +221,21 @@ export default function Home() {
     <div className="pb-28 animate-fade-in relative min-h-screen bg-slate-50">
       <TopBar />
 
-      <div className="px-4 mt-4">
+      <div className="px-4 mt-4 space-y-4">
+          {/* ✅ BOTÓN DE REPARACIÓN (Implementado arriba de cumpleaños) */}
+          <div className="flex justify-center">
+            <button 
+                onClick={handleHardResetNotifications}
+                className="flex items-center gap-2 px-6 py-3 bg-amber-50 text-amber-600 rounded-2xl border border-amber-200 text-[10px] font-black uppercase tracking-[0.2em] active:scale-95 transition-all shadow-sm"
+            >
+                <AlertCircle size={16} />
+                Arreglar mis notificaciones
+            </button>
+          </div>
+
           <div 
             onClick={() => { if (birthdays.length > 0) setIsBirthdayModalOpen(true); }}
-            className={`bg-white p-5 mb-6 border border-slate-100 rounded-2xl flex items-center justify-between shadow-sm transition-all ${birthdays.length > 0 ? 'cursor-pointer hover:bg-slate-50 hover:shadow-md active:scale-[0.98]' : ''}`}
+            className={`bg-white p-5 border border-slate-100 rounded-2xl flex items-center justify-between shadow-sm transition-all ${birthdays.length > 0 ? 'cursor-pointer hover:bg-slate-50 hover:shadow-md active:scale-[0.98]' : ''}`}
           >
             <div className="flex items-center gap-4">
               <div className={`p-3 rounded-full text-white shadow-sm ${birthdays.length > 0 ? 'bg-gradient-to-tr from-brand-500 to-brand-400 animate-pulse' : 'bg-slate-300'}`}>
@@ -314,7 +354,7 @@ export default function Home() {
                         {post.link && (
                             <div className="mt-5">
                                 <button onClick={(e) => handleLinkClick(e, post.link)} className="w-full bg-slate-900 text-white py-3 rounded-xl text-sm font-bold shadow-md hover:bg-black transition-colors flex items-center justify-center gap-2">
-                                    {post.link.startsWith('/') ? <Calendar size={18}/> : <ExternalLink size={18}/>} {post.linkText || 'Ver más'}
+                                  {post.link.startsWith('/') ? <Calendar size={18}/> : <ExternalLink size={18}/>} {post.linkText || 'Ver más'}
                                 </button>
                             </div>
                         )}
@@ -383,6 +423,16 @@ export default function Home() {
         <button onClick={() => { setEditingPost(null); setIsModalOpen(true); }} className="fixed bottom-28 right-5 w-16 h-16 bg-brand-600 text-white rounded-full shadow-xl flex items-center justify-center hover:scale-105 z-40 transition-transform">
           <PlusCircle size={32} />
         </button>
+      )}
+
+      {/* TOAST FEEDBACK (Añadido) */}
+      {toast && (
+        <div className="fixed bottom-24 left-6 right-6 z-[400] animate-slide-up">
+          <div className={`flex items-center gap-4 px-8 py-5 rounded-[30px] shadow-2xl border-2 ${toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-400' : toast.type === 'info' ? 'bg-amber-500 text-white border-amber-300' : 'bg-slate-900 text-white border-slate-700'}`}>
+            {toast.type === 'success' ? <CheckCircle size={24}/> : <AlertCircle size={24}/>}
+            <span className="text-[11px] font-black uppercase tracking-widest">{toast.message}</span>
+          </div>
+        </div>
       )}
 
       {/* MODALES ACTIVOS */}
