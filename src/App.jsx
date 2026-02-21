@@ -5,7 +5,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore'; 
 import { getToken } from 'firebase/messaging'; 
 import { Toaster } from 'sonner';
-import OneSignal from 'react-onesignal'; // ✅ Importación de OneSignal
+import OneSignal from 'react-onesignal'; 
 
 import EventDetails from './pages/EventDetails';
 import PostDetail from './pages/PostDetail'; 
@@ -23,10 +23,8 @@ import Directory from './pages/Directory';
 import Ofrendar from './pages/Ofrendar'; 
 import Tesoreria from './pages/Tesoreria';
 
-// COMPONENTE DESPERTADOR
 function NavigationHandler() {
   const navigate = useNavigate();
-
   useEffect(() => {
     if ('serviceWorker' in navigator) {
       const handleMessage = (event) => {
@@ -39,58 +37,55 @@ function NavigationHandler() {
       return () => navigator.serviceWorker.removeEventListener('message', handleMessage);
     }
   }, [navigate]);
-
   return null;
 }
 
-function App() {
+export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // ✅ 1. INICIALIZACIÓN GLOBAL DE ONESIGNAL
+  // ✅ 1. ÚNICO EFECTO DE CONTROL: INICIALIZACIÓN + AUTH
   useEffect(() => {
-    const initOneSignal = async () => {
+    const initAndSync = async () => {
+      // A. Inicializar OneSignal primero
       try {
         await OneSignal.init({
           appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
           allowLocalhostAsSecureOrigin: true,
           notifyButton: { enable: false },
         });
-        console.log("🚀 OneSignal Inicializado en App.jsx");
+        console.log("🚀 OneSignal: Motor listo");
       } catch (err) {
-        console.error("Error al inicializar OneSignal:", err);
+        console.error("Error OneSignal Init:", err);
       }
-    };
-    initOneSignal();
-  }, []);
 
-  // ✅ 2. DETECTOR DE NUEVA VERSIÓN (PWA UPDATE)
-  useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.ready.then(registration => {
-        registration.onupdatefound = () => {
-          const installingWorker = registration.installing;
-          if (installingWorker) {
-            installingWorker.onstatechange = () => {
-              if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                console.log("🚀 Nueva versión detectada.");
-                window.swUpdateAvailable = true;
-                window.dispatchEvent(new Event('swUpdated'));
-              }
-            };
-          }
-        };
+      // B. Escuchar cambios de usuario
+      const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+        setUser(currentUser);
+        setLoading(false);
+
+        if (currentUser) {
+          // Ejecutamos la sincronización maestra
+          await syncMaster(currentUser);
+        } else {
+          // Limpiar OneSignal al cerrar sesión
+          try { await OneSignal.logout(); } catch (e) {}
+        }
       });
-    }
+
+      return unsubscribe;
+    };
+
+    const unsubAuth = initAndSync();
+    return () => { if (typeof unsubAuth === 'function') unsubAuth(); };
   }, []);
 
-  // ✅ 3. SINCRONIZACIÓN MAESTRA (FIREBASE + ONESIGNAL)
-  const syncUserAndNotifications = async (currentUser) => {
+  // ✅ 2. SINCRONIZACIÓN MAESTRA (FIREBASE + ONESIGNAL)
+  const syncMaster = async (currentUser) => {
     try {
-      // --- Parte A: Firebase Firestore ---
+      // PARTE 1: FIRESTORE (Asegurar que el usuario existe)
       const userRef = doc(db, 'users', currentUser.uid);
       const userSnap = await getDoc(userRef);
-      
       if (!userSnap.exists()) {
         await setDoc(userRef, {
           displayName: currentUser.displayName,
@@ -103,47 +98,33 @@ function App() {
         });
       }
 
-      // --- Parte B: OneSignal Identity & Subscription ---
-      // Vinculamos el UID de Firebase con OneSignal de inmediato
+      // PARTE 2: ONESIGNAL (Vincular Identidad - SOLUCIONA ERROR 431e55.png)
+      // Forzamos el login para que el External ID se grabe en la nube de OneSignal
       await OneSignal.login(currentUser.uid);
-      
-      // Verificamos permiso. Si no está otorgado, lo pedimos.
-      // Esto soluciona el error "All included players are not subscribed"
-      const permission = await OneSignal.Notifications.permission;
-      if (!permission || permission === 'default') {
-        console.log("📢 Pidiendo permiso de notificación para:", currentUser.uid);
+      console.log(`🔗 OneSignal: Vinculado con UID ${currentUser.uid}`);
+
+      // PARTE 3: PERMISOS (Activar el canal Push)
+      const currentPerm = OneSignal.Notifications.permission;
+      if (!currentPerm || currentPerm !== 'granted') {
+        console.log("📢 Solicitando permiso de notificaciones...");
         await OneSignal.Notifications.requestPermission();
       }
 
-      // --- Parte C: Firebase Cloud Messaging (Opcional si usas OneSignal) ---
+      // PARTE 4: FIREBASE CLOUD MESSAGING (Backup)
       if (Notification.permission === 'granted') {
-        const token = await getToken(messaging, {
-          vapidKey: "BGMeg-zLHj3i9JZ09bYjrsV5P0eVEll09oaXMgHgs6ImBloOLHRFKKjELGxHrAEfd96ZnmlBf7XyoLKXiyIA3Wk"
-        });
-        if (token) {
-          await updateDoc(userRef, { fcmTokens: arrayUnion(token) });
-        }
+        try {
+          const token = await getToken(messaging, {
+            vapidKey: "BGMeg-zLHj3i9JZ09bYjrsV5P0eVEll09oaXMgHgs6ImBloOLHRFKKjELGxHrAEfd96ZnmlBf7XyoLKXiyIA3Wk"
+          });
+          if (token) await updateDoc(userRef, { fcmTokens: arrayUnion(token) });
+        } catch (fcmErr) { console.warn("FCM Token Skip:", fcmErr); }
       }
-      
-      console.log("✅ Sincronización de notificaciones completa para:", currentUser.uid);
+
+      console.log("✅ Sincronización completa para:", currentUser.uid);
     } catch (error) {
-      console.warn("⚠️ Sync falló parcialmente:", error);
+      console.warn("⚠️ Error en Sincronización Maestra:", error.message);
     }
   };
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setLoading(false); 
-      if (currentUser) {
-        syncUserAndNotifications(currentUser);
-      } else {
-        // Al cerrar sesión, informamos a OneSignal (opcional)
-        if (window.OneSignal) OneSignal.logout();
-      }
-    });
-    return () => unsubscribe();
-  }, []);
 
   if (loading) {
     return (
@@ -177,5 +158,3 @@ function App() {
     </BrowserRouter>
   );
 }
-
-export default App;
