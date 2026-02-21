@@ -44,17 +44,19 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // ✅ 1. ÚNICO EFECTO DE CONTROL: INICIALIZACIÓN + AUTH
+// ✅ 1. ÚNICO EFECTO DE CONTROL: INICIALIZACIÓN + AUTH
   useEffect(() => {
     const initAndSync = async () => {
-      // A. Inicializar OneSignal primero
+      // A. Inicializar OneSignal con verificación de duplicados
       try {
-        await OneSignal.init({
-          appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
-          allowLocalhostAsSecureOrigin: true,
-          notifyButton: { enable: false },
-        });
-        console.log("🚀 OneSignal: Motor listo");
+        if (!window.OneSignal || !window.OneSignal.initialized) {
+          await OneSignal.init({
+            appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
+            allowLocalhostAsSecureOrigin: true,
+            notifyButton: { enable: false },
+          });
+          console.log("🚀 OneSignal: Motor listo");
+        }
       } catch (err) {
         console.error("Error OneSignal Init:", err);
       }
@@ -69,7 +71,11 @@ export default function App() {
           await syncMaster(currentUser);
         } else {
           // Limpiar OneSignal al cerrar sesión
-          try { await OneSignal.logout(); } catch (e) {}
+          try { 
+            if (window.OneSignal && window.OneSignal.initialized) {
+              await OneSignal.logout(); 
+            }
+          } catch (e) {}
         }
       });
 
@@ -77,10 +83,12 @@ export default function App() {
     };
 
     const unsubAuth = initAndSync();
-    return () => { if (typeof unsubAuth === 'function') unsubAuth(); };
+    return () => { 
+      if (typeof unsubAuth === 'function') unsubAuth(); 
+    };
   }, []);
 
-  // ✅ 2. SINCRONIZACIÓN MAESTRA (FIREBASE + ONESIGNAL)
+  // ✅ 2. SINCRONIZACIÓN MAESTRA (FIREBASE + ONESIGNAL REFORZADO)
   const syncMaster = async (currentUser) => {
     try {
       // PARTE 1: FIRESTORE (Asegurar que el usuario existe)
@@ -98,14 +106,30 @@ export default function App() {
         });
       }
 
-      // PARTE 2: ONESIGNAL (Vincular Identidad - SOLUCIONA ERROR 431e55.png)
-      // Forzamos el login para que el External ID se grabe en la nube de OneSignal
-      await OneSignal.login(currentUser.uid);
-      console.log(`🔗 OneSignal: Vinculado con UID ${currentUser.uid}`);
+      // PARTE 2: ONESIGNAL (EL MARTILLAZO DE IDENTIDAD)
+      // Usamos un retraso de 2.5 segundos para asegurar que el Service Worker 
+      // y el SDK estén totalmente sincronizados antes de enviar el External ID.
+      // Esto soluciona el campo vacío en image_431e55.png
+      setTimeout(async () => {
+        try {
+          await OneSignal.login(currentUser.uid);
+          
+          // Verificación manual en la consola del cliente
+          const confirmedId = OneSignal.User.getExternalId();
+          if (confirmedId === currentUser.uid) {
+            console.log(`💎 OneSignal: External ID vinculado con éxito: ${confirmedId}`);
+          } else {
+            console.warn("⚠️ OneSignal: El External ID no se vinculó en el primer intento, reintentando...");
+            await OneSignal.login(currentUser.uid);
+          }
+        } catch (idErr) {
+          console.error("❌ Error vinculando External ID:", idErr);
+        }
+      }, 2500);
 
       // PARTE 3: PERMISOS (Activar el canal Push)
       const currentPerm = OneSignal.Notifications.permission;
-      if (!currentPerm || currentPerm !== 'granted') {
+      if (currentPerm !== 'granted') {
         console.log("📢 Solicitando permiso de notificaciones...");
         await OneSignal.Notifications.requestPermission();
       }
@@ -120,7 +144,7 @@ export default function App() {
         } catch (fcmErr) { console.warn("FCM Token Skip:", fcmErr); }
       }
 
-      console.log("✅ Sincronización completa para:", currentUser.uid);
+      console.log("✅ Sincronización maestra lanzada para:", currentUser.uid);
     } catch (error) {
       console.warn("⚠️ Error en Sincronización Maestra:", error.message);
     }
