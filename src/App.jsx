@@ -5,7 +5,8 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore'; 
 import { getToken } from 'firebase/messaging'; 
 import { Toaster } from 'sonner';
-import OneSignal from 'react-onesignal'; 
+import { Capacitor } from '@capacitor/core'; // ✅ Detecta si es App o Web
+import OneSignalWeb from 'react-onesignal'; // ✅ Renombrado para claridad
 
 import EventDetails from './pages/EventDetails';
 import PostDetail from './pages/PostDetail'; 
@@ -43,53 +44,62 @@ function NavigationHandler() {
 export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const isNative = Capacitor.isNativePlatform(); // ✅ TRUE en Android/iOS Nativo
 
-// ✅ 1. ÚNICO EFECTO DE CONTROL: INICIALIZACIÓN + AUTH
+  // ✅ 1. INICIALIZACIÓN DUAL DE ONESIGNAL
   useEffect(() => {
-    const initAndSync = async () => {
-      // A. Inicializar OneSignal de forma segura
-      try {
-        if (!window.OneSignal || !window.OneSignal.initialized) {
-          await OneSignal.init({
-            appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
-            allowLocalhostAsSecureOrigin: true,
-            notifyButton: { enable: false },
-          });
-          console.log("🚀 OneSignal: Motor listo");
-        }
-      } catch (err) {
-        console.warn("Información OneSignal Init:", err.message);
+    const initNotifications = async () => {
+      if (isNative) {
+        // --- LÓGICA PARA ANDROID NATIVO (Capacitor) ---
+        try {
+          // El plugin de OneSignal Nativo se inicializa automáticamente 
+          // mediante el plugin de Cordova que instalaste. Solo configuramos el ID.
+          const OneSignal = window.OneSignal || (window.plugins && window.plugins.OneSignal);
+          if (OneSignal) {
+            OneSignal.setAppId("742a62cd-6d15-427f-8bab-5b8759fabd0a");
+            console.log("🚀 OneSignal Nativo (Android) configurado");
+          }
+        } catch (e) { console.error("Error OneSignal Nativo:", e); }
+      } else {
+        // --- LÓGICA PARA WEB/PWA (iOS) ---
+        try {
+          if (!window.OneSignal || !window.OneSignal.initialized) {
+            await OneSignalWeb.init({
+              appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
+              allowLocalhostAsSecureOrigin: true,
+              notifyButton: { enable: false },
+            });
+            console.log("🚀 OneSignal Web (PWA) listo");
+          }
+        } catch (err) { console.warn("Info OneSignal Web:", err.message); }
       }
+    };
 
-      // B. Escuchar cambios de usuario
-      const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-        setUser(currentUser);
-        setLoading(false);
+    initNotifications();
 
-        if (currentUser) {
-          await syncMaster(currentUser);
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      setLoading(false);
+      if (currentUser) {
+        syncMaster(currentUser);
+      } else {
+        // Logout según plataforma
+        if (isNative) {
+          const OneSignal = window.OneSignal || (window.plugins && window.plugins.OneSignal);
+          if (OneSignal) OneSignal.logout();
         } else {
-          try { 
-            if (window.OneSignal && window.OneSignal.initialized) {
-              await OneSignal.logout(); 
-            }
-          } catch (e) {}
+          if (window.OneSignal && window.OneSignal.initialized) OneSignalWeb.logout();
         }
-      });
+      }
+    });
 
-      return unsubscribe;
-    };
+    return () => unsubscribe();
+  }, [isNative]);
 
-    const unsubAuth = initAndSync();
-    return () => { 
-      if (typeof unsubAuth === 'function') unsubAuth(); 
-    };
-  }, []);
-
-  // ✅ 2. SINCRONIZACIÓN MAESTRA (FIREBASE + ONESIGNAL FINAL)
+  // ✅ 2. SINCRONIZACIÓN MAESTRA (FIREBASE + ONESIGNAL)
   const syncMaster = async (currentUser) => {
     try {
-      // PARTE 1: FIRESTORE (Asegurar que el usuario existe)
+      // PARTE A: FIRESTORE
       const userRef = doc(db, 'users', currentUser.uid);
       const userSnap = await getDoc(userRef);
       if (!userSnap.exists()) {
@@ -104,38 +114,43 @@ export default function App() {
         });
       }
 
-      // PARTE 2: ONESIGNAL (EL MARTILLAZO DE IDENTIDAD)
-      // Usamos un retraso de 3 segundos para que el navegador registre 
-      // el dispositivo antes de intentar ponerle nombre (External ID).
+      // PARTE B: VINCULACIÓN DE IDENTIDAD (External ID)
+      // Esperamos un momento para que el plugin nativo cargue bien
       setTimeout(async () => {
         try {
-          // Este comando es el que llena el "External ID" en el panel
-          await OneSignal.login(currentUser.uid);
-          console.log(`💎 OneSignal: Identidad vinculada para ${currentUser.uid}`);
-        } catch (idErr) {
-          console.error("❌ Error vinculando identidad:", idErr.message);
-        }
-      }, 3000); 
+          if (isNative) {
+            // Nativo (Android)
+            const OneSignal = window.OneSignal || (window.plugins && window.plugins.OneSignal);
+            if (OneSignal) {
+              OneSignal.setExternalUserId(currentUser.uid);
+              console.log(`💎 Nativo: UID ${currentUser.uid} vinculado`);
+            }
+          } else {
+            // Web (iOS)
+            await OneSignalWeb.login(currentUser.uid);
+            console.log(`💎 Web: UID ${currentUser.uid} vinculado`);
+          }
+        } catch (idErr) { console.error("Error vinculando identidad:", idErr); }
+      }, 3000);
 
-      // PARTE 3: PERMISOS (Activar el canal Push)
-      // Usamos una lectura más compatible del permiso
-      const currentPerm = window.Notification?.permission;
-      if (currentPerm !== 'granted') {
-        console.log("📢 Solicitando permiso de notificaciones...");
-        await OneSignal.Notifications.requestPermission();
+      // PARTE C: PERMISOS (Solo para Web, Nativo lo maneja el sistema)
+      if (!isNative) {
+        const currentPerm = window.Notification?.permission;
+        if (currentPerm !== 'granted') {
+          await OneSignalWeb.Notifications.requestPermission();
+        }
       }
 
-      // PARTE 4: FIREBASE CLOUD MESSAGING (Backup)
+      // PARTE D: FIREBASE CLOUD MESSAGING (Backup)
       if (window.Notification?.permission === 'granted') {
         try {
           const token = await getToken(messaging, {
             vapidKey: "BGMeg-zLHj3i9JZ09bYjrsV5P0eVEll09oaXMgHgs6ImBloOLHRFKKjELGxHrAEfd96ZnmlBf7XyoLKXiyIA3Wk"
           });
           if (token) await updateDoc(userRef, { fcmTokens: arrayUnion(token) });
-        } catch (fcmErr) { /* Backup FCM silencioso */ }
+        } catch (fcmErr) { /* FCM Silent */ }
       }
 
-      console.log("✅ Ciclo de sincronización completado");
     } catch (error) {
       console.warn("⚠️ Error general en Sync:", error.message);
     }
