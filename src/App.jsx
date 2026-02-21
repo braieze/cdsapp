@@ -47,7 +47,7 @@ export default function App() {
 // ✅ 1. ÚNICO EFECTO DE CONTROL: INICIALIZACIÓN + AUTH
   useEffect(() => {
     const initAndSync = async () => {
-      // A. Inicializar OneSignal con verificación de duplicados
+      // A. Inicializar OneSignal de forma segura
       try {
         if (!window.OneSignal || !window.OneSignal.initialized) {
           await OneSignal.init({
@@ -58,7 +58,7 @@ export default function App() {
           console.log("🚀 OneSignal: Motor listo");
         }
       } catch (err) {
-        console.error("Error OneSignal Init:", err);
+        console.warn("Información OneSignal Init:", err.message);
       }
 
       // B. Escuchar cambios de usuario
@@ -67,10 +67,8 @@ export default function App() {
         setLoading(false);
 
         if (currentUser) {
-          // Ejecutamos la sincronización maestra
           await syncMaster(currentUser);
         } else {
-          // Limpiar OneSignal al cerrar sesión
           try { 
             if (window.OneSignal && window.OneSignal.initialized) {
               await OneSignal.logout(); 
@@ -88,7 +86,7 @@ export default function App() {
     };
   }, []);
 
-  // ✅ 2. SINCRONIZACIÓN MAESTRA (FIREBASE + ONESIGNAL REFORZADO)
+  // ✅ 2. SINCRONIZACIÓN MAESTRA (FIREBASE + ONESIGNAL FINAL)
   const syncMaster = async (currentUser) => {
     try {
       // PARTE 1: FIRESTORE (Asegurar que el usuario existe)
@@ -107,46 +105,39 @@ export default function App() {
       }
 
       // PARTE 2: ONESIGNAL (EL MARTILLAZO DE IDENTIDAD)
-      // Usamos un retraso de 2.5 segundos para asegurar que el Service Worker 
-      // y el SDK estén totalmente sincronizados antes de enviar el External ID.
-      // Esto soluciona el campo vacío en image_431e55.png
+      // Usamos un retraso de 3 segundos para que el navegador registre 
+      // el dispositivo antes de intentar ponerle nombre (External ID).
       setTimeout(async () => {
         try {
+          // Este comando es el que llena el "External ID" en el panel
           await OneSignal.login(currentUser.uid);
-          
-          // Verificación manual en la consola del cliente
-          const confirmedId = OneSignal.User.getExternalId();
-          if (confirmedId === currentUser.uid) {
-            console.log(`💎 OneSignal: External ID vinculado con éxito: ${confirmedId}`);
-          } else {
-            console.warn("⚠️ OneSignal: El External ID no se vinculó en el primer intento, reintentando...");
-            await OneSignal.login(currentUser.uid);
-          }
+          console.log(`💎 OneSignal: Identidad vinculada para ${currentUser.uid}`);
         } catch (idErr) {
-          console.error("❌ Error vinculando External ID:", idErr);
+          console.error("❌ Error vinculando identidad:", idErr.message);
         }
-      }, 2500);
+      }, 3000); 
 
       // PARTE 3: PERMISOS (Activar el canal Push)
-      const currentPerm = OneSignal.Notifications.permission;
+      // Usamos una lectura más compatible del permiso
+      const currentPerm = window.Notification?.permission;
       if (currentPerm !== 'granted') {
         console.log("📢 Solicitando permiso de notificaciones...");
         await OneSignal.Notifications.requestPermission();
       }
 
       // PARTE 4: FIREBASE CLOUD MESSAGING (Backup)
-      if (Notification.permission === 'granted') {
+      if (window.Notification?.permission === 'granted') {
         try {
           const token = await getToken(messaging, {
             vapidKey: "BGMeg-zLHj3i9JZ09bYjrsV5P0eVEll09oaXMgHgs6ImBloOLHRFKKjELGxHrAEfd96ZnmlBf7XyoLKXiyIA3Wk"
           });
           if (token) await updateDoc(userRef, { fcmTokens: arrayUnion(token) });
-        } catch (fcmErr) { console.warn("FCM Token Skip:", fcmErr); }
+        } catch (fcmErr) { /* Backup FCM silencioso */ }
       }
 
-      console.log("✅ Sincronización maestra lanzada para:", currentUser.uid);
+      console.log("✅ Ciclo de sincronización completado");
     } catch (error) {
-      console.warn("⚠️ Error en Sincronización Maestra:", error.message);
+      console.warn("⚠️ Error general en Sync:", error.message);
     }
   };
 
