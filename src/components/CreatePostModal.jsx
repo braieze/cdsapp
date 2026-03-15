@@ -41,33 +41,41 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     setImage(null); setPreview(null); setShowPoll(false); setPollOptions(['', '']);
   };
 
-  // ✅ NUEVA LLÓGICA DE NOTIFICACIONES: DIRECTO CON ONESIGNAL
+  // ✅ FUNCIÓN DE NOTIFICACIÓN PROFESIONAL (ANDROID + IOS + WEB)
   const sendPushNotification = async (postTitle, postContent, postUrl) => {
     try {
       const APP_ID = "742a62cd-6d15-427f-8bab-5b8759fabd0a";
-      // 👇 REEMPLAZÁ ESTO CON TU REST API KEY DE ONESIGNAL
-   	const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
+      const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
+
+      if (!REST_API_KEY) {
+        console.error("❌ Error: No se encontró la REST_API_KEY en Vercel.");
+        return;
+      }
 
       const response = await fetch("https://onesignal.com/api/v1/notifications", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "application/json; charset=utf-8",
           "Authorization": `Basic ${REST_API_KEY}`
         },
         body: JSON.stringify({
           app_id: APP_ID,
-          included_segments: ["Subscribed Users"], // Se lo manda a todos los que aceptaron recibir avisos
+          // 🎯 Apuntamos a todos los segmentos posibles para no dejar a nadie fuera
+          included_segments: ["Total Subscriptions", "Subscribed Users"], 
           headings: { en: postTitle, es: postTitle },
           contents: { 
-            en: postContent ? postContent.substring(0, 100) : "Toca para ver más detalles.", 
-            es: postContent ? postContent.substring(0, 100) : "Toca para ver más detalles." 
+            en: postContent ? postContent.substring(0, 100) : "Toca para ver las novedades.", 
+            es: postContent ? postContent.substring(0, 100) : "Toca para ver las novedades." 
           },
-          data: { route: postUrl } // Dato oculto para cuando toquen la notificación
+          data: { route: postUrl }, // Ruta para que la app abra el post exacto
+          isIos: true, // Forzar entrega en iPhones
+          ios_badgeType: "Increase",
+          ios_badgeCount: 1
         })
       });
 
       const data = await response.json();
-      console.log("✅ Notificación OneSignal disparada:", data);
+      console.log("✅ Respuesta de OneSignal:", data);
     } catch (error) {
       console.error("❌ Error disparando notificación:", error);
     }
@@ -162,10 +170,10 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           commentsCount: 0
         });
 
-        // 🔥 DISPARAMOS LA NOTIFICACIÓN MASIVA
+        // 🔥 NOTIFICACIÓN AUTOMÁTICA AL CREAR
         await sendPushNotification(
             title || `Nueva ${type}`, 
-            text || "Hay nuevo contenido en la app.",
+            text || "Novedades en la app.",
             `/post/${docRef.id}` 
         );
       }
@@ -210,14 +218,14 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
 
           {type === 'Devocional' && (
             <input 
-              type="text" placeholder="Título del Devocional (Portada)" value={title} onChange={(e) => setTitle(e.target.value)}
+              type="text" placeholder="Título del Devocional" value={title} onChange={(e) => setTitle(e.target.value)}
               className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 mb-3 font-bold text-slate-800 focus:outline-none focus:border-brand-500"
             />
           )}
 
           <textarea
             value={text} onChange={(e) => setText(e.target.value)}
-            placeholder={type === 'Devocional' ? "Escribe la reflexión completa..." : "¿Qué quieres compartir?"}
+            placeholder={type === 'Devocional' ? "Escribe la reflexión..." : "¿Qué quieres compartir?"}
             className="w-full h-24 p-3 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:border-brand-500 resize-none text-sm mb-3"
           />
 
