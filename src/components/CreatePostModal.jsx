@@ -46,7 +46,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     try {
       const APP_ID = "742a62cd-6d15-427f-8bab-5b8759fabd0a";
       // 👇 REEMPLAZÁ ESTO CON TU REST API KEY DE ONESIGNAL
-      const REST_API_KEY = "os_v2_app_oqvgftlncvbh7c5llodvt6v5bikz2ubvw4qus64sn6evrben46fh5lxcyr7voi5hjnlr7lpw5aikwschjuuzjuf4mq7kc66yjmktdga"; 
+   	const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
 
       const response = await fetch("https://onesignal.com/api/v1/notifications", {
         method: "POST",
