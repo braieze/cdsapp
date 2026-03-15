@@ -1,5 +1,13 @@
 {
-  "appId": "com.example.app",
-  "appName": "cdsapp",
-  "webDir": "dist"
+  "appId": "com.cds.conquistadores",
+  "appName": "Servidores cds",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "plugins": {
+    "GoogleAuth": {
+      "scopes": ["profile", "email"],
+      "serverClientId": "113502014192-l7pm3otnju2qarejmfe9sg88f06qmcmu.apps.googleusercontent.com",
+      "forceCodeForRefreshToken": true
+    }
+  }
 }

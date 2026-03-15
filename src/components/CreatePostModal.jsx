@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Image as ImageIcon, Send, Loader2, Link as LinkIcon, Tag, BarChart2, Plus, Trash2, Save } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { db, auth } from '../firebase'; 
-import { collection, addDoc, serverTimestamp, doc, updateDoc, getDocs } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 
 export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
   const [text, setText] = useState('');
@@ -41,50 +41,44 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     setImage(null); setPreview(null); setShowPoll(false); setPollOptions(['', '']);
   };
 
-  // ✅ PASO 3: GESTIÓN DE TOKENS OPTIMIZADA
+  // ✅ NUEVA LÓGICA DE NOTIFICACIONES: DIRECTO CON ONESIGNAL
   const sendPushNotification = async (postTitle, postContent, postUrl) => {
     try {
-      const usersSnap = await getDocs(collection(db, "users"));
-      let tokens = [];
+      const APP_ID = "742a62cd-6d15-427f-8bab-5b8759fabd0a";
+      // 👇 REEMPLAZÁ ESTO CON TU REST API KEY DE ONESIGNAL
+      const REST_API_KEY = "os_v2_app_oqvgftlncvbh7c5llodvt6v5bikz2ubvw4qus64sn6evrben46fh5lxcyr7voi5hjnlr7lpw5aikwschjuuzjuf4mq7kc66yjmktdga"; 
 
-      usersSnap.forEach((doc) => {
-        const data = doc.data();
-        if (data.fcmTokens && Array.isArray(data.fcmTokens)) {
-          tokens.push(...data.fcmTokens);
-        }
-      });
-
-      // Filtramos duplicados y tokens inválidos (vacíos o muy cortos)
-      const uniqueTokens = [...new Set(tokens)].filter(t => t && t.length > 10);
-
-      if (uniqueTokens.length === 0) return;
-
-      const BACKEND_URL = "https://backend-notificaciones-mceh.onrender.com/send-notification";
-
-      await fetch(BACKEND_URL, {
+      const response = await fetch("https://onesignal.com/api/v1/notifications", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Basic ${REST_API_KEY}`
+        },
         body: JSON.stringify({
-          title: String(postTitle || "Nueva Publicación"),
-          body: String(postContent ? postContent.substring(0, 100) : "Toca para ver más."),
-          tokens: uniqueTokens,
-          url: postUrl || "/" 
+          app_id: APP_ID,
+          included_segments: ["Subscribed Users"], // Se lo manda a todos los que aceptaron recibir avisos
+          headings: { en: postTitle, es: postTitle },
+          contents: { 
+            en: postContent ? postContent.substring(0, 100) : "Toca para ver más detalles.", 
+            es: postContent ? postContent.substring(0, 100) : "Toca para ver más detalles." 
+          },
+          data: { route: postUrl } // Dato oculto para cuando toquen la notificación
         })
       });
-      console.log(`✅ Notificación enviada a ${uniqueTokens.length} dispositivos`);
+
+      const data = await response.json();
+      console.log("✅ Notificación OneSignal disparada:", data);
     } catch (error) {
-      console.error("❌ Error enviando notificación:", error.message);
+      console.error("❌ Error disparando notificación:", error);
     }
   };
 
   if (!isOpen) return null;
 
-  // ✅ PASO 2: COMPRESIÓN DE IMÁGENES (Subidas rápidas)
   const handleImageChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     
-    // Opciones de compresión profesional: máximo 0.6MB
     const options = { 
       maxSizeMB: 0.6, 
       maxWidthOrHeight: 1280, 
@@ -93,7 +87,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     };
 
     try {
-      setLoading(true); // Bloqueamos brevemente mientras comprime
+      setLoading(true); 
       const compressedFile = await imageCompression(file, options);
       setImage(compressedFile);
       setPreview(URL.createObjectURL(compressedFile));
@@ -168,7 +162,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           commentsCount: 0
         });
 
-        // 🔥 NOTIFICACIÓN CON REDIRECCIÓN AL POST ESPECÍFICO
+        // 🔥 DISPARAMOS LA NOTIFICACIÓN MASIVA
         await sendPushNotification(
             title || `Nueva ${type}`, 
             text || "Hay nuevo contenido en la app.",

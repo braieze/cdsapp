@@ -6,8 +6,8 @@ import TopBar from '../components/TopBar';
 import BirthdayModal from '../components/BirthdayModal';
 import { db, auth } from '../firebase';
 import { collection, query, orderBy, onSnapshot, deleteDoc, doc, updateDoc, limit } from 'firebase/firestore';
-import { Capacitor } from '@capacitor/core'; // ✅ Detecta si es App Nativa
-import OneSignalWeb from 'react-onesignal'; // ✅ Renombrado para diferenciar de la nativa
+import { Capacitor } from '@capacitor/core'; 
+import OneSignalWeb from 'react-onesignal'; 
 
 // --- SKELETON LOADER ----
 const PostSkeleton = () => (
@@ -43,7 +43,7 @@ export default function Home() {
   const currentUser = auth.currentUser;
   const canCreatePost = dbUser?.role === 'pastor' || dbUser?.area === 'recepcion';
   const isPastor = dbUser?.role === 'pastor';
-  const isNative = Capacitor.isNativePlatform(); // ✅ Detecta si es Android APK
+  const isNative = Capacitor.isNativePlatform(); 
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBirthdayModalOpen, setIsBirthdayModalOpen] = useState(false);
@@ -66,7 +66,7 @@ export default function Home() {
 
   const REACTION_TYPES = ['👍', '❤️', '🔥', '🙏', '😢', '😂'];
 
-  // 🔥 "EL DESPERTADOR" DUAL (Web + Nativo)
+  // 🔥 "EL DESPERTADOR" DUAL (Web + Nativo) - PROTEGIDO
   useEffect(() => {
     // 1. Lógica para PWA (iOS/Mamá)
     if (!isNative && 'serviceWorker' in navigator) {
@@ -80,17 +80,21 @@ export default function Home() {
       return () => navigator.serviceWorker.removeEventListener('message', handleMessage);
     }
 
-    // 2. Lógica para APK (Android/Ezequiel)
+    // 2. Lógica para APK (Android/Ezequiel) - ENVUELTA EN TRY/CATCH PARA EVITAR CRASH
     if (isNative) {
-      const OneSignal = window.OneSignal || (window.plugins && window.plugins.OneSignal);
-      if (OneSignal) {
-        OneSignal.setNotificationOpenedHandler((jsonData) => {
-          const url = jsonData.notification.additionalData?.url;
-          if (url) {
-            console.log("🚀 Nativo: Navegando a:", url);
-            navigate(url);
-          }
-        });
+      try {
+        const OneSignal = window.OneSignal || (window.plugins && window.plugins.OneSignal);
+        if (OneSignal && typeof OneSignal.setNotificationOpenedHandler === 'function') {
+          OneSignal.setNotificationOpenedHandler((jsonData) => {
+            const url = jsonData?.notification?.additionalData?.url;
+            if (url) {
+              console.log("🚀 Nativo: Navegando a:", url);
+              navigate(url);
+            }
+          });
+        }
+      } catch (err) {
+        console.warn("OneSignal nativo no inicializado aún, ignorando...");
       }
     }
   }, [navigate, isNative]);
@@ -108,6 +112,9 @@ export default function Home() {
       postsData.sort((a, b) => (a.isPinned === b.isPinned ? 0 : a.isPinned ? -1 : 1));
       setPosts(postsData);
       setLoading(false);
+    }, (error) => {
+      console.error("Error al cargar posts:", error);
+      setLoading(false);
     });
     return () => unsubscribe();
   }, []);
@@ -118,23 +125,20 @@ export default function Home() {
       setToast({ message: "Reiniciando sistema...", type: "info" });
 
       if (isNative) {
-        // Lógica para el APK de Android
         const OneSignal = window.OneSignal || (window.plugins && window.plugins.OneSignal);
         if (OneSignal) {
-          // Desactivamos y reactivamos para forzar registro
           OneSignal.disablePush(true);
           setTimeout(() => {
             OneSignal.disablePush(false);
-            OneSignal.setExternalUserId(currentUser.uid);
+            if (currentUser?.uid) OneSignal.setExternalUserId(currentUser.uid);
             setToast({ message: "¡Suscripción Android reparada!", type: "success" });
           }, 1000);
         }
       } else {
-        // Lógica para la PWA de iOS
         await OneSignalWeb.logout();
         const permission = await OneSignalWeb.Notifications.requestPermission();
         if (permission === 'granted') {
-          await OneSignalWeb.login(currentUser.uid);
+          if (currentUser?.uid) await OneSignalWeb.login(currentUser.uid);
           setToast({ message: "¡Suscripción Web/PWA reactivada!", type: "success" });
         } else {
           setToast({ message: "Permiso denegado por el navegador", type: "error" });
@@ -197,14 +201,15 @@ export default function Home() {
   };
 
   const handleReaction = async (post, emoji) => {
+    if (!currentUser) return; // Seguro de vida si no cargó el usuario
     const postRef = doc(db, 'posts', post.id);
     const currentReactions = post.reactions || [];
-    const myIndex = currentReactions.findIndex(r => r.uid === currentUser.uid);
+    const myIndex = currentReactions.findIndex(r => r.uid === currentUser?.uid);
     let newReactions = [...currentReactions];
     if (myIndex >= 0) {
       if (currentReactions[myIndex].emoji === emoji) { newReactions.splice(myIndex, 1); } else { newReactions[myIndex].emoji = emoji; }
     } else {
-      newReactions.push({ uid: currentUser.uid, name: currentUser.displayName, photo: currentUser.photoURL, emoji: emoji });
+      newReactions.push({ uid: currentUser?.uid, name: currentUser?.displayName || 'Usuario', photo: currentUser?.photoURL, emoji: emoji });
     }
     await updateDoc(postRef, { reactions: newReactions });
     setReactionPickerOpen(null);
@@ -221,10 +226,13 @@ export default function Home() {
   const handleEdit = (post) => { setEditingPost(post); setIsModalOpen(true); setMenuOpenId(null); };
 
   const handleVote = async (post, optionIndex) => {
-    if (post.poll.voters.includes(currentUser.uid)) return alert('Ya votaste.');
+    if (!currentUser) return; // Seguro de vida
+    const votersList = post.poll.voters || [];
+    if (votersList.includes(currentUser?.uid)) return alert('Ya votaste.');
+    
     const newOptions = [...post.poll.options];
     newOptions[optionIndex].votes += 1;
-    const newVoters = [...post.poll.voters, currentUser.uid];
+    const newVoters = [...votersList, currentUser?.uid];
     await updateDoc(doc(db, 'posts', post.id), { poll: { ...post.poll, options: newOptions, voters: newVoters } });
   };
 
@@ -245,7 +253,7 @@ export default function Home() {
   };
 
   return (
-    <div className="pb-28 animate-fade-in relative min-h-screen bg-slate-50">
+    <div className="pb-36 animate-fade-in relative min-h-screen bg-slate-50">
       <TopBar />
 
       <div className="px-4 mt-4 space-y-4">
@@ -299,7 +307,7 @@ export default function Home() {
               const isExpanded = expandedPosts.has(post.id);
 
               const ManagementMenu = () => (
-                  (isPastor || post.authorId === currentUser.uid) && (
+                  (isPastor || post.authorId === currentUser?.uid) && (
                   <div className="relative" onClick={e => e.stopPropagation()}>
                     <button onClick={() => setMenuOpenId(post.id)} className="p-2 text-slate-300 hover:text-slate-600 transition-colors bg-white/50 rounded-full"><MoreVertical size={24}/></button>
                     {menuOpenId === post.id && (
@@ -375,7 +383,8 @@ export default function Home() {
                           <img src={post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}`} className="w-8 h-8 rounded-full" />
                           <div>
                               <p className="text-sm font-bold text-slate-800">{post.authorName}</p>
-                              <p className="text-xs text-slate-400">{new Date(post.createdAt?.toDate()).toLocaleDateString()}</p>
+                              {/* ✅ FIX DE FECHA INVISIBLE */}
+                              <p className="text-xs text-slate-400">{post.createdAt ? new Date(post.createdAt.toDate()).toLocaleDateString() : 'Justo ahora'}</p>
                           </div>
                         </div>
                         {post.link && (
@@ -400,7 +409,8 @@ export default function Home() {
                         <img src={post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}`} className="w-12 h-12 rounded-full border border-slate-100 shadow-sm" />
                         <div>
                           <h3 className="text-base font-bold text-slate-900">{post.authorName} <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded uppercase ml-1 align-middle">{post.role}</span></h3>
-                          <p className="text-xs text-slate-500 mt-0.5">{new Date(post.createdAt?.toDate()).toLocaleDateString()}</p>
+                          {/* ✅ FIX DE FECHA INVISIBLE */}
+                          <p className="text-xs text-slate-500 mt-0.5">{post.createdAt ? new Date(post.createdAt.toDate()).toLocaleDateString() : 'Justo ahora'}</p>
                         </div>
                     </div>
                     <ManagementMenu />
@@ -426,16 +436,17 @@ export default function Home() {
                       <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
                         <p className="text-xs font-bold text-slate-500 uppercase mb-3">Encuesta</p>
                         {post.poll.options.map((opt, idx) => {
-                          const totalVotes = post.poll.voters.length || 1;
+                          const votersList = post.poll.voters || [];
+                          const totalVotes = votersList.length || 1;
                           const percent = Math.round((opt.votes / totalVotes) * 100);
                           return (
-                            <button key={idx} onClick={() => handleVote(post, idx)} disabled={post.poll.voters.includes(currentUser.uid)} className="w-full relative mb-3 h-10 rounded-lg overflow-hidden bg-white border border-slate-200 text-left hover:bg-slate-50 transition-colors shadow-sm">
+                            <button key={idx} onClick={() => handleVote(post, idx)} disabled={votersList.includes(currentUser?.uid)} className="w-full relative mb-3 h-10 rounded-lg overflow-hidden bg-white border border-slate-200 text-left hover:bg-slate-50 transition-colors shadow-sm">
                               <div className="absolute top-0 left-0 h-full bg-brand-100 transition-all duration-500" style={{ width: `${percent}%` }}></div>
                               <div className="absolute inset-0 flex items-center justify-between px-4 text-sm font-bold z-10 text-slate-700"><span>{opt.text}</span><span>{percent}%</span></div>
                             </button>
                           )
                         })}
-                        <p className="text-xs text-slate-400 text-right mt-2">{post.poll.voters.length} votos totales</p>
+                        <p className="text-xs text-slate-400 text-right mt-2">{(post.poll.voters || []).length} votos totales</p>
                       </div>
                     </div>
                   )}

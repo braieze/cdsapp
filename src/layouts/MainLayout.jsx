@@ -27,7 +27,7 @@ export default function MainLayout() {
   }, [user]);
 
   return (
-    <div className="min-h-[100dvh] bg-slate-50 pb-20 font-outfit text-slate-800">
+    <div className="min-h-[100dvh] bg-slate-50 pb-36 font-outfit text-slate-800">
       <main className="max-w-md mx-auto animate-fade-in relative bg-slate-50">
         {/* Pasamos dbUser a las páginas hijas por si lo necesitan */}
         <Outlet context={{ dbUser }} /> 

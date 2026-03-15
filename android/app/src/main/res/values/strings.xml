@@ -2,6 +2,7 @@
 <resources>
     <string name="app_name">cdsapp</string>
     <string name="title_activity_main">cdsapp</string>
-    <string name="package_name">com.example.app</string>
-    <string name="custom_url_scheme">com.example.app</string>
+    <string name="package_name">com.cds.conquistadores</string>
+    <string name="custom_url_scheme">com.cds.conquistadores</string>
+    <string name="server_client_id">113502014192-l7pm3otnju2qarejmfe9sg88f06qmcmu.apps.googleusercontent.com</string>
 </resources>

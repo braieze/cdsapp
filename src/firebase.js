@@ -4,6 +4,7 @@ import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getMessaging } from "firebase/messaging"; 
 
+// Tu configuración correcta para conquistadores-app
 const firebaseConfig = {
   apiKey: "AIzaSyCqz0ya0Y4DcJ10r6vdT7a1kcY09lCbWbo",
   authDomain: "conquistadores-app.firebaseapp.com",

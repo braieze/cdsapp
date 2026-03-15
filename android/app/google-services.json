@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "113502014192",
+    "project_id": "conquistadores-app",
+    "storage_bucket": "conquistadores-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:113502014192:android:575b0a6242222a8672d035",
+        "android_client_info": {
+          "package_name": "com.cds.conquistadores"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "113502014192-h8o2oee68lg751nnlev80gv8ksgrodss.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.cds.conquistadores",
+            "certificate_hash": "2016594cc422eeb6598c8ac4a48ed061d1e91db0"
+          }
+        },
+        {
+          "client_id": "113502014192-l7pm3otnju2qarejmfe9sg88f06qmcmu.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD02hP-Saot5HCJTMOBr4tyn0BOAlI1LUI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "113502014192-l7pm3otnju2qarejmfe9sg88f06qmcmu.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
