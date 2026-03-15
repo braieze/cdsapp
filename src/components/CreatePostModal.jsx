@@ -41,7 +41,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     setImage(null); setPreview(null); setShowPoll(false); setPollOptions(['', '']);
   };
 
-  // ✅ NUEVA LÓGICA DE NOTIFICACIONES: DIRECTO CON ONESIGNAL
+  // ✅ NUEVA LLÓGICA DE NOTIFICACIONES: DIRECTO CON ONESIGNAL
   const sendPushNotification = async (postTitle, postContent, postUrl) => {
     try {
       const APP_ID = "742a62cd-6d15-427f-8bab-5b8759fabd0a";
