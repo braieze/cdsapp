@@ -26,13 +26,11 @@ import Directory from './pages/Directory';
 import Ofrendar from './pages/Ofrendar'; 
 import Tesoreria from './pages/Tesoreria';
 
-// ✅ COMPONENTE DE NAVEGACIÓN (Punto #2 y #3)
 function NavigationHandler() {
   const navigate = useNavigate();
   const isNative = Capacitor.isNativePlatform();
 
   useEffect(() => {
-    // Escuchador para WEB (Service Worker)
     if ('serviceWorker' in navigator) {
       const handleMessage = (event) => {
         if (event.data && event.data.type === 'NAVIGATE') {
@@ -43,16 +41,13 @@ function NavigationHandler() {
       return () => navigator.serviceWorker.removeEventListener('message', handleMessage);
     }
 
-    // ✅ ESCUCHADOR PARA NATIVO (Android/iOS)
     if (isNative) {
       const handleNotificationClick = (event) => {
         const route = event.notification.additionalData?.route;
         if (route) {
-          console.log("Navegando a ruta nativa:", route);
           navigate(route);
         }
       };
-
       OneSignal.Notifications.addEventListener("click", handleNotificationClick);
       return () => OneSignal.Notifications.removeEventListener("click", handleNotificationClick);
     }
@@ -70,16 +65,36 @@ export default function App() {
     const initNotifications = async () => {
       try {
         if (isNative) {
-          // Inicializar Nativo
+          // ✅ INICIALIZACIÓN NATIVA (ANDROID/IOS)
           OneSignal.initialize("742a62cd-6d15-427f-8bab-5b8759fabd0a");
+          // Pedimos permiso explícito al arrancar
+          OneSignal.Notifications.requestPermission(true);
         } else {
-          // Inicializar Web
+          // ✅ INICIALIZACIÓN WEB (PWA)
           await OneSignalWeb.init({
             appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
             allowLocalhostAsSecureOrigin: true,
+            // Agregamos esto para asegurar que el prompt aparezca
+            promptOptions: {
+                slidedown: {
+                    enabled: true,
+                    autoPrompt: true,
+                    timeDelay: 5,
+                    pageViews: 1
+                }
+            }
           });
+
+          // Forzamos registro de Service Worker si es posible
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/OneSignalSDKWorker.js')
+              .then(() => console.log("SW Registered"))
+              .catch(err => console.error("SW Error:", err));
+          }
         }
-      } catch (e) { console.warn("Error OneSignal Init:", e); }
+      } catch (e) { 
+        console.error("Critical OneSignal Error:", e); 
+      }
     };
 
     initNotifications();
@@ -88,7 +103,7 @@ export default function App() {
       setUser(currentUser);
       setLoading(false); 
       if (currentUser) {
-        setTimeout(() => syncMaster(currentUser), 1000);
+        setTimeout(() => syncMaster(currentUser), 1500);
       }
     });
 
@@ -111,7 +126,7 @@ export default function App() {
         });
       }
 
-      // Vinculación de ID para notificaciones personales (Tareas)
+      // ✅ LOGINS PARA NOTIFICACIONES INDIVIDUALES
       if (isNative) {
         OneSignal.login(currentUser.uid);
       } else {
@@ -124,10 +139,7 @@ export default function App() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-900">
-        <div className="flex flex-col items-center gap-4">
-            <div className="w-12 h-12 border-4 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
-            <span className="text-white/50 font-bold text-xs uppercase tracking-widest">Cargando CD SAPP...</span>
-        </div>
+        <div className="w-12 h-12 border-4 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }

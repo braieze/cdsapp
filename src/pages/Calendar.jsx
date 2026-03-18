@@ -68,7 +68,7 @@ export default function CalendarPage() {
         },
         body: JSON.stringify({
           app_id: APP_ID,
-          included_segments: ["Total Subscriptions", "Subscribed Users"],
+          included_segments: ["Subscribed Users"],
           headings: { en: title, es: title },
           contents: { en: body, es: body },
           url: webUrl, // Para Web/iPhone
