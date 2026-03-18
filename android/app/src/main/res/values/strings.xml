@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">cdsapp</string>
+    <string name="app_name">Servidores CDS</string>
     <string name="title_activity_main">cdsapp</string>
     <string name="package_name">com.cds.conquistadores</string>
     <string name="custom_url_scheme">com.cds.conquistadores</string>

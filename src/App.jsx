@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { auth, db, messaging } from './firebase'; 
+import { auth, db } from './firebase'; 
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore'; 
-import { getToken } from 'firebase/messaging'; 
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'; 
 import { Toaster } from 'sonner';
 import { Capacitor } from '@capacitor/core'; 
 import OneSignalWeb from 'react-onesignal'; 
@@ -11,7 +10,7 @@ import OneSignalWeb from 'react-onesignal';
 // ✅ IMPORTACIÓN OFICIAL DE ONESIGNAL (VERSIÓN 5)
 import OneSignal from 'onesignal-cordova-plugin';
 
-// Importaciones
+// Importaciones de Páginas
 import EventDetails from './pages/EventDetails';
 import PostDetail from './pages/PostDetail'; 
 import MainLayout from './layouts/MainLayout';
@@ -27,9 +26,13 @@ import Directory from './pages/Directory';
 import Ofrendar from './pages/Ofrendar'; 
 import Tesoreria from './pages/Tesoreria';
 
+// ✅ COMPONENTE DE NAVEGACIÓN (Punto #2 y #3)
 function NavigationHandler() {
   const navigate = useNavigate();
+  const isNative = Capacitor.isNativePlatform();
+
   useEffect(() => {
+    // Escuchador para WEB (Service Worker)
     if ('serviceWorker' in navigator) {
       const handleMessage = (event) => {
         if (event.data && event.data.type === 'NAVIGATE') {
@@ -39,7 +42,22 @@ function NavigationHandler() {
       navigator.serviceWorker.addEventListener('message', handleMessage);
       return () => navigator.serviceWorker.removeEventListener('message', handleMessage);
     }
-  }, [navigate]);
+
+    // ✅ ESCUCHADOR PARA NATIVO (Android/iOS)
+    if (isNative) {
+      const handleNotificationClick = (event) => {
+        const route = event.notification.additionalData?.route;
+        if (route) {
+          console.log("Navegando a ruta nativa:", route);
+          navigate(route);
+        }
+      };
+
+      OneSignal.Notifications.addEventListener("click", handleNotificationClick);
+      return () => OneSignal.Notifications.removeEventListener("click", handleNotificationClick);
+    }
+  }, [navigate, isNative]);
+
   return null;
 }
 
@@ -49,31 +67,27 @@ export default function App() {
   const isNative = Capacitor.isNativePlatform();
 
   useEffect(() => {
-    // 1. Init OneSignal con control de errores total
     const initNotifications = async () => {
       try {
         if (isNative) {
-          // ✅ ENCENDEMOS EL MOTOR NATIVO V5
+          // Inicializar Nativo
           OneSignal.initialize("742a62cd-6d15-427f-8bab-5b8759fabd0a");
         } else {
-          // Encendemos el motor web
+          // Inicializar Web
           await OneSignalWeb.init({
             appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
             allowLocalhostAsSecureOrigin: true,
           });
         }
-      } catch (e) { console.warn("Notif delay", e); }
+      } catch (e) { console.warn("Error OneSignal Init:", e); }
     };
 
     initNotifications();
 
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      // ✅ IMPORTANTE: Liberamos el loading ANTES de sincronizar para que la UI no se trabe
       setLoading(false); 
-      
       if (currentUser) {
-        // Ejecutamos syncMaster con un pequeño delay para no estorbar al renderizado inicial
         setTimeout(() => syncMaster(currentUser), 1000);
       }
     });
@@ -97,20 +111,23 @@ export default function App() {
         });
       }
 
-      // ✅ VINCULACIÓN DE USUARIO OFICIAL V5
+      // Vinculación de ID para notificaciones personales (Tareas)
       if (isNative) {
         OneSignal.login(currentUser.uid);
       } else {
         await OneSignalWeb.login(currentUser.uid);
       }
 
-    } catch (error) { console.warn("Background Sync failed", error); }
+    } catch (error) { console.warn("Sync failed", error); }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0a0f0d]">
-        <div className="w-10 h-10 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen flex items-center justify-center bg-slate-900">
+        <div className="flex flex-col items-center gap-4">
+            <div className="w-12 h-12 border-4 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
+            <span className="text-white/50 font-bold text-xs uppercase tracking-widest">Cargando CD SAPP...</span>
+        </div>
       </div>
     );
   }
@@ -136,7 +153,6 @@ export default function App() {
           <Route path="directorio" element={<Directory />} />
           <Route path="tesoreria" element={<Tesoreria />} /> 
         </Route>
-        {/* Captura de rutas inexistentes para evitar pantalla blanca */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </HashRouter>

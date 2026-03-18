@@ -8,9 +8,7 @@ import { format, isToday, isYesterday } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 
-// ✅ Capacitor para detectar si es el APK
 import { Capacitor } from '@capacitor/core';
-// ✅ Importación OFICIAL de OneSignal V5
 import OneSignal from 'onesignal-cordova-plugin';
 
 const VAPID_KEY = "BGMeg-zLHj3i9JZ09bYjrsV5P0eVEll09oaXMgHgs6ImBloOLHRFKKjELGxHrAEfd96ZnmlBf7XyoLKXiyIA3Wk";
@@ -37,7 +35,6 @@ export default function TopBar({ title, subtitle }) {
       setIsSubscribed(localFlag === 'true');
       return;
     }
-
     if (!('Notification' in window)) { setIsSupported(false); return; }
     const localFlag = localStorage.getItem('fcm_active');
     const browserPerm = Notification.permission;
@@ -78,7 +75,8 @@ export default function TopBar({ title, subtitle }) {
                 title: data.title || 'Nueva publicación',
                 subtitle: data.type,
                 timestamp: data.createdAt?.toMillis() || Date.now(),
-                link: '/',
+                // ✅ PUNTO #3 CORREGIDO: Ahora el link lleva al post específico
+                link: `/post/${d.id}`,
                 icon: data.type === 'Devocional' ? BookOpen : Megaphone,
                 color: data.type === 'Urgente' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600',
                 isUrgent: data.type === 'Urgente'
@@ -133,27 +131,18 @@ export default function TopBar({ title, subtitle }) {
       }
   }, [notifications, readIds, isSubscribed]);
 
-  // ✅ ACTIVAR NOTIFICACIONES: VERSIÓN 5 OFICIAL
   const enableNotifications = async () => {
       if (!isSupported) { toast.error("No soportado en este dispositivo"); return; }
       if (loadingAction) return;
       setLoadingAction(true);
-      
       try {
           if (isNative) {
-              // 1. Pedir Permiso al celular (Obligatorio en Android 13+)
               await OneSignal.Notifications.requestPermission(true);
-              
-              // 2. Vincular usuario actual
-              if (currentUser?.uid) {
-                  OneSignal.login(currentUser.uid);
-              }
-
+              if (currentUser?.uid) { OneSignal.login(currentUser.uid); }
               localStorage.setItem('fcm_active', 'true');
               setIsSubscribed(true);
               toast.success("¡Notificaciones activadas!");
           } else {
-              // LÓGICA WEB (PWA)
               const result = await Notification.requestPermission();
               if (result === 'granted' && messaging) {
                   const token = await getToken(messaging, { vapidKey: VAPID_KEY });
@@ -166,29 +155,22 @@ export default function TopBar({ title, subtitle }) {
               }
           }
       } catch (error) { 
-          console.error("Error FATAL al activar:", error);
-          toast.error("Error crítico al enlazar dispositivo"); 
-      } finally { 
-          setLoadingAction(false); 
-      }
+          console.error(error);
+          toast.error("Error al activar avisos"); 
+      } finally { setLoadingAction(false); }
   };
 
-  // ✅ DESACTIVAR NOTIFICACIONES: VERSIÓN 5 OFICIAL
   const disableNotifications = async () => {
       if (loadingAction) return;
       if (!window.confirm("¿Desactivar avisos en este dispositivo?")) return;
       setLoadingAction(true);
-      
       try {
-          if (isNative) {
-              OneSignal.logout(); // En V5 se usa logout para desvincular
-          } else {
-              if (messaging) {
-                  const token = await getToken(messaging, { vapidKey: VAPID_KEY });
-                  if (token) {
-                      await updateDoc(doc(db, 'users', currentUser.uid), { fcmTokens: arrayRemove(token) });
-                      await deleteToken(messaging);
-                  }
+          if (isNative) { OneSignal.logout(); }
+          else if (messaging) {
+              const token = await getToken(messaging, { vapidKey: VAPID_KEY });
+              if (token) {
+                  await updateDoc(doc(db, 'users', currentUser.uid), { fcmTokens: arrayRemove(token) });
+                  await deleteToken(messaging);
               }
           }
       } catch (error) { console.error(error); } finally {
@@ -205,6 +187,7 @@ export default function TopBar({ title, subtitle }) {
         try { await updateDoc(doc(db, 'users', currentUser.uid), { readNotifications: arrayUnion(notif.id) }); } catch (e) {}
     }
     setIsOpen(false);
+    // ✅ PUNTO #3: Ahora navegará a /post/ID o /calendario/ID correctamente
     navigate(notif.link);
   };
 
@@ -259,12 +242,21 @@ export default function TopBar({ title, subtitle }) {
   return (
     <>
       <div className="sticky top-0 z-40 bg-slate-50/95 backdrop-blur-sm px-4 pt-4 pb-2 flex justify-between items-center">
-        <div className="flex flex-col">
-            <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-white font-bold text-base shadow-lg shadow-brand-200">C</div>
-                <span className="text-lg font-black text-slate-800 tracking-tight">Conquistadores</span>
+        <div className="flex items-center gap-3">
+            {/* ✅ PUNTO #4: ICONO Y NOMBRE PERSONALIZADOS */}
+            <div className="w-10 h-10 bg-brand-600 rounded-xl flex items-center justify-center shadow-lg shadow-brand-100 overflow-hidden">
+                {/* Cambia '/logo-conquistadores.png' por la ruta real de tu imagen */}
+                <img 
+                    src="/logo.png" 
+                    alt="Logo" 
+                    className="w-full h-full object-cover"
+                    onError={(e) => { e.target.style.display = 'none'; e.target.parentNode.innerHTML = '<span class="text-white font-bold">C</span>'; }}
+                />
             </div>
-            <p className="text-xs text-slate-400 font-bold ml-10 uppercase tracking-tighter">Hola, {currentUser?.displayName?.split(' ')[0]}</p>
+            <div className="flex flex-col">
+                <span className="text-lg font-black text-slate-800 tracking-tight leading-none">CD SAPP</span>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter mt-1">Hola, {currentUser?.displayName?.split(' ')[0]}</p>
+            </div>
         </div>
         <button onClick={() => setIsOpen(true)} className="relative p-2.5 bg-white rounded-full border border-slate-100 shadow-sm text-slate-600 active:scale-90 transition-all">
             <Bell size={24} />
@@ -290,7 +282,7 @@ export default function TopBar({ title, subtitle }) {
                         </button>
                     ) : (
                         <button onClick={enableNotifications} disabled={loadingAction} className={`w-full py-3 px-4 rounded-2xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all font-black text-[10px] uppercase tracking-widest ${loadingAction ? 'bg-slate-200 text-slate-400' : 'bg-slate-900 text-white'}`}>
-                            {loadingAction ? <Loader2 size={16} className="animate-spin"/> : <Bell size={16} className="animate-pulse"/>} ACTIVAR GLOBITO ROJO 🔴
+                            {loadingAction ? <Loader2 size={16} className="animate-spin"/> : <Bell size={16} className="animate-pulse"/>} ACTIVAR NOTIFICACIONES 🔔
                         </button>
                     )}
                 </div>
