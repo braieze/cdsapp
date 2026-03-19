@@ -12,11 +12,12 @@ import BirthdayModal from '../components/BirthdayModal';
 import { db, auth } from '../firebase';
 import { 
   collection, query, orderBy, onSnapshot, 
-  deleteDoc, doc, updateDoc, limit, arrayUnion, arrayRemove, runTransaction
+  deleteDoc, doc, updateDoc, limit, arrayUnion, arrayRemove, runTransaction, getDoc, setDoc
 } from 'firebase/firestore';
 import { Capacitor } from '@capacitor/core'; 
 import OneSignalWeb from 'react-onesignal'; 
 import OneSignal from 'onesignal-cordova-plugin';
+import { format } from 'date-fns';
 
 // --- 1. SUBCOMPONENTES ---
 
@@ -143,38 +144,97 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // 2. CARGAR CUMPLEAÑOS
+  // 2. CARGAR CUMPLEAÑOS Y AUTO-NOTIFICACIÓN
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
       const today = new Date();
-      const currentMonthDay = `${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      const currentMonthDay = format(today, 'MM-dd');
       const birthdayPeople = [];
+      const allUsers = [];
+
       snapshot.forEach(doc => {
-        const userData = doc.data();
+        const userData = { id: doc.id, ...doc.data() };
+        allUsers.push(userData);
         if (userData.birthday && userData.birthday.slice(5) === currentMonthDay) {
-            birthdayPeople.push({ id: doc.id, ...userData });
+            birthdayPeople.push(userData);
         }
       });
       setBirthdays(birthdayPeople);
+
+      // Disparar revisión automática de notificaciones a las 11am
+      if (allUsers.length > 0) {
+        checkAndNotifyBirthdays(allUsers);
+      }
     });
     return () => unsubscribe();
   }, []);
 
-  // ✅ FUNCIONES DE ACCIÓN
+  // ✅ SISTEMA AUTOMÁTICO DE CUMPLEAÑOS
+  const checkAndNotifyBirthdays = async (allUsers) => {
+    try {
+      const today = new Date();
+      const todayStr = format(today, 'yyyy-MM-dd');
+      const currentTime = format(today, 'HH:mm');
+      
+      if (currentTime < "11:00") return;
+
+      const taskRef = doc(db, 'system_tasks', 'birthday_notif');
+      const taskSnap = await getDoc(taskRef);
+      
+      if (taskSnap.exists() && taskSnap.data().lastSent === todayStr) return;
+
+      const currentMonthDay = format(today, 'MM-dd');
+      const bdayPeople = allUsers.filter(u => u.birthday && u.birthday.slice(5) === currentMonthDay);
+
+      if (bdayPeople.length > 0) {
+        const names = bdayPeople.map(u => u.displayName.split(' ')[0]).join(', ');
+        const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
+        
+        await fetch("https://onesignal.com/api/v1/notifications", {
+          method: "POST",
+          headers: { "Content-Type": "application/json; charset=utf-8", "Authorization": `Basic ${REST_API_KEY}` },
+          body: JSON.stringify({
+            app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
+            included_segments: ["Total Subscriptions"],
+            headings: { en: "🎂 ¡Cumpleaños de hoy!", es: "🎂 ¡Cumpleaños de hoy!" },
+            contents: { en: `Hoy celebramos a: ${names}. ¡Escríbeles un mensaje!`, es: `Hoy celebramos a: ${names}. ¡Escríbeles un mensaje!` },
+            url: "https://cdsapp.vercel.app/#/",
+            data: { route: "/" }
+          })
+        });
+      }
+      await setDoc(taskRef, { lastSent: todayStr }, { merge: true });
+    } catch (e) { console.error(e); }
+  };
+
+  // ✅ FUNCIONES DE ACCIÓN CORREGIDAS
 
   const handleConfirmDelete = async () => {
     if (!postToDelete) return;
     try {
       await deleteDoc(doc(db, 'posts', postToDelete.id));
-      setToast({ message: "Publicación eliminada correctamente", type: "success" });
+      setToast({ message: "Publicación eliminada", type: "success" });
       setPostToDelete(null);
-    } catch (e) {
-      setToast({ message: "Error al eliminar", type: "error" });
-    }
+    } catch (e) { setToast({ message: "Error al eliminar", type: "error" }); }
   };
 
   const handleVote = async (post, optionIdx) => {
     if (!currentUser) return;
+    
+    // Optimistic UI: Actualizamos localmente para que la barra se mueva YA
+    const updatedPosts = posts.map(p => {
+      if (p.id === post.id) {
+        const voters = p.poll.voters || [];
+        if (voters.includes(currentUser.uid)) return p;
+        const newOptions = [...p.poll.options];
+        newOptions[optionIdx].votes += 1;
+        return { ...p, poll: { ...p.poll, options: newOptions, voters: [...voters, currentUser.uid] } };
+      }
+      return p;
+    });
+    setPosts(updatedPosts);
+
+    // Persistencia en Firebase
     const postRef = doc(db, 'posts', post.id);
     try {
       await runTransaction(db, async (transaction) => {
@@ -185,9 +245,14 @@ export default function Home() {
 
         const newOptions = [...data.poll.options];
         newOptions[optionIdx].votes += 1;
+        
+        // Guardamos también el nombre del votante para las listas
+        const voteRecord = { uid: currentUser.uid, name: currentUser.displayName, option: data.poll.options[optionIdx].text };
+        
         transaction.update(postRef, {
           'poll.options': newOptions,
-          'poll.voters': arrayUnion(currentUser.uid)
+          'poll.voters': arrayUnion(currentUser.uid),
+          'poll.votesDetails': arrayUnion(voteRecord)
         });
       });
     } catch (e) { console.error("Error voto:", e); }
@@ -221,6 +286,13 @@ export default function Home() {
     } catch (e) { setToast({ message: "Error al reiniciar", type: "error" }); }
   };
 
+  const handleLinkClick = (e, url) => {
+    e.preventDefault(); e.stopPropagation();
+    if (!url) return;
+    if (url.startsWith('/')) { navigate(url); } 
+    else { window.open(url.startsWith('http') ? url : `https://${url}`, '_blank', 'noopener,noreferrer'); }
+  };
+
   const filteredPosts = filter === 'Todo' ? posts : posts.filter(post => post.type === filter);
 
   return (
@@ -238,7 +310,7 @@ export default function Home() {
             <div className="flex items-center gap-4">
               <div className={`p-3 rounded-2xl text-white ${birthdays.length > 0 ? 'bg-brand-500 animate-pulse' : 'bg-slate-300'}`}><Cake size={26} /></div>
               <div>
-                <p className="text-base font-black text-slate-800 leading-none mb-1">Cumpleaños</p>
+                <p className="text-base font-black text-slate-800 leading-none mb-1 text-left">Cumpleaños</p>
                 <p className={`text-[10px] font-black uppercase tracking-widest ${birthdays.length > 0 ? 'text-brand-600' : 'text-slate-400'}`}>
                   {birthdays.length > 0 ? `${birthdays.length} Hermanos hoy 🎂` : "Nadie cumple hoy"}
                 </p>
@@ -267,7 +339,7 @@ export default function Home() {
                 <div className="flex justify-between items-start mb-4 px-6">
                   <div className="flex items-center gap-3">
                       <img src={post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}`} className="w-12 h-12 rounded-2xl border shadow-sm object-cover" />
-                      <div>
+                      <div className="text-left">
                         <h3 className="text-xs font-black text-slate-900 uppercase tracking-tight">{post.authorName} <span className="text-[8px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded ml-1 tracking-widest font-black uppercase">{post.role}</span></h3>
                         <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">{post.createdAt ? new Date(post.createdAt.toDate()).toLocaleDateString() : 'Reciente'}</p>
                       </div>
@@ -295,7 +367,7 @@ export default function Home() {
                   )}
                 </div>
 
-                <div className="px-6 mb-4 cursor-pointer" onClick={() => navigate(`/post/${post.id}`)}>
+                <div className="px-6 mb-4 cursor-pointer text-left" onClick={() => navigate(`/post/${post.id}`)}>
                   {post.type === 'Devocional' && <h2 className="text-xl font-black text-slate-800 mb-2 uppercase tracking-tighter">{post.title}</h2>}
                   <div className={`text-[15px] text-slate-800 whitespace-pre-wrap leading-relaxed line-clamp-4 font-medium tracking-tight`}>{post.content}</div>
                 </div>
@@ -304,7 +376,7 @@ export default function Home() {
                 
                 {post.link && (
                     <div className="px-6 mb-4">
-                        <button onClick={(e) => { e.stopPropagation(); navigate(post.link); }} className="flex items-center justify-between w-full bg-slate-50 border border-slate-100 p-4 rounded-[22px] transition-all hover:bg-slate-100 active:scale-[0.98]">
+                        <button onClick={(e) => handleLinkClick(e, post.link)} className="flex items-center justify-between w-full bg-slate-50 border border-slate-100 p-4 rounded-[22px] transition-all hover:bg-slate-100 active:scale-[0.98]">
                           <span className="text-xs font-black text-brand-700 flex items-center gap-3 uppercase tracking-widest">{post.link.startsWith('/') ? <Calendar size={18} /> : <LinkIcon size={18} />} {post.linkText || 'Ver más'}</span>
                           <ExternalLink size={16} className="text-slate-300" />
                         </button>
@@ -314,11 +386,11 @@ export default function Home() {
                 {post.poll && (
                    <div className="px-6 mb-4">
                       <div className="bg-slate-50 rounded-[24px] p-5 border border-slate-100">
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Encuesta rápida</p>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 text-left">Encuesta rápida</p>
                         {post.poll.options.map((opt, idx) => {
                           const voters = post.poll.voters || [];
-                          const total = voters.length || 1;
-                          const percent = Math.round((opt.votes / total) * 100);
+                          const total = voters.length || 0;
+                          const percent = total > 0 ? Math.round((opt.votes / total) * 100) : 0;
                           return (
                             <button key={idx} onClick={() => handleVote(post, idx)} disabled={voters.includes(currentUser?.uid)} className="w-full relative mb-3 h-12 rounded-xl overflow-hidden bg-white border border-slate-100 text-left active:scale-[0.98] transition-transform">
                               <div className="absolute top-0 left-0 h-full bg-brand-100/50 transition-all duration-700" style={{ width: `${percent}%` }}></div>
@@ -326,6 +398,11 @@ export default function Home() {
                             </button>
                           )
                         })}
+                        {isModerator && (
+                          <div className="mt-2 text-[8px] font-black text-slate-300 uppercase text-center tracking-widest">
+                            Votos totales: {post.poll.voters?.length || 0}
+                          </div>
+                        )}
                       </div>
                    </div>
                 )}
@@ -373,14 +450,14 @@ export default function Home() {
       <CreatePostModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} postToEdit={editingPost} />
       {fullImage && <ImageModal src={fullImage} onClose={() => setFullImage(null)} />}
       {showReactionsFor && <ReactionsListModal post={showReactionsFor} onClose={() => setShowReactionsFor(null)} />}
-      <BirthdayModal isOpen={isBirthdayModalOpen} onClose={() => setIsBirthdayModalOpen(false)} users={birthdays} />
+      <BirthdayModal isOpen={isBirthdayModalOpen} onClose={() => setIsBirthdayModalOpen(false)} users={birthdays} dbUser={dbUser} />
 
       {postToDelete && (
         <div className="fixed inset-0 z-[1000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white w-full max-w-xs rounded-[40px] p-8 shadow-2xl text-center">
             <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4"><AlertTriangle size={32}/></div>
             <h3 className="font-black text-slate-800 text-lg mb-2 tracking-tight uppercase">¿Eliminar post?</h3>
-            <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-8 leading-relaxed">Esta acción es irreversible.</p>
+            <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-8 leading-relaxed text-center">Esta acción es irreversible.</p>
             <div className="flex flex-col gap-3">
               <button onClick={handleConfirmDelete} className="w-full py-4 bg-rose-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-rose-200">Confirmar</button>
               <button onClick={() => setPostToDelete(null)} className="w-full py-4 bg-slate-50 text-slate-400 rounded-2xl font-black text-[10px] uppercase tracking-widest">Cancelar</button>

@@ -46,7 +46,6 @@ export default function ServiceDetails() {
   const CLOUD_NAME = "djmkggzjp"; 
   const UPLOAD_PRESET = "ml_default";
 
-  // ✅ ROLES MODERADORES
   const isModerator = userRole === 'pastor' || userRole === 'lider';
 
   useEffect(() => {
@@ -56,7 +55,7 @@ export default function ServiceDetails() {
     }
   }, [toast]);
 
-  // Sincronización OneSignal
+  // Login en OneSignal para asegurar que este dispositivo reciba sus notis
   useEffect(() => {
     if (currentUser) {
       if (isNative) { OneSignal.login(currentUser.uid); } 
@@ -64,7 +63,6 @@ export default function ServiceDetails() {
     }
   }, [currentUser, isNative]);
 
-  // Carga de Datos
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -86,24 +84,27 @@ export default function ServiceDetails() {
     fetchData();
   }, [id, navigate, currentUser.uid]);
 
-  // Listener de Chat
+  // Escuchador de Chat (con scroll automático al final)
   useEffect(() => {
     const q = query(collection(db, `events/${id}/notes`), orderBy('createdAt', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setMessages(msgs);
       
+      // Marcar como leído
       msgs.forEach(async (m) => {
         if (!m.readBy?.includes(currentUser.uid)) {
           await updateDoc(doc(db, `events/${id}/notes`, m.id), { readBy: arrayUnion(currentUser.uid) });
         }
       });
-      setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+
+      // 🔥 SCROLL AL FINAL: Siempre inicia con el último mensaje
+      setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: 'smooth' }), 150);
     });
     return () => unsubscribe();
   }, [id, currentUser.uid]);
 
-  // ✅ FUNCIÓN DE NOTIFICACIÓN UNIVERSAL
+  // ✅ FUNCIÓN DE NOTIFICACIÓN CORREGIDA (Deep Linking + Destinatarios Inteligentes)
   const sendOneSignalNotification = async (userIds, title, message) => {
     try {
       const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
@@ -112,7 +113,7 @@ export default function ServiceDetails() {
 
       const path = `/servicios/${id}`;
 
-      const response = await fetch("https://onesignal.com/api/v1/notifications", {
+      await fetch("https://onesignal.com/api/v1/notifications", {
         method: "POST",
         headers: {
           "Content-Type": "application/json; charset=utf-8",
@@ -123,14 +124,15 @@ export default function ServiceDetails() {
           include_external_user_ids: userIds,
           headings: { en: title, es: title },
           contents: { en: message, es: message },
-          url: `https://cdsapp.vercel.app/#${path}`,
+          // 🎯 web_url + data para abrir la App directamente
+          web_url: `https://cdsapp.vercel.app/#${path}`,
           data: { route: path },
+          isAnyWeb: true,
+          isAndroid: true,
           isIos: true,
           priority: 10
         })
       });
-      const data = await response.json();
-      console.log("✅ OneSignal Chat:", data);
     } catch (e) { console.error("Error Notif:", e); }
   };
 
@@ -142,8 +144,7 @@ export default function ServiceDetails() {
       if (selectedFile) {
         const compressed = await imageCompression(selectedFile, { maxSizeMB: 0.8 });
         const formData = new FormData();
-        formData.append("file", compressed);
-        formData.append("upload_preset", UPLOAD_PRESET);
+        formData.append("file", compressed); formData.append("upload_preset", UPLOAD_PRESET);
         const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { method: "POST", body: formData });
         const data = await res.json();
         imageUrl = data.secure_url;
@@ -162,20 +163,22 @@ export default function ServiceDetails() {
         createdAt: serverTimestamp(), readBy: [currentUser.uid], isPinned: false
       });
       
-      // ✅ NOTIFICAR SEGÚN ROL
+      // ✅ NOTIFICACIÓN SEGÚN QUIÉN ESCRIBE
       let targetIds = [];
       const assignedNames = Object.values(event.assignments || {}).flat();
       
       if (isModerator) {
-        // Pastor avisa a los asignados
+        // Pastor avisa a todo el equipo asignado
         targetIds = allUsers.filter(u => assignedNames.includes(u.displayName) && u.id !== currentUser.uid).map(u => u.id);
       } else {
-        // Servidor avisa a los Pastores/Líderes
+        // Servidor avisa a los moderadores (Pastores/Líderes)
         targetIds = allUsers.filter(u => (u.role === 'pastor' || u.role === 'lider') && u.id !== currentUser.uid).map(u => u.id);
       }
 
-      const notifBody = imageUrl ? "📷 Envió una imagen" : checklist ? "📋 Envió una lista de tareas" : txt;
-      await sendOneSignalNotification(targetIds, `${currentUser.displayName} en ${event.title}`, notifBody);
+      const cleanTitle = `${currentUser.displayName} en ${event.title}`;
+      const cleanBody = imageUrl ? "📷 Imagen enviada" : checklist ? "📋 Nueva lista de tareas" : txt;
+      
+      await sendOneSignalNotification(targetIds, cleanTitle, cleanBody);
       
       setNewMessage(''); setSelectedFile(null); setImagePreview(null);
       setShowChecklistCreator(false); setTempTasks(['']);
@@ -186,10 +189,11 @@ export default function ServiceDetails() {
     const eventRef = doc(db, 'events', id);
     await updateDoc(eventRef, { [`confirmations.${currentUser.displayName}`]: status, updatedAt: serverTimestamp() });
     
+    // ✅ Notificar al Pastor sobre la confirmación
     if (status) {
       const moderators = allUsers.filter(u => (u.role === 'pastor' || u.role === 'lider') && u.id !== currentUser.uid).map(u => u.id);
-      const statusText = status === 'confirmed' ? 'Confirmó asistencia ✓' : 'No puede asistir ✗';
-      await sendOneSignalNotification(moderators, `Estado: ${currentUser.displayName}`, `${statusText} para ${event.title}`);
+      const statusLabel = status === 'confirmed' ? 'Confirmó asistencia ✅' : 'Marcó que no puede ir ❌';
+      await sendOneSignalNotification(moderators, `Estado: ${currentUser.displayName}`, `${statusLabel} - ${event.title}`);
     }
 
     setEvent(prev => ({ ...prev, confirmations: { ...prev.confirmations, [currentUser.displayName]: status } }));
@@ -244,7 +248,7 @@ export default function ServiceDetails() {
       
       <header className="bg-slate-900 text-white pt-12 pb-4 px-5 rounded-b-[40px] shadow-xl z-50 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
-          <button onClick={() => navigate('/servicios')} className="p-2 bg-white/10 rounded-full"><ChevronLeft size={22} /></button>
+          <button onClick={() => navigate('/servicios')} className="p-2 bg-white/10 rounded-full active:scale-90 transition-transform"><ChevronLeft size={22} /></button>
           <div className="text-center flex-1">
             <h1 className="text-xl font-black truncate uppercase tracking-tighter">{event.title}</h1>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{format(new Date(event.date + 'T00:00:00'), "d MMMM", { locale: es })} • {event.time} hs</p>
@@ -257,112 +261,126 @@ export default function ServiceDetails() {
               <div className="bg-brand-500/20 p-2 rounded-xl text-brand-400"><Users size={18} /></div>
               <div className="min-w-0 flex-1"><p className="text-[8px] font-black text-white/40 uppercase">Tu función</p><p className="text-sm font-bold text-white capitalize truncate">{myRole?.replace(/_/g, ' ') || 'Servidor'}</p></div>
            </div>
-           <button onClick={() => navigate(`/calendario/${id}`)} className="text-[9px] font-black bg-brand-600 text-white px-3 py-1.5 rounded-full flex items-center gap-1 active:scale-95 transition-all">EQUIPO <ExternalLink size={10}/></button>
+           <button onClick={() => navigate(`/calendario/${id}`)} className="text-[9px] font-black bg-brand-600 text-white px-4 py-2 rounded-full flex items-center gap-1.5 active:scale-95 transition-all shadow-lg uppercase tracking-widest">Ver Equipo</button>
         </div>
 
         {!myStatus ? (
-          <div className="flex gap-2"><button onClick={() => handleResponse('confirmed')} className="flex-1 bg-emerald-500 text-white py-2 rounded-xl font-black text-[9px] uppercase shadow-lg">Confirmar ✓</button><button onClick={() => handleResponse('declined')} className="flex-1 bg-white/10 text-white/60 py-2 rounded-xl font-black text-[9px] uppercase">No puedo</button></div>
+          <div className="flex gap-2"><button onClick={() => handleResponse('confirmed')} className="flex-1 bg-emerald-500 text-white py-2.5 rounded-xl font-black text-[10px] uppercase shadow-lg active:scale-95 transition-all">Confirmar ✓</button><button onClick={() => handleResponse('declined')} className="flex-1 bg-white/10 text-white/60 py-2.5 rounded-xl font-black text-[10px] uppercase active:scale-95">No puedo</button></div>
         ) : (
-          <div className={`p-2 rounded-xl flex items-center justify-between border ${myStatus === 'confirmed' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'}`}>
-            <span className="text-[9px] font-black uppercase flex items-center gap-2">{myStatus === 'confirmed' ? <CheckCircle size={14}/> : <XCircle size={14}/>} {myStatus === 'confirmed' ? 'LISTO' : 'BAJA'}</span>
+          <div className={`p-2.5 rounded-xl flex items-center justify-between border ${myStatus === 'confirmed' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'}`}>
+            <span className="text-[9px] font-black uppercase flex items-center gap-2">{myStatus === 'confirmed' ? <CheckCircle size={14}/> : <XCircle size={14}/>} {myStatus === 'confirmed' ? 'ESTARÉ PRESENTE' : 'ME DOY DE BAJA'}</span>
             <button onClick={() => handleResponse(null)} className="text-[8px] font-black uppercase underline ml-2">Cambiar</button>
           </div>
         )}
       </header>
 
       <main className="flex-1 overflow-hidden flex flex-col relative bg-white">
+        {/* Panel Superior de Notas y Mensaje Fijado */}
         <div className="bg-slate-50/95 backdrop-blur-md z-40 border-b border-slate-200 flex-shrink-0">
             <div className="p-4 flex items-center justify-between">
-              <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><MessageSquare size={14} className="text-brand-500"/> Notas de Equipo</h3>
-              <button onClick={() => setHideReceipts(!hideReceipts)} className="p-1.5 text-slate-400">{hideReceipts ? <Eye size={16} /> : <EyeOff size={16} />}</button>
+              <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><MessageSquare size={14} className="text-brand-500"/> Chat de Servicio</h3>
+              <button onClick={() => setHideReceipts(!hideReceipts)} className="p-1.5 text-slate-400 active:scale-90">{hideReceipts ? <Eye size={16} /> : <EyeOff size={16} />}</button>
             </div>
+            
+            {/* MENSAJE FIJADO (Visible siempre arriba si existe) */}
             {pinnedMessage && (
               <div onClick={() => {
                   const el = document.getElementById(`msg-${pinnedMessage.id}`);
                   el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              }} className="bg-brand-600 text-white p-4 shadow-lg flex items-start gap-3 animate-slide-down cursor-pointer">
-                <Pin size={18} className="flex-shrink-0 mt-1 opacity-60"/><div className="flex-1"><p className="text-[9px] font-black uppercase opacity-40 mb-1">Fijado por el Pastor</p><MessageContent m={pinnedMessage} isPinnedView={true} /></div>
-                {isModerator && <button onClick={(e) => { e.stopPropagation(); togglePin(pinnedMessage.id, true); }} className="p-1"><X size={18}/></button>}
+              }} className="bg-brand-600 text-white p-4 shadow-xl flex items-start gap-3 animate-slide-down cursor-pointer border-b-2 border-brand-700">
+                <Pin size={18} className="flex-shrink-0 mt-1 opacity-60"/><div className="flex-1"><p className="text-[9px] font-black uppercase opacity-50 mb-1 tracking-widest">Información importante</p><MessageContent m={pinnedMessage} isPinnedView={true} /></div>
+                {isModerator && <button onClick={(e) => { e.stopPropagation(); togglePin(pinnedMessage.id, true); }} className="p-1.5 bg-black/10 rounded-full"><X size={16}/></button>}
               </div>
             )}
         </div>
 
+        {/* Scroll de mensajes */}
         <div className="flex-1 overflow-y-auto p-5 space-y-6 scroll-smooth no-scrollbar">
           {messages.map((m) => {
               const isMy = m.uid === currentUser.uid;
               const readers = allUsers.filter(u => m.readBy?.includes(u.id) && u.id !== m.uid).map(u => u.displayName?.split(' ')[0]);
               return (
-                <div key={m.id} id={`msg-${m.id}`} className="flex flex-col">
+                <div key={m.id} id={`msg-${m.id}`} className="flex flex-col animate-fade-in">
                     <div className={`flex flex-col ${isMy ? 'items-end' : 'items-start'}`}>
                         <div className="relative group max-w-[85%]">
                           <MessageContent m={m} />
                           <div className={`absolute top-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity ${isMy ? '-left-14' : '-right-14'}`}>
-                             {(isModerator || isMy) && <button onClick={() => deleteMessage(m.id)} className="p-1.5 bg-red-50 text-red-500 rounded-full active:scale-90 transition-transform"><Trash2 size={12}/></button>}
-                             {isModerator && <button onClick={() => togglePin(m.id, m.isPinned)} className={`p-1.5 rounded-full active:scale-90 transition-transform ${m.isPinned ? 'bg-brand-600 text-white' : 'bg-brand-50 text-brand-600'}`}><Pin size={12}/></button>}
+                             {(isModerator || isMy) && <button onClick={() => deleteMessage(m.id)} className="p-1.5 bg-red-50 text-red-500 rounded-full shadow-sm"><Trash2 size={12}/></button>}
+                             {isModerator && <button onClick={() => togglePin(m.id, m.isPinned)} className={`p-1.5 rounded-full shadow-sm ${m.isPinned ? 'bg-brand-600 text-white' : 'bg-brand-50 text-brand-600'}`}><Pin size={12}/></button>}
                           </div>
                         </div>
                         <div className={`mt-1 px-1 flex flex-col ${isMy ? 'items-end' : 'items-start'}`}>
-                          <span className="text-[8px] font-black text-slate-400 uppercase">{m.sender?.split(' ')[0]}</span>
-                          {!hideReceipts && readers.length > 0 && <button onClick={() => setShowReadersId(m.id)} className="text-[7px] font-bold text-slate-300 mt-0.5 flex items-center gap-1"><Eye size={8} /> Visto por {readers.length}</button>}
+                          <span className="text-[8px] font-black text-slate-400 uppercase">{m.sender?.split(' ')[0]} • {m.createdAt ? format(m.createdAt.toDate(), 'HH:mm') : ''}</span>
+                          {!hideReceipts && readers.length > 0 && <button onClick={() => setShowReadersId(m.id)} className="text-[7px] font-black text-slate-300 mt-0.5 flex items-center gap-1 uppercase tracking-tighter"><Eye size={8} /> Visto por {readers.length}</button>}
                         </div>
                     </div>
                 </div>
               );
           })}
-          <div ref={scrollRef} />
+          <div ref={scrollRef} className="h-4" />
         </div>
       </main>
 
-      <footer className="bg-white border-t border-slate-100 p-4 pb-8 z-50 flex-shrink-0 shadow-[0_-10px_40px_rgba(0,0,0,0.05)] relative">
+      <footer className="bg-white border-t border-slate-100 p-4 pb-10 z-50 flex-shrink-0 shadow-[0_-15px_40px_rgba(0,0,0,0.06)] relative">
         {imagePreview && (
           <div className="absolute bottom-full left-4 mb-3 animate-scale-in">
-            <img src={imagePreview} className="w-16 h-16 object-cover rounded-xl border-2 border-white shadow-lg" />
-            <button onClick={() => { setSelectedFile(null); setImagePreview(null); }} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white p-1 rounded-full"><X size={10}/></button>
+            <img src={imagePreview} className="w-20 h-20 object-cover rounded-2xl border-4 border-white shadow-2xl" />
+            <button onClick={() => { setSelectedFile(null); setImagePreview(null); }} className="absolute -top-2 -right-2 bg-rose-600 text-white p-1.5 rounded-full shadow-lg"><X size={12}/></button>
           </div>
         )}
+        
         {showChecklistCreator && (
-          <div className="absolute bottom-full left-4 right-4 bg-white border border-slate-200 rounded-[24px] p-4 mb-3 space-y-2 shadow-2xl animate-slide-up">
-            <div className="flex justify-between items-center mb-2"><span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Nueva Lista de Tareas</span><button onClick={() => setShowChecklistCreator(false)}><X size={14}/></button></div>
-            {tempTasks.map((t, i) => (
-              <input key={i} type="text" value={t} onChange={(e) => {
-                const newT = [...tempTasks]; newT[i] = e.target.value; 
-                if (i === tempTasks.length - 1 && e.target.value !== '') newT.push('');
-                setTempTasks(newT);
-              }} placeholder="Escribir tarea..." className="w-full text-xs p-2 bg-slate-50 border-b border-slate-100 rounded-lg outline-none font-bold text-slate-700" />
-            ))}
+          <div className="absolute bottom-full left-4 right-4 bg-white border-2 border-slate-50 rounded-[35px] p-5 mb-4 space-y-3 shadow-[0_-20px_50px_rgba(0,0,0,0.1)] animate-slide-up">
+            <div className="flex justify-between items-center mb-2"><span className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Nueva Checklist</span><button onClick={() => setShowChecklistCreator(false)} className="p-2 bg-slate-50 rounded-full"><X size={14}/></button></div>
+            <div className="max-h-40 overflow-y-auto pr-1 no-scrollbar space-y-2">
+                {tempTasks.map((t, i) => (
+                  <input key={i} type="text" value={t} onChange={(e) => {
+                    const newT = [...tempTasks]; newT[i] = e.target.value; 
+                    if (i === tempTasks.length - 1 && e.target.value !== '') newT.push('');
+                    setTempTasks(newT);
+                  }} placeholder="Escribir tarea..." className="w-full text-xs p-3 bg-slate-50 border-b border-slate-100 rounded-xl outline-none font-bold text-slate-700 focus:bg-white focus:border-brand-500 transition-all" />
+                ))}
+            </div>
+            <p className="text-[8px] font-black text-slate-300 uppercase text-center mt-2 tracking-widest">Las tareas se enviarán como una nota de equipo</p>
           </div>
         )}
 
-        <div className="flex items-end gap-2">
-          <div className="flex gap-1.5">
-            <label className="p-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-slate-400 cursor-pointer active:scale-95 transition-all"><ImageIcon size={20}/><input type="file" className="hidden" accept="image/*" onChange={(e) => {
+        <div className="flex items-end gap-3">
+          <div className="flex gap-2">
+            <label className="p-3.5 bg-slate-50 border-2 border-slate-100 rounded-2xl text-slate-400 cursor-pointer active:scale-95 transition-all hover:bg-slate-100 shadow-sm"><ImageIcon size={20}/><input type="file" className="hidden" accept="image/*" onChange={(e) => {
                 const file = e.target.files[0];
                 if (file) { setSelectedFile(file); setImagePreview(URL.createObjectURL(file)); }
             }} /></label>
-            <button onClick={() => setShowChecklistCreator(!showChecklistCreator)} className={`p-3.5 border rounded-2xl active:scale-95 transition-all ${showChecklistCreator ? 'bg-brand-600 text-white border-brand-600 shadow-lg' : 'bg-slate-50 text-slate-400 border-slate-100'}`}><ListPlus size={20}/></button>
+            <button onClick={() => setShowChecklistCreator(!showChecklistCreator)} className={`p-3.5 border-2 rounded-2xl active:scale-95 transition-all shadow-sm ${showChecklistCreator ? 'bg-brand-600 border-brand-600 text-white shadow-xl' : 'bg-slate-50 text-slate-400 border-slate-100'}`}><ListPlus size={20}/></button>
           </div>
-          <textarea rows="1" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Nota rápida..." className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3.5 text-sm outline-none resize-none max-h-32 font-medium" />
-          <button onClick={handleSendMessage} disabled={isSending || (!newMessage.trim() && !selectedFile && !showChecklistCreator)} className="bg-brand-600 text-white p-4 rounded-2xl shadow-xl disabled:opacity-50 active:scale-95 transition-all">{isSending ? <Loader2 size={20} className="animate-spin"/> : <Send size={20}/>}</button>
+          <textarea rows="1" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Escribe una nota de servicio..." className="flex-1 bg-slate-50 border-2 border-slate-100 rounded-[22px] px-5 py-3.5 text-sm outline-none resize-none max-h-32 font-semibold focus:border-brand-500 focus:bg-white transition-all shadow-inner" />
+          <button onClick={handleSendMessage} disabled={isSending || (!newMessage.trim() && !selectedFile && !showChecklistCreator)} className="bg-brand-600 text-white p-4.5 rounded-[22px] shadow-xl shadow-brand-100 disabled:opacity-50 active:scale-90 transition-all">{isSending ? <Loader2 size={22} className="animate-spin"/> : <Send size={22}/>}</button>
         </div>
       </footer>
 
-      {/* MODALES */}
+      {/* MODALES DE SOPORTE */}
       {viewingImage && (
-        <div className="fixed inset-0 z-[200] bg-black/95 flex items-center justify-center p-4 animate-fade-in" onClick={() => setViewingImage(null)}>
-          <img src={viewingImage} className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl" onClick={e => e.stopPropagation()} />
-          <button className="absolute top-10 right-10 text-white p-3 bg-white/10 rounded-full backdrop-blur-md"><X size={28}/></button>
+        <div className="fixed inset-0 z-[200] bg-black/98 flex items-center justify-center p-4 animate-fade-in" onClick={() => setViewingImage(null)}>
+          <img src={viewingImage} className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl border-2 border-white/10" onClick={e => e.stopPropagation()} />
+          <button className="absolute top-10 right-10 text-white p-4 bg-white/10 rounded-full backdrop-blur-xl border border-white/20 active:scale-90 transition-transform"><X size={28}/></button>
         </div>
       )}
 
       {showReadersId && (
-        <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6 animate-fade-in" onClick={() => setShowReadersId(null)}>
-          <div className="bg-white w-full max-w-xs rounded-[40px] p-8 shadow-2xl animate-scale-in" onClick={e => e.stopPropagation()}>
-            <h4 className="font-black text-slate-400 text-[10px] uppercase mb-6 tracking-[0.2em] border-b pb-2">Visto por:</h4>
+        <div className="fixed inset-0 z-[200] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-8 animate-fade-in" onClick={() => setShowReadersId(null)}>
+          <div className="bg-white w-full max-w-xs rounded-[45px] p-8 shadow-2xl animate-scale-in border-2 border-slate-50" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-8 border-b pb-4">
+              <div>
+                <h4 className="font-black text-slate-900 text-xs uppercase tracking-widest">Leído por:</h4>
+                <p className="text-[9px] font-bold text-brand-600 uppercase tracking-widest mt-1">Acuse de recibo</p>
+              </div>
+              <button onClick={() => setShowReadersId(null)} className="p-2 bg-slate-50 rounded-full text-slate-400"><X size={16}/></button>
+            </div>
             <div className="space-y-4 max-h-64 overflow-y-auto no-scrollbar">
               {allUsers.filter(u => messages.find(m => m.id === showReadersId)?.readBy?.includes(u.id) && u.id !== messages.find(m => m.id === showReadersId)?.uid).map(u => (
-                <div key={u.id} className="flex items-center gap-4">
-                  <img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}`} className="w-10 h-10 rounded-xl shadow-sm" />
-                  <span className="text-xs font-black text-slate-700 uppercase tracking-tight">{u.displayName}</span>
+                <div key={u.id} className="flex items-center gap-4 animate-fade-in">
+                  <img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}`} className="w-10 h-10 rounded-xl shadow-md border-2 border-white" />
+                  <span className="text-[11px] font-black text-slate-700 uppercase tracking-tight">{u.displayName}</span>
                 </div>
               ))}
             </div>
@@ -370,10 +388,11 @@ export default function ServiceDetails() {
         </div>
       )}
 
-      {/* TOASTS */}
+      {/* TOASTS DE FEEDBACK */}
       {toast && (
-        <div className="fixed bottom-28 left-6 right-6 z-[400] animate-slide-up">
-          <div className={`flex items-center gap-4 px-8 py-5 rounded-[30px] shadow-2xl border-2 ${toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-400' : 'bg-slate-900 text-white border-slate-700'}`}>
+        <div className="fixed bottom-32 left-6 right-6 z-[400] animate-slide-up">
+          <div className={`flex items-center gap-4 px-8 py-5 rounded-[30px] shadow-2xl border-2 ${toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-400 shadow-emerald-200' : 'bg-slate-900 text-white border-slate-700 shadow-slate-200'}`}>
+            {toast.type === 'success' ? <CheckCircle size={24}/> : <AlertCircle size={24}/>}
             <span className="text-[11px] font-black uppercase tracking-widest">{toast.message}</span>
           </div>
         </div>

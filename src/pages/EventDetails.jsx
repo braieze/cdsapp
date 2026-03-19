@@ -5,10 +5,10 @@ import { doc, getDoc, updateDoc, collection, getDocs, deleteDoc, serverTimestamp
 import { 
   X, Calendar, Clock, Save, Trash2, Plus, Users, 
   CheckCircle, Download, Loader2, Search, HelpCircle,
-  AlertCircle, Check
+  AlertCircle, Check, ExternalLink, ArrowRight
 } from 'lucide-react';
 import { EVENT_TYPES } from '../utils/eventTypes';
-import { format } from 'date-fns';
+import { format, isSameDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import html2canvas from 'html2canvas'; 
 import jsPDF from 'jspdf'; 
@@ -68,7 +68,7 @@ export default function EventDetails() {
     fetchData();
   }, [id, navigate, currentUser]);
 
-  // ✅ 1. FUNCIÓN DE NOTIFICACIÓN POR ASIGNACIÓN (Sincronizada)
+  // ✅ NOTIFICACIÓN DE ASIGNACIÓN (Corregida para abrir la App)
   const notifyNewAssignments = async (newAssignments) => {
     try {
       const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
@@ -77,9 +77,8 @@ export default function EventDetails() {
 
       const oldAssigned = Object.values(event.assignments || {}).flat();
       const currentAssigned = Object.values(newAssignments).flat();
-      
-      // Solo notificamos a los que son NUEVOS en la lista
       const newlyAddedNames = currentAssigned.filter(name => !oldAssigned.includes(name));
+      
       if (newlyAddedNames.length === 0) return;
 
       const targetUserIds = users
@@ -89,31 +88,26 @@ export default function EventDetails() {
       if (targetUserIds.length === 0) return;
 
       const path = `/calendario/${id}`;
-      const notifTitle = "📍 Nueva tarea asignada";
-      const notifBody = `Fuiste asignado en: ${event.title}. Toca para confirmar.`;
+      const webUrl = `https://cdsapp.vercel.app/#${path}`;
 
-      const response = await fetch("https://onesignal.com/api/v1/notifications", {
+      await fetch("https://onesignal.com/api/v1/notifications", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-          "Authorization": `Basic ${REST_API_KEY}`
-        },
+        headers: { "Content-Type": "application/json; charset=utf-8", "Authorization": `Basic ${REST_API_KEY}` },
         body: JSON.stringify({
           app_id: APP_ID,
           include_external_user_ids: targetUserIds,
-          headings: { en: notifTitle, es: notifTitle },
-          contents: { en: notifBody, es: notifBody },
-          url: `https://cdsapp.vercel.app/#${path}`,
+          headings: { en: "📍 Nueva tarea asignada", es: "📍 Nueva tarea asignada" },
+          contents: { en: `Fuiste asignado en: ${event.title}. Toca para ver detalles.`, es: `Fuiste asignado en: ${event.title}. Toca para ver detalles.` },
+          // 🎯 Deep Linking: web_url + data para abrir la app
+          web_url: webUrl,
           data: { route: path },
           isAnyWeb: true,
           isAndroid: true,
+          isIos: true,
           priority: 10
         })
       });
-
-      const data = await response.json();
-      console.log("✅ OneSignal Tarea dice:", data);
-    } catch (error) { console.error("❌ Error notif tarea:", error); }
+    } catch (error) { console.error("Error notif tarea:", error); }
   };
 
   const handleSaveAssignments = async () => {
@@ -140,7 +134,7 @@ export default function EventDetails() {
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`Agenda-${event.title}.pdf`);
+      pdf.save(`Equipo-${event.title}.pdf`);
       setToast({ message: "PDF Generado", type: "success" });
     } catch (e) { setToast({ message: "Error PDF", type: "error" }); } 
     finally { setIsDownloading(false); }
@@ -161,16 +155,15 @@ export default function EventDetails() {
   return (
     <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-fade-in overflow-hidden font-outfit">
       
-      {/* HEADER DINÁMICO */}
-      <div className={`relative pt-12 pb-24 px-6 ${event.type === 'ayuno' ? 'bg-rose-600' : 'bg-slate-900'} flex-shrink-0`}>
+      <header className={`relative pt-12 pb-24 px-6 ${event.type === 'ayuno' ? 'bg-rose-600' : 'bg-slate-900'} flex-shrink-0`}>
         <div className="absolute top-4 left-4 right-4 flex justify-between items-center">
-            <button onClick={() => navigate('/calendario')} className="p-2 bg-white/10 backdrop-blur-md rounded-full text-white"><X size={24} /></button>
+            <button onClick={() => navigate('/calendario')} className="p-2 bg-white/10 backdrop-blur-md rounded-full text-white active:scale-90 transition-transform"><X size={24} /></button>
             <div className="flex gap-2">
-                <button onClick={downloadPDF} disabled={isDownloading} className="p-2 bg-white/10 backdrop-blur-md rounded-full text-white">
+                <button onClick={downloadPDF} disabled={isDownloading} className="p-2 bg-white/10 backdrop-blur-md rounded-full text-white active:scale-90">
                   {isDownloading ? <Loader2 size={20} className="animate-spin" /> : <Download size={20}/>}
                 </button>
                 {canEdit && (
-                    <button onClick={() => setIsEditing(!isEditing)} className={`px-5 py-2 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${isEditing ? 'bg-white text-slate-900' : 'bg-white/20 text-white'}`}>
+                    <button onClick={() => setIsEditing(!isEditing)} className={`px-5 py-2 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${isEditing ? 'bg-white text-slate-900 shadow-xl' : 'bg-white/20 text-white'}`}>
                         {isEditing ? 'Cancelar' : 'Asignar Equipo'}
                     </button>
                 )}
@@ -183,15 +176,18 @@ export default function EventDetails() {
             <h1 className="text-2xl font-black text-white leading-tight px-4 uppercase tracking-tighter">{event.title}</h1>
         </div>
         <div className="absolute -bottom-1 left-0 right-0 h-14 bg-white rounded-t-[50px]"></div>
-      </div>
+      </header>
 
-      {/* CONTENIDO DEL REPORTE */}
       <div ref={reportRef} className="flex-1 overflow-y-auto bg-white px-6 pb-32 no-scrollbar">
         <div className="max-w-xl mx-auto space-y-8">
             <div className="flex flex-wrap gap-3 justify-center mt-2">
                 <div className="flex items-center gap-2 bg-slate-50 px-5 py-3 rounded-2xl text-[11px] font-black text-slate-700 border border-slate-100 uppercase tracking-widest shadow-sm">
                     <Calendar size={14} className="text-brand-500"/>
-                    {format(new Date(event.date + 'T00:00:00'), "EEEE d 'de' MMMM", { locale: es })}
+                    {format(new Date(event.date + 'T00:00:00'), "EEEE d", { locale: es })}
+                    {event.endDate && event.endDate !== event.date && (
+                      <> <ArrowRight size={10}/> {format(new Date(event.endDate + 'T00:00:00'), "EEEE d 'de' MMMM", { locale: es })} </>
+                    )}
+                    {!event.endDate || event.endDate === event.date ? format(new Date(event.date + 'T00:00:00'), " 'de' MMMM", { locale: es }) : ''}
                 </div>
                 <div className="flex items-center gap-2 bg-slate-50 px-5 py-3 rounded-2xl text-[11px] font-black text-slate-700 border border-slate-100 uppercase tracking-widest shadow-sm">
                     <Clock size={14} className="text-brand-500"/>{event.time} hs
@@ -236,7 +232,6 @@ export default function EventDetails() {
         </div>
       </div>
 
-      {/* FOOTER DE EDICIÓN */}
       {isEditing && (
           <div className="p-5 bg-white border-t border-slate-100 absolute bottom-0 w-full shadow-[0_-20px_50px_rgba(0,0,0,0.1)] flex gap-4 z-50 animate-slide-up">
               <button onClick={async () => { if(window.confirm("¿Borrar evento?")) { await deleteDoc(doc(db, 'events', id)); navigate('/calendario'); } }} className="p-5 bg-rose-50 text-rose-500 rounded-[24px] active:scale-90 transition-transform"><Trash2 size={24}/></button>
@@ -247,10 +242,10 @@ export default function EventDetails() {
           </div>
       )}
 
-      {/* SELECTOR DE PERSONA */}
+      {/* SELECTOR DE PERSONA (BUSCADOR FIJO ARRIBA) */}
       {isSelectorOpen && (
           <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-sm flex items-end justify-center animate-fade-in" onClick={() => setIsSelectorOpen(false)}>
-              <div className="bg-white w-full max-w-md rounded-t-[50px] max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
+              <div className="bg-white w-full max-w-md rounded-t-[50px] h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
                   <div className="p-8 border-b flex justify-between items-center bg-white shrink-0">
                       <div>
                         <h3 className="font-black text-slate-900 text-sm uppercase tracking-tighter">Asignar {activeRoleConfig?.label}</h3>
@@ -258,24 +253,28 @@ export default function EventDetails() {
                       </div>
                       <button onClick={() => setIsSelectorOpen(false)} className="p-3 bg-slate-50 rounded-full text-slate-400 active:scale-90 transition-transform"><X size={20}/></button>
                   </div>
-                  <div className="p-5 bg-slate-50 shrink-0">
+                  {/* BUSCADOR FIJO */}
+                  <div className="p-5 bg-slate-50 shrink-0 border-b border-slate-100">
                       <div className="bg-white border-2 border-slate-100 rounded-2xl px-5 py-4 flex items-center gap-3 shadow-inner">
                           <Search size={18} className="text-slate-400"/><input autoFocus type="text" placeholder="Buscar por nombre..." className="w-full text-sm font-bold outline-none bg-transparent" value={personSearchTerm} onChange={e => setPersonSearchTerm(e.target.value)}/>
                       </div>
                   </div>
+                  {/* LISTA CON SCROLL INDEPENDIENTE */}
                   <div className="flex-1 overflow-y-auto p-5 space-y-3 no-scrollbar pb-10">
                       {users.filter(u => (u.displayName || '').toLowerCase().includes(personSearchTerm.toLowerCase())).map(u => {
                           const isAlreadyInThisRole = (assignments[activeRoleKey] || []).includes(u.displayName);
+                          const isTaken = Object.values(assignments).flat().includes(u.displayName);
                           return (
                               <button 
                                 key={u.id} 
+                                disabled={isTaken && !isAlreadyInThisRole}
                                 onClick={() => {
                                     const currentList = assignments[activeRoleKey] || [];
                                     const newList = activeRoleConfig.type === 'single' ? [u.displayName] : [...new Set([...currentList, u.displayName])];
                                     setAssignments({ ...assignments, [activeRoleKey]: newList });
                                     setIsSelectorOpen(false);
                                 }} 
-                                className={`w-full flex items-center gap-4 p-4 rounded-[28px] border-2 transition-all text-left ${isAlreadyInThisRole ? 'bg-brand-600 border-brand-600 shadow-xl scale-[0.98]' : 'bg-white border-slate-100 active:scale-95'}`}
+                                className={`w-full flex items-center gap-4 p-4 rounded-[28px] border-2 transition-all text-left ${isAlreadyInThisRole ? 'bg-brand-600 border-brand-600 shadow-xl scale-[0.98]' : isTaken ? 'opacity-30 grayscale' : 'bg-white border-slate-100 active:scale-95'}`}
                               >
                                   <div className="w-14 h-14 rounded-2xl bg-slate-100 overflow-hidden border-2 border-white flex items-center justify-center font-black text-slate-400 shrink-0 shadow-sm">
                                       {u.photoURL ? <img src={u.photoURL} className="w-full h-full object-cover" /> : (u.displayName || '?')[0].toUpperCase()}
