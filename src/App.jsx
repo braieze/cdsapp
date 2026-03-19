@@ -64,24 +64,26 @@ export default function App() {
   const isNative = Capacitor.isNativePlatform();
 
   useEffect(() => {
-    const initNotifications = async () => {
+const initNotifications = async () => {
       try {
         if (isNative) {
-          // ✅ INICIALIZACIÓN NATIVA
           OneSignal.initialize("742a62cd-6d15-427f-8bab-5b8759fabd0a");
           OneSignal.Notifications.requestPermission(true);
         } else {
-          // ✅ INICIALIZACIÓN WEB (PWA)
-          // Eliminamos cualquier registro manual de Service Worker aquí.
           await OneSignalWeb.init({
             appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
             allowLocalhostAsSecureOrigin: true,
             serviceWorkerPath: "OneSignalSDKWorker.js",
           });
+
+          // 🔍 ESTO ES PARA EL DEBUG:
+          setTimeout(async () => {
+            const id = await OneSignalWeb.getUserId();
+            console.log("🆔 MI ID DE ONESIGNAL ES:", id);
+            if (!id) console.error("❌ NO ESTOY SUSCRITO REALMENTE");
+          }, 5000);
         }
-      } catch (e) { 
-        console.warn("OneSignal Init Delay/Error:", e); 
-      }
+      } catch (e) { console.error("Error init:", e); }
     };
 
     initNotifications();

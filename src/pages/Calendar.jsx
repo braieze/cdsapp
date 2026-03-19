@@ -71,7 +71,7 @@ export default function CalendarPage() {
         },
         body: JSON.stringify({
           app_id: APP_ID,
-          included_segments: ["Subscribed Users"], 
+          included_segments: ["Total Subscriptions"], 
           headings: { en: notifTitle, es: notifTitle },
           contents: { en: notifBody, es: notifBody },
           url: webUrl,

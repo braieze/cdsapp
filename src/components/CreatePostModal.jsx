@@ -62,7 +62,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         },
         body: JSON.stringify({
           app_id: APP_ID,
-          included_segments: ["Subscribed Users"], 
+          included_segments: ["Total Subscriptions"],
           headings: { en: notifTitle, es: notifTitle },
           contents: { 
             en: notifContent ? notifContent.substring(0, 100) : "Toca para ver las novedades.", 
