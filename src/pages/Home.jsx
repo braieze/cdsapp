@@ -12,13 +12,13 @@ import BirthdayModal from '../components/BirthdayModal';
 import { db, auth } from '../firebase';
 import { 
   collection, query, orderBy, onSnapshot, 
-  deleteDoc, doc, updateDoc, limit 
+  deleteDoc, doc, updateDoc, limit, arrayUnion, arrayRemove, runTransaction
 } from 'firebase/firestore';
 import { Capacitor } from '@capacitor/core'; 
 import OneSignalWeb from 'react-onesignal'; 
 import OneSignal from 'onesignal-cordova-plugin';
 
-// --- 1. SUBCOMPONENTES (Definidos aquí para evitar errores de ReferenceError) ---
+// --- 1. SUBCOMPONENTES ---
 
 const PostSkeleton = () => (
   <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm animate-pulse mb-4">
@@ -111,7 +111,6 @@ export default function Home() {
   const { dbUser } = useOutletContext();
   const currentUser = auth.currentUser;
   
-  // ✅ PUNTO #5: ROLES CORREGIDOS (Pastor y Líder pueden moderar todo)
   const isModerator = dbUser?.role === 'pastor' || dbUser?.role === 'lider';
   const canCreatePost = isModerator || dbUser?.area === 'recepcion';
   const isNative = Capacitor.isNativePlatform(); 
@@ -123,11 +122,8 @@ export default function Home() {
   const [filter, setFilter] = useState('Todo');
   const [birthdays, setBirthdays] = useState([]);
   const [toast, setToast] = useState(null);
-
-  const [expandedPosts, setExpandedPosts] = useState(new Set());
   const [reactionPickerOpen, setReactionPickerOpen] = useState(null);
   const [menuOpenId, setMenuOpenId] = useState(null);
-
   const [editingPost, setEditingPost] = useState(null);
   const [postToDelete, setPostToDelete] = useState(null);
   const [fullImage, setFullImage] = useState(null);
@@ -135,9 +131,7 @@ export default function Home() {
 
   const REACTION_TYPES = ['👍', '❤️', '🔥', '🙏', '😢', '😂'];
 
-  // Notificación handler nativo removido de aquí (ya está en App.jsx)
-
-  // 1. CARGAR POSTS EN TIEMPO REAL
+  // 1. CARGAR POSTS
   useEffect(() => {
     const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(15));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -145,28 +139,9 @@ export default function Home() {
       postsData.sort((a, b) => (a.isPinned === b.isPinned ? 0 : a.isPinned ? -1 : 1));
       setPosts(postsData);
       setLoading(false);
-    }, (error) => {
-      console.error("Error posts:", error);
-      setLoading(false);
     });
     return () => unsubscribe();
   }, []);
-
-  // ✅ FUNCIÓN DE RESET TOTAL (OneSignal V5 Nativo + Web)
-  const handleHardResetNotifications = async () => {
-    try {
-      setToast({ message: "Reiniciando conexión...", type: "info" });
-      if (isNative) {
-        if (currentUser?.uid) OneSignal.login(currentUser.uid);
-      } else {
-        await OneSignalWeb.logout();
-        await OneSignalWeb.login(currentUser.uid);
-      }
-      setToast({ message: "¡Suscripción reparada!", type: "success" });
-    } catch (e) {
-      setToast({ message: "Error al reiniciar", type: "error" });
-    }
-  };
 
   // 2. CARGAR CUMPLEAÑOS
   useEffect(() => {
@@ -185,17 +160,37 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  useEffect(() => {
-    if (toast) {
-      const timer = setTimeout(() => setToast(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [toast]);
+  // ✅ FUNCIONES DE ACCIÓN
 
-  const handleLinkClick = (e, url) => {
-    e.preventDefault(); e.stopPropagation();
-    if (!url) return;
-    if (url.startsWith('/')) { navigate(url); } else { window.open(url, '_blank', 'noopener,noreferrer'); }
+  const handleConfirmDelete = async () => {
+    if (!postToDelete) return;
+    try {
+      await deleteDoc(doc(db, 'posts', postToDelete.id));
+      setToast({ message: "Publicación eliminada correctamente", type: "success" });
+      setPostToDelete(null);
+    } catch (e) {
+      setToast({ message: "Error al eliminar", type: "error" });
+    }
+  };
+
+  const handleVote = async (post, optionIdx) => {
+    if (!currentUser) return;
+    const postRef = doc(db, 'posts', post.id);
+    try {
+      await runTransaction(db, async (transaction) => {
+        const postDoc = await transaction.get(postRef);
+        const data = postDoc.data();
+        const voters = data.poll.voters || [];
+        if (voters.includes(currentUser.uid)) return;
+
+        const newOptions = [...data.poll.options];
+        newOptions[optionIdx].votes += 1;
+        transaction.update(postRef, {
+          'poll.options': newOptions,
+          'poll.voters': arrayUnion(currentUser.uid)
+        });
+      });
+    } catch (e) { console.error("Error voto:", e); }
   };
 
   const handleReaction = async (post, emoji) => {
@@ -214,6 +209,18 @@ export default function Home() {
     setReactionPickerOpen(null);
   };
 
+  const handleHardResetNotifications = async () => {
+    try {
+      setToast({ message: "Reiniciando conexión...", type: "info" });
+      if (isNative) {
+        if (currentUser?.uid) OneSignal.login(currentUser.uid);
+      } else {
+        await OneSignalWeb.login(currentUser.uid);
+      }
+      setToast({ message: "¡Suscripción reparada!", type: "success" });
+    } catch (e) { setToast({ message: "Error al reiniciar", type: "error" }); }
+  };
+
   const filteredPosts = filter === 'Todo' ? posts : posts.filter(post => post.type === filter);
 
   return (
@@ -221,7 +228,6 @@ export default function Home() {
       <TopBar />
 
       <div className="px-4 mt-4 space-y-4">
-          {/* BOTÓN DE REPARACIÓN */}
           <div className="flex justify-center">
             <button onClick={handleHardResetNotifications} className="flex items-center gap-2 px-6 py-3 bg-amber-50 text-amber-600 rounded-2xl border border-amber-200 text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all shadow-sm">
                 <AlertCircle size={16} /> Arreglar mis notificaciones
@@ -267,7 +273,6 @@ export default function Home() {
                       </div>
                   </div>
                   
-                  {/* MENÚ GESTIÓN (Pastor/Líder manejan todo) */}
                   {(isModerator || post.authorId === currentUser?.uid) && (
                     <div className="relative">
                       <button onClick={() => setMenuOpenId(menuOpenId === post.id ? null : post.id)} className="p-2 text-slate-300 hover:text-slate-600 transition-colors"><MoreVertical size={24}/></button>
@@ -293,18 +298,15 @@ export default function Home() {
                 <div className="px-6 mb-4 cursor-pointer" onClick={() => navigate(`/post/${post.id}`)}>
                   {post.type === 'Devocional' && <h2 className="text-xl font-black text-slate-800 mb-2 uppercase tracking-tighter">{post.title}</h2>}
                   <div className={`text-[15px] text-slate-800 whitespace-pre-wrap leading-relaxed line-clamp-4 font-medium tracking-tight`}>{post.content}</div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                      {post.tags?.map((tag, i) => <span key={i} className="text-[9px] bg-slate-50 text-slate-400 px-2.5 py-1 rounded-lg font-black uppercase tracking-widest border border-slate-100">#{tag}</span>)}
-                  </div>
                 </div>
 
                 {post.image && <div className="w-full mb-4 bg-slate-100 cursor-zoom-in" onClick={() => setFullImage(post.image)}><img src={post.image} className="w-full h-auto max-h-[500px] object-cover" /></div>}
                 
                 {post.link && (
                     <div className="px-6 mb-4">
-                        <button onClick={(e) => handleLinkClick(e, post.link)} className="flex items-center justify-between w-full bg-slate-50 border border-slate-100 p-4 rounded-[22px] transition-all hover:bg-slate-100 active:scale-[0.98]">
-                            <span className="text-xs font-black text-brand-700 flex items-center gap-3 uppercase tracking-widest">{post.link.startsWith('/') ? <Calendar size={18} /> : <LinkIcon size={18} />} {post.linkText || 'Ver más'}</span>
-                            <ExternalLink size={16} className="text-slate-300" />
+                        <button onClick={(e) => { e.stopPropagation(); navigate(post.link); }} className="flex items-center justify-between w-full bg-slate-50 border border-slate-100 p-4 rounded-[22px] transition-all hover:bg-slate-100 active:scale-[0.98]">
+                          <span className="text-xs font-black text-brand-700 flex items-center gap-3 uppercase tracking-widest">{post.link.startsWith('/') ? <Calendar size={18} /> : <LinkIcon size={18} />} {post.linkText || 'Ver más'}</span>
+                          <ExternalLink size={16} className="text-slate-300" />
                         </button>
                     </div>
                 )}
@@ -318,7 +320,7 @@ export default function Home() {
                           const total = voters.length || 1;
                           const percent = Math.round((opt.votes / total) * 100);
                           return (
-                            <button key={idx} onClick={() => { if(!voters.includes(currentUser?.uid)) handleVote(post, idx); }} disabled={voters.includes(currentUser?.uid)} className="w-full relative mb-3 h-12 rounded-xl overflow-hidden bg-white border border-slate-100 text-left active:scale-[0.98] transition-transform">
+                            <button key={idx} onClick={() => handleVote(post, idx)} disabled={voters.includes(currentUser?.uid)} className="w-full relative mb-3 h-12 rounded-xl overflow-hidden bg-white border border-slate-100 text-left active:scale-[0.98] transition-transform">
                               <div className="absolute top-0 left-0 h-full bg-brand-100/50 transition-all duration-700" style={{ width: `${percent}%` }}></div>
                               <div className="absolute inset-0 flex items-center justify-between px-4 text-xs font-black uppercase z-10 text-slate-700"><span>{opt.text}</span><span>{percent}%</span></div>
                             </button>
@@ -340,7 +342,7 @@ export default function Home() {
                           </div>
                         )}
                         {Object.entries(post.reactions?.reduce((acc, r) => ({...acc, [r.emoji]: (acc[r.emoji] || 0) + 1}), {}) || {}).map(([emoji, count]) => (
-                           <button key={emoji} onClick={() => setShowReactionsFor(post)} className="bg-white border border-slate-200 px-3 py-1.5 rounded-full text-[10px] font-black text-slate-600 flex items-center gap-1.5 shadow-sm hover:bg-slate-50 active:scale-95 transition-all">{emoji} {count}</button>
+                            <button key={emoji} onClick={() => setShowReactionsFor(post)} className="bg-white border border-slate-200 px-3 py-1.5 rounded-full text-[10px] font-black text-slate-600 flex items-center gap-1.5 shadow-sm hover:bg-slate-50 active:scale-95 transition-all">{emoji} {count}</button>
                         ))}
                     </div>
                     <button onClick={() => navigate(`/post/${post.id}`)} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-brand-600 px-4 py-2 rounded-2xl hover:bg-brand-50 transition-all">
@@ -360,7 +362,6 @@ export default function Home() {
         </button>
       )}
 
-      {/* TOAST FEEDBACK */}
       {toast && (
         <div className="fixed bottom-24 left-6 right-6 z-[2000] animate-slide-up">
           <div className={`flex items-center gap-3 px-6 py-4 rounded-[24px] shadow-2xl border-2 ${toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-400' : 'bg-slate-900 text-white border-slate-700'}`}>
@@ -369,19 +370,17 @@ export default function Home() {
         </div>
       )}
 
-      {/* MODALES */}
       <CreatePostModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} postToEdit={editingPost} />
       {fullImage && <ImageModal src={fullImage} onClose={() => setFullImage(null)} />}
       {showReactionsFor && <ReactionsListModal post={showReactionsFor} onClose={() => setShowReactionsFor(null)} />}
       <BirthdayModal isOpen={isBirthdayModalOpen} onClose={() => setIsBirthdayModalOpen(false)} users={birthdays} />
 
-      {/* MODAL ELIMINAR */}
       {postToDelete && (
         <div className="fixed inset-0 z-[1000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white w-full max-w-xs rounded-[40px] p-8 shadow-2xl text-center">
             <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4"><AlertTriangle size={32}/></div>
             <h3 className="font-black text-slate-800 text-lg mb-2 tracking-tight uppercase">¿Eliminar post?</h3>
-            <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-8 leading-relaxed">Esta acción es irreversible y se perderán todos los comentarios.</p>
+            <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-8 leading-relaxed">Esta acción es irreversible.</p>
             <div className="flex flex-col gap-3">
               <button onClick={handleConfirmDelete} className="w-full py-4 bg-rose-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-rose-200">Confirmar</button>
               <button onClick={() => setPostToDelete(null)} className="w-full py-4 bg-slate-50 text-slate-400 rounded-2xl font-black text-[10px] uppercase tracking-widest">Cancelar</button>
