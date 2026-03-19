@@ -41,7 +41,7 @@ const EmptyState = () => (
       <Heart size={48} className="text-slate-300" fill="currentColor" />
     </div>
     <h3 className="text-lg font-black text-slate-700 uppercase tracking-tighter">Muro en silencio</h3>
-    <p className="text-xs text-slate-500 mt-2 max-w-xs font-bold uppercase tracking-widest leading-loose">Pronto habrá nuevas bendiciones compartidas aquí.</p>
+    <p className="text-xs text-slate-500 mt-2 max-w-xs font-bold uppercase tracking-widest leading-loose text-center">Pronto habrá nuevas bendiciones compartidas aquí.</p>
   </div>
 );
 
@@ -58,12 +58,12 @@ function CommentPreview({ postId, onClick }) {
   return (
     <div className="bg-slate-50/50 rounded-xl p-3 cursor-pointer hover:bg-slate-100 transition-colors mt-2" onClick={(e) => { e.stopPropagation(); onClick(); }}>
       {previewComments.map((c, idx) => (
-        <div key={idx} className="flex gap-2 mb-1.5 last:mb-0">
+        <div key={idx} className="flex gap-2 mb-1.5 last:mb-0 text-left">
           <span className="font-bold text-xs text-slate-800 whitespace-nowrap">{c.name?.split(' ')[0]}:</span>
           <span className="text-xs text-slate-600 line-clamp-1">{c.text}</span>
         </div>
       ))}
-      <div className="mt-2 text-[9px] font-black text-brand-600 uppercase tracking-[0.2em]">Ver la conversación...</div>
+      <div className="mt-2 text-[9px] font-black text-brand-600 uppercase tracking-[0.2em] text-left">Ver la conversación...</div>
     </div>
   );
 }
@@ -92,7 +92,7 @@ export default function Home() {
   const [postToDelete, setPostToDelete] = useState(null);
   const [fullImage, setFullImage] = useState(null);
 
-  // 1. CARGAR POSTS (Optimizado con limit)
+  // 1. CARGAR POSTS
   useEffect(() => {
     const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(15));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -144,7 +144,6 @@ export default function Home() {
             included_segments: ["Total Subscriptions"],
             headings: { en: "🎂 ¡Cumpleaños de hoy!", es: "🎂 ¡Cumpleaños de hoy!" },
             contents: { en: `Hoy celebramos a: ${names}. ¡Mándales un saludo!`, es: `Hoy celebramos a: ${names}. ¡Mándales un saludo!` },
-            // 🎯 QUITAMOS URL PARA FORZAR LA APP
             data: { route: "/" }
           })
         });
@@ -218,7 +217,6 @@ export default function Home() {
     setReactionPickerOpen(null);
   };
 
-  // ✅ OPTIMIZACIÓN: Memoizamos el filtrado
   const filteredPosts = useMemo(() => {
     return filter === 'Todo' ? posts : posts.filter(p => p.type === filter);
   }, [filter, posts]);
@@ -238,7 +236,7 @@ export default function Home() {
                 </p>
               </div>
             </div>
-            {birthdays.length > 0 && <span className="text-[9px] font-black text-white bg-brand-600 px-3 py-1.5 rounded-full uppercase">Ver</span>}
+            {birthdays.length > 0 && <span className="text-[9px] font-black text-white bg-brand-600 px-3 py-1.5 rounded-full uppercase shadow-md">Ver</span>}
           </div>
 
           <div className="flex gap-2 overflow-x-auto py-2 no-scrollbar">
@@ -256,18 +254,25 @@ export default function Home() {
         ) : (
             filteredPosts.map(post => {
               const myVote = post.poll?.votesDetails?.find(v => v.uid === currentUser.uid);
+              // 🛡️ REFUERZO DE IMAGEN DE PERFIL: Si no hay URL o está vacía, usamos avatar
+              const profileImg = (post.authorPhoto && post.authorPhoto.trim() !== "") 
+                ? post.authorPhoto 
+                : `https://ui-avatars.com/api/?name=${post.authorName}&background=0f172a&color=fff`;
+
               return (
               <div key={post.id} className={`bg-white pt-6 sm:rounded-[40px] shadow-sm border-y sm:border border-slate-100 relative ${post.type === 'Urgente' ? 'border-l-4 border-l-rose-500' : ''} ${post.isPinned ? 'bg-slate-50/50' : ''}`}>
                 {post.isPinned && <div className="absolute top-0 right-10 bg-brand-600 text-white px-3 py-1 rounded-b-xl text-[8px] font-black tracking-[0.2em] shadow-lg flex items-center gap-1"><Pin size={10} /> FIJADO</div>}
                 
                 <div className="flex justify-between items-start mb-5 px-6">
                   <div className="flex items-center gap-3">
-                      {/* ✅ FIX ANDROID: IMAGEN DE PERFIL RÍGIDA */}
-                      <div className="w-12 h-12 rounded-2xl border-2 border-white shadow-md overflow-hidden bg-slate-100 shrink-0">
+                      {/* ✅ FIX ANDROID: CONTENEDOR RÍGIDO CON ALTURA FIJA */}
+                      <div className="w-12 h-12 min-w-[48px] min-h-[48px] rounded-2xl border-2 border-white shadow-md overflow-hidden bg-slate-200 shrink-0">
                         <img 
-                          src={post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}`} 
-                          className="w-full h-full object-cover" 
+                          src={profileImg} 
+                          className="w-full h-full object-cover block" 
                           loading="lazy"
+                          referrerPolicy="no-referrer"
+                          alt="Perfil"
                         />
                       </div>
                       <div className="text-left">
@@ -289,7 +294,7 @@ export default function Home() {
                           <button onClick={() => { setEditingPost(post); setIsModalOpen(true); setMenuOpenId(null); }} className="w-full text-left px-5 py-3.5 text-[9px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50 flex items-center gap-3">
                             <Edit3 size={14}/> Editar
                           </button>
-                          <button onClick={async () => { if(window.confirm('¿Borrar?')){ await deleteDoc(doc(db, 'posts', post.id)); } setMenuOpenId(null); }} className="w-full text-left px-5 py-3.5 text-[9px] font-black uppercase tracking-widest text-rose-500 hover:bg-rose-50 flex items-center gap-3">
+                          <button onClick={async () => { if(window.confirm('¿Eliminar?')){ await deleteDoc(doc(db, 'posts', post.id)); } setMenuOpenId(null); }} className="w-full text-left px-5 py-3.5 text-[9px] font-black uppercase tracking-widest text-rose-500 hover:bg-rose-50 flex items-center gap-3">
                             <Trash2 size={14}/> Eliminar
                           </button>
                         </div>
@@ -303,15 +308,22 @@ export default function Home() {
                   <div className="text-[15px] text-slate-800 whitespace-pre-wrap leading-relaxed line-clamp-5 font-medium tracking-tight">{post.content}</div>
                 </div>
 
+                {/* ✅ FIX ANDROID: ALTURA MÍNIMA PARA EL POST IMAGE */}
                 {post.image && (
-                  <div className="w-full mb-4 bg-slate-100 cursor-pointer" onClick={() => navigate(`/post/${post.id}`)}>
-                    <img src={post.image} className="w-full h-auto max-h-[450px] object-cover" loading="lazy" />
+                  <div className="w-full mb-4 bg-slate-100 cursor-pointer min-h-[200px] flex items-center justify-center overflow-hidden" onClick={() => navigate(`/post/${post.id}`)}>
+                    <img 
+                      src={post.image} 
+                      className="w-full h-auto max-h-[500px] object-cover block" 
+                      loading="lazy" 
+                      referrerPolicy="no-referrer"
+                      alt="Post"
+                    />
                   </div>
                 )}
                 
                 {post.link && (
                     <div className="px-6 mb-4">
-                        <button onClick={(e) => handleLinkClick(e, post.link)} className="flex items-center justify-between w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-[22px] active:scale-[0.98]">
+                        <button onClick={(e) => handleLinkClick(e, post.link)} className="flex items-center justify-between w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-[22px] active:scale-[0.98] shadow-sm">
                           <span className="text-[10px] font-black text-brand-700 flex items-center gap-3 uppercase tracking-widest">{post.link.startsWith('/') ? <Calendar size={18} /> : <LinkIcon size={18} />} {post.linkText || 'Ver más'}</span>
                           <ExternalLink size={16} className="text-slate-300" />
                         </button>
@@ -384,4 +396,4 @@ export default function Home() {
       )}
     </div>
   );
-}X
+}
