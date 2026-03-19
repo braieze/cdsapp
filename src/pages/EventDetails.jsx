@@ -1,10 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase';
-import { doc, getDoc, updateDoc, collection, getDocs, deleteDoc } from 'firebase/firestore'; 
-import { X, Calendar, Clock, Save, Trash2, Plus, ChevronDown, Users, CheckCircle, Edit3, Search, Download, HelpCircle, Loader2, UserCheck, Check, Info, AlertCircle } from 'lucide-react';
+import { doc, getDoc, updateDoc, collection, getDocs, deleteDoc, serverTimestamp } from 'firebase/firestore'; 
+import { 
+  X, Calendar, Clock, Save, Trash2, Plus, Users, 
+  CheckCircle, Download, Loader2, Search, HelpCircle,
+  AlertCircle, Check
+} from 'lucide-react';
 import { EVENT_TYPES } from '../utils/eventTypes';
-import { format, eachDayOfInterval } from 'date-fns';
+import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import html2canvas from 'html2canvas'; 
 import jsPDF from 'jspdf'; 
@@ -64,21 +68,20 @@ export default function EventDetails() {
     fetchData();
   }, [id, navigate, currentUser]);
 
-  // ✅ FUNCIÓN DE NOTIFICACIÓN POR ASIGNACIÓN (Punto #1 y #2)
+  // ✅ 1. FUNCIÓN DE NOTIFICACIÓN POR ASIGNACIÓN (Sincronizada)
   const notifyNewAssignments = async (newAssignments) => {
     try {
       const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
       const APP_ID = "742a62cd-6d15-427f-8bab-5b8759fabd0a";
-
       if (!REST_API_KEY) return;
 
       const oldAssigned = Object.values(event.assignments || {}).flat();
       const currentAssigned = Object.values(newAssignments).flat();
       
+      // Solo notificamos a los que son NUEVOS en la lista
       const newlyAddedNames = currentAssigned.filter(name => !oldAssigned.includes(name));
       if (newlyAddedNames.length === 0) return;
 
-      // Filtramos los IDs de Firebase de los usuarios nuevos
       const targetUserIds = users
         .filter(u => newlyAddedNames.includes(u.displayName))
         .map(u => u.id);
@@ -86,6 +89,8 @@ export default function EventDetails() {
       if (targetUserIds.length === 0) return;
 
       const path = `/calendario/${id}`;
+      const notifTitle = "📍 Nueva tarea asignada";
+      const notifBody = `Fuiste asignado en: ${event.title}. Toca para confirmar.`;
 
       const response = await fetch("https://onesignal.com/api/v1/notifications", {
         method: "POST",
@@ -95,26 +100,20 @@ export default function EventDetails() {
         },
         body: JSON.stringify({
           app_id: APP_ID,
-          // 🎯 Enviamos SOLO a estos UIDs específicos (External IDs)
           include_external_user_ids: targetUserIds,
-          headings: { en: "📍 Nueva tarea asignada", es: "📍 Nueva tarea asignada" },
-          contents: { 
-            en: `Fuiste asignado en: ${event.title}. Toca para confirmar asistencia.`, 
-            es: `Fuiste asignado en: ${event.title}. Toca para confirmar asistencia.` 
-          },
+          headings: { en: notifTitle, es: notifTitle },
+          contents: { en: notifBody, es: notifBody },
           url: `https://cdsapp.vercel.app/#${path}`,
           data: { route: path },
-          isIos: true,
+          isAnyWeb: true,
+          isAndroid: true,
           priority: 10
         })
       });
 
       const data = await response.json();
       console.log("✅ OneSignal Tarea dice:", data);
-      setToast({ message: "Servidores notificados", type: "success" });
-    } catch (error) { 
-      console.error("❌ Error al notificar tarea:", error);
-    }
+    } catch (error) { console.error("❌ Error notif tarea:", error); }
   };
 
   const handleSaveAssignments = async () => {
@@ -123,11 +122,10 @@ export default function EventDetails() {
       await updateDoc(doc(db, 'events', id), { assignments });
       await notifyNewAssignments(assignments); 
       setEvent(prev => ({ ...prev, assignments }));
-      setToast({ message: "Asignaciones guardadas", type: "success" });
+      setToast({ message: "Servidores notificados", type: "success" });
       setIsEditing(false);
-    } catch (error) { 
-      setToast({ message: "Error al guardar", type: "error" }); 
-    } finally { setIsSaving(false); }
+    } catch (error) { setToast({ message: "Error al guardar", type: "error" }); } 
+    finally { setIsSaving(false); }
   };
 
   const canEdit = ['pastor', 'lider'].includes(userRole);
@@ -144,113 +142,88 @@ export default function EventDetails() {
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
       pdf.save(`Agenda-${event.title}.pdf`);
       setToast({ message: "PDF Generado", type: "success" });
-    } catch (e) { setToast({ message: "Error PDF", type: "error" }); } finally { setIsDownloading(false); }
-  };
-
-  const isUserTaken = (name) => {
-    if (!assignments) return false;
-    return Object.values(assignments).flat().includes(name);
-  };
-
-  const openPersonSelector = (roleKey, roleConfig) => {
-      setActiveRoleKey(roleKey);
-      setActiveRoleConfig(roleConfig);
-      setIsSelectorOpen(true);
-      setPersonSearchTerm('');
-  };
-
-  const handleSelectPersonFromModal = (personName) => {
-      const currentList = assignments[activeRoleKey] || [];
-      const newList = activeRoleConfig.type === 'single' ? [personName] : [...new Set([...currentList, personName])];
-      setAssignments({ ...assignments, [activeRoleKey]: newList });
-      setIsSelectorOpen(false); 
-  };
-
-  const handleRemovePersonRole = (roleKey, personName) => {
-    setAssignments({ ...assignments, [roleKey]: assignments[roleKey].filter(p => p !== personName) });
+    } catch (e) { setToast({ message: "Error PDF", type: "error" }); } 
+    finally { setIsDownloading(false); }
   };
 
   const getStatusIcon = (personName) => {
     if (!event.confirmations) return <HelpCircle size={14} className="text-slate-300"/>;
     const status = event.confirmations[personName];
-    if (status === 'confirmed') return <CheckCircle size={14} className="text-green-500"/>;
-    if (status === 'declined') return <X size={14} className="text-red-500"/>;
+    if (status === 'confirmed') return <CheckCircle size={14} className="text-emerald-500"/>;
+    if (status === 'declined') return <X size={14} className="text-rose-500"/>;
     return <HelpCircle size={14} className="text-slate-300"/>;
   };
 
-  const getStructure = (type) => {
-    const config = EVENT_TYPES[type] || EVENT_TYPES.culto;
-    if (config.structure === 'same_as_culto') return EVENT_TYPES.culto.structure;
-    if (config.structure === 'same_as_limpieza') return EVENT_TYPES.limpieza.structure;
-    return config.structure || []; 
-  };
-
-  if (loading || !event) return <div className="fixed inset-0 bg-white z-[100] flex items-center justify-center font-outfit"><Loader2 className="animate-spin text-brand-500" /></div>;
+  if (loading || !event) return <div className="fixed inset-0 bg-white z-[100] flex items-center justify-center"><Loader2 className="animate-spin text-brand-600" size={32}/></div>;
 
   const TypeConfig = EVENT_TYPES[event.type] || EVENT_TYPES.culto;
 
   return (
     <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-fade-in overflow-hidden font-outfit">
-      <div className={`relative pt-12 pb-24 px-6 ${event.type === 'ayuno' ? 'bg-rose-500' : 'bg-slate-900'} flex-shrink-0`}>
+      
+      {/* HEADER DINÁMICO */}
+      <div className={`relative pt-12 pb-24 px-6 ${event.type === 'ayuno' ? 'bg-rose-600' : 'bg-slate-900'} flex-shrink-0`}>
         <div className="absolute top-4 left-4 right-4 flex justify-between items-center">
-            <button onClick={() => navigate('/calendario')} className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white"><X size={24} /></button>
+            <button onClick={() => navigate('/calendario')} className="p-2 bg-white/10 backdrop-blur-md rounded-full text-white"><X size={24} /></button>
             <div className="flex gap-2">
-                <button onClick={downloadPDF} disabled={isDownloading} className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white">
+                <button onClick={downloadPDF} disabled={isDownloading} className="p-2 bg-white/10 backdrop-blur-md rounded-full text-white">
                   {isDownloading ? <Loader2 size={20} className="animate-spin" /> : <Download size={20}/>}
                 </button>
                 {canEdit && (
-                    <button onClick={() => setIsEditing(!isEditing)} className={`px-4 py-2 rounded-full font-bold text-xs ${isEditing ? 'bg-white text-slate-900' : 'bg-white/20 text-white'}`}>
-                        {isEditing ? 'Cancelar' : 'Editar Equipo'}
+                    <button onClick={() => setIsEditing(!isEditing)} className={`px-5 py-2 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${isEditing ? 'bg-white text-slate-900' : 'bg-white/20 text-white'}`}>
+                        {isEditing ? 'Cancelar' : 'Asignar Equipo'}
                     </button>
                 )}
             </div>
         </div>
-        <div className="flex flex-col items-center text-center">
-            <div className="w-20 h-20 bg-white rounded-3xl shadow-xl flex items-center justify-center mb-4 border-4 border-white/20">
-                <TypeConfig.icon size={40} className={event.type === 'ayuno' ? 'text-rose-500' : 'text-slate-800'} />
+        <div className="flex flex-col items-center text-center mt-4">
+            <div className="w-20 h-20 bg-white rounded-[30px] shadow-2xl flex items-center justify-center mb-5 border-4 border-white/20">
+                <TypeConfig.icon size={40} className={event.type === 'ayuno' ? 'text-rose-600' : 'text-slate-800'} />
             </div>
-            <h1 className="text-2xl font-black text-white leading-tight px-4 uppercase">{event.title}</h1>
+            <h1 className="text-2xl font-black text-white leading-tight px-4 uppercase tracking-tighter">{event.title}</h1>
         </div>
-        <div className="absolute -bottom-1 left-0 right-0 h-12 bg-white rounded-t-[40px]"></div>
+        <div className="absolute -bottom-1 left-0 right-0 h-14 bg-white rounded-t-[50px]"></div>
       </div>
 
-      <div ref={reportRef} className="flex-1 overflow-y-auto bg-white px-6 pb-24 no-scrollbar">
-        <div className="max-w-xl mx-auto space-y-6">
-            <div className="flex flex-wrap gap-2 justify-center mt-2">
-                <div className="flex items-center gap-2 bg-slate-50 px-4 py-2.5 rounded-2xl text-xs font-bold text-slate-700 border border-slate-100 shadow-sm">
+      {/* CONTENIDO DEL REPORTE */}
+      <div ref={reportRef} className="flex-1 overflow-y-auto bg-white px-6 pb-32 no-scrollbar">
+        <div className="max-w-xl mx-auto space-y-8">
+            <div className="flex flex-wrap gap-3 justify-center mt-2">
+                <div className="flex items-center gap-2 bg-slate-50 px-5 py-3 rounded-2xl text-[11px] font-black text-slate-700 border border-slate-100 uppercase tracking-widest shadow-sm">
                     <Calendar size={14} className="text-brand-500"/>
                     {format(new Date(event.date + 'T00:00:00'), "EEEE d 'de' MMMM", { locale: es })}
                 </div>
-                <div className="flex items-center gap-2 bg-slate-50 px-4 py-2.5 rounded-2xl text-xs font-bold text-slate-700 border border-slate-100 shadow-sm">
+                <div className="flex items-center gap-2 bg-slate-50 px-5 py-3 rounded-2xl text-[11px] font-black text-slate-700 border border-slate-100 uppercase tracking-widest shadow-sm">
                     <Clock size={14} className="text-brand-500"/>{event.time} hs
                 </div>
             </div>
 
             <div className="space-y-6">
-              {getStructure(event.type).map((section, idx) => (
-                  <div key={idx} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-                      <div className="bg-slate-50/50 px-5 py-3 border-b border-slate-100">
-                          <h3 className="font-black text-slate-700 text-[10px] uppercase tracking-widest">{section.section}</h3>
+              {(EVENT_TYPES[event.type]?.structure || EVENT_TYPES.culto.structure).map((section, idx) => (
+                  <div key={idx} className="bg-white rounded-[35px] border border-slate-100 shadow-sm overflow-hidden">
+                      <div className="bg-slate-50/50 px-6 py-4 border-b border-slate-50">
+                          <h3 className="font-black text-slate-400 text-[10px] uppercase tracking-[0.2em]">{section.section}</h3>
                       </div>
-                      <div className="p-5 space-y-5">
+                      <div className="p-6 space-y-6">
                           {section.roles.map(role => {
                               const assigned = assignments[role.key] || [];
                               const RoleIcon = role.icon;
                               return (
                                   <div key={role.key}>
-                                      <label className="text-[9px] font-black text-slate-400 uppercase mb-3 flex items-center gap-2 tracking-tighter">
-                                          <RoleIcon size={12} className="text-brand-500"/> {role.label}
+                                      <label className="text-[10px] font-black text-slate-800 uppercase mb-4 flex items-center gap-2.5 tracking-widest">
+                                          <div className="p-1.5 bg-brand-50 rounded-lg text-brand-600"><RoleIcon size={14}/></div> {role.label}
                                       </label>
-                                      <div className="flex flex-wrap gap-2">
+                                      <div className="flex flex-wrap gap-2.5">
                                           {assigned.length > 0 ? assigned.map((p, i) => (
-                                              <span key={i} className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border ${isEditing ? 'bg-brand-50 border-brand-200 text-brand-700' : 'bg-slate-50 border-slate-100 text-slate-700'}`}>
+                                              <span key={i} className={`inline-flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-black uppercase tracking-tight border transition-all ${isEditing ? 'bg-brand-600 text-white border-brand-400 shadow-lg scale-105' : 'bg-slate-50 border-slate-100 text-slate-700'}`}>
                                                   {p}
-                                                  {!isEditing && <span>{getStatusIcon(p)}</span>}
-                                                  {isEditing && <button onClick={() => handleRemovePersonRole(role.key, p)} className="p-0.5 bg-brand-200 rounded-full"><X size={12}/></button>}
+                                                  {!isEditing && getStatusIcon(p)}
+                                                  {isEditing && <button onClick={() => setAssignments({ ...assignments, [role.key]: assigned.filter(item => item !== p) })} className="p-1 bg-white/20 rounded-full"><X size={12}/></button>}
                                               </span>
-                                          )) : <p className="text-[10px] text-slate-300 italic font-bold">Vacante</p>}
+                                          )) : <p className="text-[10px] text-slate-300 font-black uppercase tracking-widest ml-1">Sin asignar</p>}
+                                          
                                           {isEditing && (role.type === 'multi' || assigned.length === 0) && (
-                                              <button onClick={() => openPersonSelector(role.key, role)} className="w-full mt-2 py-3 border-2 border-dashed border-slate-200 rounded-2xl text-[10px] font-black text-slate-400 hover:bg-slate-50 transition-all uppercase">+ Añadir Servidor</button>
+                                              <button onClick={() => { setActiveRoleKey(role.key); setActiveRoleConfig(role); setIsSelectorOpen(true); setPersonSearchTerm(''); }} className="w-full mt-3 py-4 border-2 border-dashed border-slate-100 rounded-2xl text-[10px] font-black text-slate-400 hover:bg-slate-50 transition-all uppercase tracking-[0.2em]">+ Añadir Personal</button>
                                           )}
                                       </div>
                                   </div>
@@ -263,47 +236,55 @@ export default function EventDetails() {
         </div>
       </div>
 
+      {/* FOOTER DE EDICIÓN */}
       {isEditing && (
-          <div className="p-4 bg-white border-t border-slate-100 absolute bottom-0 w-full shadow-2xl flex gap-3 z-50 animate-slide-up">
-              <button onClick={async () => { if(window.confirm("¿Eliminar?")) { await deleteDoc(doc(db, 'events', id)); navigate('/calendario'); } }} className="p-4 bg-red-50 text-red-500 rounded-2xl"><Trash2 size={24}/></button>
-              <button onClick={handleSaveAssignments} disabled={isSaving} className="flex-1 bg-slate-900 text-white font-black py-4 rounded-2xl shadow-xl flex items-center justify-center gap-2 uppercase text-xs">
+          <div className="p-5 bg-white border-t border-slate-100 absolute bottom-0 w-full shadow-[0_-20px_50px_rgba(0,0,0,0.1)] flex gap-4 z-50 animate-slide-up">
+              <button onClick={async () => { if(window.confirm("¿Borrar evento?")) { await deleteDoc(doc(db, 'events', id)); navigate('/calendario'); } }} className="p-5 bg-rose-50 text-rose-500 rounded-[24px] active:scale-90 transition-transform"><Trash2 size={24}/></button>
+              <button onClick={handleSaveAssignments} disabled={isSaving} className="flex-1 bg-slate-900 text-white font-black py-5 rounded-[24px] shadow-2xl flex items-center justify-center gap-3 uppercase text-[11px] tracking-[0.2em] active:scale-95 transition-all disabled:opacity-50">
                   {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18}/>}
-                  Guardar y Notificar
+                  Guardar y Avisar
               </button>
           </div>
       )}
 
+      {/* SELECTOR DE PERSONA */}
       {isSelectorOpen && (
-          <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-end justify-center animate-fade-in" onClick={() => setIsSelectorOpen(false)}>
-              <div className="bg-white w-full max-w-sm rounded-t-[40px] max-h-[80vh] flex flex-col shadow-2xl overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
-                  <div className="p-6 border-b flex justify-between items-center bg-white shrink-0">
-                      <h3 className="font-black text-slate-800 text-xs uppercase">Asignar {activeRoleConfig?.label}</h3>
-                      <button onClick={() => setIsSelectorOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-400"><X size={20}/></button>
+          <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-sm flex items-end justify-center animate-fade-in" onClick={() => setIsSelectorOpen(false)}>
+              <div className="bg-white w-full max-w-md rounded-t-[50px] max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
+                  <div className="p-8 border-b flex justify-between items-center bg-white shrink-0">
+                      <div>
+                        <h3 className="font-black text-slate-900 text-sm uppercase tracking-tighter">Asignar {activeRoleConfig?.label}</h3>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Selecciona un servidor</p>
+                      </div>
+                      <button onClick={() => setIsSelectorOpen(false)} className="p-3 bg-slate-50 rounded-full text-slate-400 active:scale-90 transition-transform"><X size={20}/></button>
                   </div>
-                  <div className="p-4 bg-slate-50 shrink-0">
-                      <div className="bg-white border rounded-2xl px-4 py-3 flex items-center gap-2">
-                          <Search size={18} className="text-slate-400"/><input type="text" placeholder="Buscar hermano..." className="w-full text-sm font-bold outline-none" value={personSearchTerm} onChange={e => setPersonSearchTerm(e.target.value)}/>
+                  <div className="p-5 bg-slate-50 shrink-0">
+                      <div className="bg-white border-2 border-slate-100 rounded-2xl px-5 py-4 flex items-center gap-3 shadow-inner">
+                          <Search size={18} className="text-slate-400"/><input autoFocus type="text" placeholder="Buscar por nombre..." className="w-full text-sm font-bold outline-none bg-transparent" value={personSearchTerm} onChange={e => setPersonSearchTerm(e.target.value)}/>
                       </div>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-4 space-y-2 no-scrollbar">
+                  <div className="flex-1 overflow-y-auto p-5 space-y-3 no-scrollbar pb-10">
                       {users.filter(u => (u.displayName || '').toLowerCase().includes(personSearchTerm.toLowerCase())).map(u => {
-                          const isTaken = isUserTaken(u.displayName);
                           const isAlreadyInThisRole = (assignments[activeRoleKey] || []).includes(u.displayName);
                           return (
                               <button 
                                 key={u.id} 
-                                disabled={isTaken && !isAlreadyInThisRole}
-                                onClick={() => handleSelectPersonFromModal(u.displayName)} 
-                                className={`w-full flex items-center gap-4 p-4 rounded-[28px] border-2 transition-all text-left ${isAlreadyInThisRole ? 'bg-brand-50 border-brand-500 shadow-md' : isTaken ? 'bg-slate-50 border-transparent opacity-40 cursor-not-allowed' : 'bg-white border-slate-100 hover:border-brand-200'}`}
+                                onClick={() => {
+                                    const currentList = assignments[activeRoleKey] || [];
+                                    const newList = activeRoleConfig.type === 'single' ? [u.displayName] : [...new Set([...currentList, u.displayName])];
+                                    setAssignments({ ...assignments, [activeRoleKey]: newList });
+                                    setIsSelectorOpen(false);
+                                }} 
+                                className={`w-full flex items-center gap-4 p-4 rounded-[28px] border-2 transition-all text-left ${isAlreadyInThisRole ? 'bg-brand-600 border-brand-600 shadow-xl scale-[0.98]' : 'bg-white border-slate-100 active:scale-95'}`}
                               >
-                                  <div className="w-12 h-12 rounded-[18px] bg-slate-100 overflow-hidden border-2 border-white flex items-center justify-center font-black text-slate-400 shrink-0">
+                                  <div className="w-14 h-14 rounded-2xl bg-slate-100 overflow-hidden border-2 border-white flex items-center justify-center font-black text-slate-400 shrink-0 shadow-sm">
                                       {u.photoURL ? <img src={u.photoURL} className="w-full h-full object-cover" /> : (u.displayName || '?')[0].toUpperCase()}
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                      <p className="font-black text-slate-800 text-sm uppercase truncate">{u.displayName}</p>
-                                      <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">{u.area || u.ministerio || 'Miembro'}</p>
+                                      <p className={`font-black text-sm uppercase truncate ${isAlreadyInThisRole ? 'text-white' : 'text-slate-800'}`}>{u.displayName}</p>
+                                      <p className={`text-[10px] font-bold uppercase mt-1 tracking-widest ${isAlreadyInThisRole ? 'text-white/60' : 'text-slate-400'}`}>{u.area || 'Servidor'}</p>
                                   </div>
-                                  {!isTaken && <Plus size={18} className="text-slate-300 shrink-0"/>}
+                                  {isAlreadyInThisRole ? <Check size={20} className="text-white"/> : <Plus size={20} className="text-slate-200"/>}
                               </button>
                           );
                       })}
@@ -312,8 +293,9 @@ export default function EventDetails() {
           </div>
       )}
 
+      {/* TOASTS */}
       {toast && (
-        <div className="fixed bottom-24 left-6 right-6 z-[400] animate-slide-up">
+        <div className="fixed bottom-28 left-6 right-6 z-[300] animate-slide-up">
           <div className={`flex items-center gap-4 px-8 py-5 rounded-[30px] shadow-2xl border-2 ${toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-400' : 'bg-slate-900 text-white border-slate-700'}`}>
             <span className="text-[11px] font-black uppercase tracking-widest">{toast.message}</span>
           </div>

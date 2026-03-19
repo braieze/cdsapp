@@ -46,7 +46,7 @@ export default function ServiceDetails() {
   const CLOUD_NAME = "djmkggzjp"; 
   const UPLOAD_PRESET = "ml_default";
 
-  // ✅ PUNTO #5: ROLES - Pastor y Líder tienen control total
+  // ✅ ROLES MODERADORES
   const isModerator = userRole === 'pastor' || userRole === 'lider';
 
   useEffect(() => {
@@ -56,18 +56,15 @@ export default function ServiceDetails() {
     }
   }, [toast]);
 
-  // Sincronización de OneSignal
+  // Sincronización OneSignal
   useEffect(() => {
     if (currentUser) {
-      if (isNative) {
-        OneSignal.login(currentUser.uid);
-      } else {
-        OneSignalWeb.login(currentUser.uid);
-      }
+      if (isNative) { OneSignal.login(currentUser.uid); } 
+      else { OneSignalWeb.login(currentUser.uid); }
     }
   }, [currentUser, isNative]);
 
-  // Carga de Datos Iniciales
+  // Carga de Datos
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -83,35 +80,30 @@ export default function ServiceDetails() {
         } else {
           navigate('/servicios');
         }
-      } catch (error) {
-        console.error("Error fetching data:", error);
-      } finally {
-        setLoading(false);
-      }
+      } catch (error) { console.error(error); } 
+      finally { setLoading(false); }
     };
     fetchData();
   }, [id, navigate, currentUser.uid]);
 
-  // Escuchador de Mensajes (Chat)
+  // Listener de Chat
   useEffect(() => {
     const q = query(collection(db, `events/${id}/notes`), orderBy('createdAt', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setMessages(msgs);
       
-      // Marcar como leído
       msgs.forEach(async (m) => {
         if (!m.readBy?.includes(currentUser.uid)) {
           await updateDoc(doc(db, `events/${id}/notes`, m.id), { readBy: arrayUnion(currentUser.uid) });
         }
       });
-
       setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
     });
     return () => unsubscribe();
   }, [id, currentUser.uid]);
 
-  // ✅ 1. FUNCIÓN DE NOTIFICACIÓN DIRECTA
+  // ✅ FUNCIÓN DE NOTIFICACIÓN UNIVERSAL
   const sendOneSignalNotification = async (userIds, title, message) => {
     try {
       const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
@@ -120,7 +112,7 @@ export default function ServiceDetails() {
 
       const path = `/servicios/${id}`;
 
-      await fetch("https://onesignal.com/api/v1/notifications", {
+      const response = await fetch("https://onesignal.com/api/v1/notifications", {
         method: "POST",
         headers: {
           "Content-Type": "application/json; charset=utf-8",
@@ -137,7 +129,9 @@ export default function ServiceDetails() {
           priority: 10
         })
       });
-    } catch (e) { console.error("Error OneSignal:", e); }
+      const data = await response.json();
+      console.log("✅ OneSignal Chat:", data);
+    } catch (e) { console.error("Error Notif:", e); }
   };
 
   const handleSendMessage = async () => {
@@ -171,14 +165,17 @@ export default function ServiceDetails() {
       // ✅ NOTIFICAR SEGÚN ROL
       let targetIds = [];
       const assignedNames = Object.values(event.assignments || {}).flat();
+      
       if (isModerator) {
+        // Pastor avisa a los asignados
         targetIds = allUsers.filter(u => assignedNames.includes(u.displayName) && u.id !== currentUser.uid).map(u => u.id);
       } else {
+        // Servidor avisa a los Pastores/Líderes
         targetIds = allUsers.filter(u => (u.role === 'pastor' || u.role === 'lider') && u.id !== currentUser.uid).map(u => u.id);
       }
 
-      const notifMsg = imageUrl ? "📷 Imagen enviada" : checklist ? "📋 Nueva lista de tareas" : txt;
-      await sendOneSignalNotification(targetIds, `${currentUser.displayName} en ${event.title}`, notifMsg);
+      const notifBody = imageUrl ? "📷 Envió una imagen" : checklist ? "📋 Envió una lista de tareas" : txt;
+      await sendOneSignalNotification(targetIds, `${currentUser.displayName} en ${event.title}`, notifBody);
       
       setNewMessage(''); setSelectedFile(null); setImagePreview(null);
       setShowChecklistCreator(false); setTempTasks(['']);
@@ -191,7 +188,7 @@ export default function ServiceDetails() {
     
     if (status) {
       const moderators = allUsers.filter(u => (u.role === 'pastor' || u.role === 'lider') && u.id !== currentUser.uid).map(u => u.id);
-      const statusText = status === 'confirmed' ? 'Confirmó asistencia ✓' : 'Marcó que no puede ir ✗';
+      const statusText = status === 'confirmed' ? 'Confirmó asistencia ✓' : 'No puede asistir ✗';
       await sendOneSignalNotification(moderators, `Estado: ${currentUser.displayName}`, `${statusText} para ${event.title}`);
     }
 
@@ -201,7 +198,6 @@ export default function ServiceDetails() {
 
   const togglePin = async (msgId, currentState) => {
     if (!isModerator) return;
-    // Desfijar otros
     messages.forEach(async (m) => { if (m.isPinned) await updateDoc(doc(db, `events/${id}/notes`, m.id), { isPinned: false }); });
     await updateDoc(doc(db, `events/${id}/notes`, msgId), { isPinned: !currentState });
   };
@@ -233,7 +229,7 @@ export default function ServiceDetails() {
             {m.checklist.map((task, i) => (
               <button key={i} onClick={(e) => { e.stopPropagation(); toggleChecklistTask(m.id, i); }} className="flex items-center gap-2.5 w-full text-left">
                 {task.completed ? <CheckSquare size={isPinnedView ? 14 : 16} className={isPinnedView ? "text-white/80" : (isMyMessage ? "text-white" : "text-brand-600")}/> : <Square size={16} className="opacity-40"/>}
-                <span className={`${isPinnedView ? 'text-xs' : 'text-sm'} font-bold ${task.completed ? 'opacity-40 line-through' : ''}`}>{task.text}</span>
+                <span className={`${isPinnedView ? 'text-xs' : 'text-sm'} font-black ${task.completed ? 'opacity-40 line-through' : ''}`}>{task.text}</span>
               </button>
             ))}
           </div>
@@ -244,13 +240,13 @@ export default function ServiceDetails() {
   };
 
   return (
-    <div className="fixed inset-0 bg-white flex flex-col overflow-hidden animate-fade-in z-[100]">
+    <div className="fixed inset-0 bg-white flex flex-col overflow-hidden animate-fade-in z-[100] font-outfit">
       
       <header className="bg-slate-900 text-white pt-12 pb-4 px-5 rounded-b-[40px] shadow-xl z-50 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
           <button onClick={() => navigate('/servicios')} className="p-2 bg-white/10 rounded-full"><ChevronLeft size={22} /></button>
           <div className="text-center flex-1">
-            <h1 className="text-xl font-black truncate uppercase">{event.title}</h1>
+            <h1 className="text-xl font-black truncate uppercase tracking-tighter">{event.title}</h1>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{format(new Date(event.date + 'T00:00:00'), "d MMMM", { locale: es })} • {event.time} hs</p>
           </div>
           <div className="w-10"></div>
@@ -269,7 +265,7 @@ export default function ServiceDetails() {
         ) : (
           <div className={`p-2 rounded-xl flex items-center justify-between border ${myStatus === 'confirmed' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'}`}>
             <span className="text-[9px] font-black uppercase flex items-center gap-2">{myStatus === 'confirmed' ? <CheckCircle size={14}/> : <XCircle size={14}/>} {myStatus === 'confirmed' ? 'LISTO' : 'BAJA'}</span>
-            <button onClick={() => handleResponse(null)} className="text-[8px] font-black uppercase underline">Cambiar</button>
+            <button onClick={() => handleResponse(null)} className="text-[8px] font-black uppercase underline ml-2">Cambiar</button>
           </div>
         )}
       </header>
@@ -301,8 +297,8 @@ export default function ServiceDetails() {
                         <div className="relative group max-w-[85%]">
                           <MessageContent m={m} />
                           <div className={`absolute top-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity ${isMy ? '-left-14' : '-right-14'}`}>
-                             {(isModerator || isMy) && <button onClick={() => deleteMessage(m.id)} className="p-1.5 bg-red-50 text-red-500 rounded-full"><Trash2 size={12}/></button>}
-                             {isModerator && <button onClick={() => togglePin(m.id, m.isPinned)} className={`p-1.5 rounded-full ${m.isPinned ? 'bg-brand-600 text-white' : 'bg-brand-50 text-brand-600'}`}><Pin size={12}/></button>}
+                             {(isModerator || isMy) && <button onClick={() => deleteMessage(m.id)} className="p-1.5 bg-red-50 text-red-500 rounded-full active:scale-90 transition-transform"><Trash2 size={12}/></button>}
+                             {isModerator && <button onClick={() => togglePin(m.id, m.isPinned)} className={`p-1.5 rounded-full active:scale-90 transition-transform ${m.isPinned ? 'bg-brand-600 text-white' : 'bg-brand-50 text-brand-600'}`}><Pin size={12}/></button>}
                           </div>
                         </div>
                         <div className={`mt-1 px-1 flex flex-col ${isMy ? 'items-end' : 'items-start'}`}>
@@ -317,7 +313,7 @@ export default function ServiceDetails() {
         </div>
       </main>
 
-      <footer className="bg-white border-t border-slate-100 p-4 pb-8 z-50 flex-shrink-0 shadow-xl relative">
+      <footer className="bg-white border-t border-slate-100 p-4 pb-8 z-50 flex-shrink-0 shadow-[0_-10px_40px_rgba(0,0,0,0.05)] relative">
         {imagePreview && (
           <div className="absolute bottom-full left-4 mb-3 animate-scale-in">
             <img src={imagePreview} className="w-16 h-16 object-cover rounded-xl border-2 border-white shadow-lg" />
@@ -325,46 +321,49 @@ export default function ServiceDetails() {
           </div>
         )}
         {showChecklistCreator && (
-          <div className="absolute bottom-full left-4 right-4 bg-white border border-slate-200 rounded-xl p-3 mb-3 space-y-2 shadow-2xl animate-slide-up">
-            <div className="flex justify-between items-center"><span className="text-[9px] font-black text-slate-500 uppercase">Nueva Lista</span><button onClick={() => setShowChecklistCreator(false)}><X size={12}/></button></div>
+          <div className="absolute bottom-full left-4 right-4 bg-white border border-slate-200 rounded-[24px] p-4 mb-3 space-y-2 shadow-2xl animate-slide-up">
+            <div className="flex justify-between items-center mb-2"><span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Nueva Lista de Tareas</span><button onClick={() => setShowChecklistCreator(false)}><X size={14}/></button></div>
             {tempTasks.map((t, i) => (
               <input key={i} type="text" value={t} onChange={(e) => {
                 const newT = [...tempTasks]; newT[i] = e.target.value; 
                 if (i === tempTasks.length - 1 && e.target.value !== '') newT.push('');
                 setTempTasks(newT);
-              }} placeholder="Tarea..." className="w-full text-xs p-1 bg-transparent outline-none border-b border-slate-200 font-bold" />
+              }} placeholder="Escribir tarea..." className="w-full text-xs p-2 bg-slate-50 border-b border-slate-100 rounded-lg outline-none font-bold text-slate-700" />
             ))}
           </div>
         )}
 
         <div className="flex items-end gap-2">
           <div className="flex gap-1.5">
-            <label className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-slate-400 cursor-pointer"><ImageIcon size={18}/><input type="file" className="hidden" accept="image/*" onChange={(e) => {
+            <label className="p-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-slate-400 cursor-pointer active:scale-95 transition-all"><ImageIcon size={20}/><input type="file" className="hidden" accept="image/*" onChange={(e) => {
                 const file = e.target.files[0];
                 if (file) { setSelectedFile(file); setImagePreview(URL.createObjectURL(file)); }
             }} /></label>
-            <button onClick={() => setShowChecklistCreator(!showChecklistCreator)} className={`p-3 border rounded-xl ${showChecklistCreator ? 'bg-brand-600 text-white' : 'bg-slate-50 text-slate-400'}`}><ListPlus size={18}/></button>
+            <button onClick={() => setShowChecklistCreator(!showChecklistCreator)} className={`p-3.5 border rounded-2xl active:scale-95 transition-all ${showChecklistCreator ? 'bg-brand-600 text-white border-brand-600 shadow-lg' : 'bg-slate-50 text-slate-400 border-slate-100'}`}><ListPlus size={20}/></button>
           </div>
-          <textarea rows="1" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Escribe una nota..." className="flex-1 bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm outline-none resize-none max-h-32" />
-          <button onClick={handleSendMessage} disabled={isSending || (!newMessage.trim() && !selectedFile && !showChecklistCreator)} className="bg-brand-600 text-white p-3.5 rounded-xl shadow-lg disabled:opacity-50">{isSending ? <Loader2 size={18} className="animate-spin"/> : <Send size={18}/>}</button>
+          <textarea rows="1" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Nota rápida..." className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3.5 text-sm outline-none resize-none max-h-32 font-medium" />
+          <button onClick={handleSendMessage} disabled={isSending || (!newMessage.trim() && !selectedFile && !showChecklistCreator)} className="bg-brand-600 text-white p-4 rounded-2xl shadow-xl disabled:opacity-50 active:scale-95 transition-all">{isSending ? <Loader2 size={20} className="animate-spin"/> : <Send size={20}/>}</button>
         </div>
       </footer>
 
-      {/* MODALES DE IMAGEN Y VISTO POR */}
+      {/* MODALES */}
       {viewingImage && (
-        <div className="fixed inset-0 z-[200] bg-black/95 flex items-center justify-center p-4" onClick={() => setViewingImage(null)}>
-          <img src={viewingImage} className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl" />
-          <button className="absolute top-8 right-8 text-white p-2 bg-white/10 rounded-full"><X size={28}/></button>
+        <div className="fixed inset-0 z-[200] bg-black/95 flex items-center justify-center p-4 animate-fade-in" onClick={() => setViewingImage(null)}>
+          <img src={viewingImage} className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl" onClick={e => e.stopPropagation()} />
+          <button className="absolute top-10 right-10 text-white p-3 bg-white/10 rounded-full backdrop-blur-md"><X size={28}/></button>
         </div>
       )}
 
       {showReadersId && (
-        <div className="fixed inset-0 z-[200] bg-black/40 flex items-center justify-center p-6" onClick={() => setShowReadersId(null)}>
-          <div className="bg-white w-full max-w-xs rounded-[35px] p-6 shadow-2xl animate-scale-in" onClick={e => e.stopPropagation()}>
-            <h4 className="font-black text-slate-800 text-[10px] uppercase mb-4 pb-2 border-b">Visto por:</h4>
-            <div className="space-y-3 max-h-60 overflow-y-auto">
+        <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6 animate-fade-in" onClick={() => setShowReadersId(null)}>
+          <div className="bg-white w-full max-w-xs rounded-[40px] p-8 shadow-2xl animate-scale-in" onClick={e => e.stopPropagation()}>
+            <h4 className="font-black text-slate-400 text-[10px] uppercase mb-6 tracking-[0.2em] border-b pb-2">Visto por:</h4>
+            <div className="space-y-4 max-h-64 overflow-y-auto no-scrollbar">
               {allUsers.filter(u => messages.find(m => m.id === showReadersId)?.readBy?.includes(u.id) && u.id !== messages.find(m => m.id === showReadersId)?.uid).map(u => (
-                <div key={u.id} className="flex items-center gap-3"><img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}`} className="w-8 h-8 rounded-full" /><span className="text-xs font-bold text-slate-700">{u.displayName}</span></div>
+                <div key={u.id} className="flex items-center gap-4">
+                  <img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}`} className="w-10 h-10 rounded-xl shadow-sm" />
+                  <span className="text-xs font-black text-slate-700 uppercase tracking-tight">{u.displayName}</span>
+                </div>
               ))}
             </div>
           </div>
@@ -373,7 +372,7 @@ export default function ServiceDetails() {
 
       {/* TOASTS */}
       {toast && (
-        <div className="fixed bottom-24 left-6 right-6 z-[400] animate-slide-up">
+        <div className="fixed bottom-28 left-6 right-6 z-[400] animate-slide-up">
           <div className={`flex items-center gap-4 px-8 py-5 rounded-[30px] shadow-2xl border-2 ${toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-400' : 'bg-slate-900 text-white border-slate-700'}`}>
             <span className="text-[11px] font-black uppercase tracking-widest">{toast.message}</span>
           </div>

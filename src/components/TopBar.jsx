@@ -254,7 +254,7 @@ export default function TopBar({ title, subtitle }) {
                 />
             </div>
             <div className="flex flex-col">
-                <span className="text-lg font-black text-slate-800 tracking-tight leading-none">CD SAPP</span>
+                <span className="text-lg font-black text-slate-800 tracking-tight leading-none">CDS APP</span>
                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter mt-1">Hola, {currentUser?.displayName?.split(' ')[0]}</p>
             </div>
         </div>
