@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { auth, db } from './firebase'; 
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'; 
 import { Toaster } from 'sonner';
 import { Capacitor } from '@capacitor/core'; 
+import { App as CapApp } from '@capacitor/app'; // ✅ Importar plugin de App nativa
 import OneSignalWeb from 'react-onesignal'; 
 
 // ✅ ONESIGNAL VERSIÓN 5
@@ -26,39 +27,45 @@ import Directory from './pages/Directory';
 import Ofrendar from './pages/Ofrendar'; 
 import Tesoreria from './pages/Tesoreria';
 
-// --- MANEJADOR DE NAVEGACIÓN (Forzado a solo App) ---
+// --- MANEJADOR DE NAVEGACIÓN Y EVENTOS NATIVOS ---
 function NavigationHandler() {
   const navigate = useNavigate();
+  const location = useLocation(); // Para saber dónde estamos parados
   const isNative = Capacitor.isNativePlatform();
 
   useEffect(() => {
-    // 1. Lógica para NATIVO (Android/APK)
+    // 1. Lógica de Notificaciones (Deep Linking)
     if (isNative) {
       const handleNotificationClick = (event) => {
-        // Leemos de additionalData que es donde viajan nuestros datos internos
         const route = event.notification.additionalData?.route;
-        if (route) {
-          console.log("Navegando internamente a:", route);
-          navigate(route);
-        }
+        if (route) navigate(route);
       };
-      
       OneSignal.Notifications.addEventListener("click", handleNotificationClick);
-      return () => OneSignal.Notifications.removeEventListener("click", handleNotificationClick);
-    } 
-    // 2. Lógica para WEB (PWA)
-    else {
-      const handleWebClick = (event) => {
-        // En la web OneSignal usa el objeto data
-        const route = event.notification.data?.route;
-        if (route) {
-          navigate(route);
+
+      // 🎯 2. ARREGLO BOTÓN ATRÁS ANDROID
+      const backListener = CapApp.addListener('backButton', ({ canGoBack }) => {
+        // Si estamos en el Home (raíz), cerramos la app. Si no, vamos atrás.
+        if (location.pathname === '/') {
+          CapApp.exitApp();
+        } else {
+          navigate(-1);
         }
+      });
+
+      return () => {
+        OneSignal.Notifications.removeEventListener("click", handleNotificationClick);
+        backListener.remove(); // Limpiar el listener al desmontar
+      };
+    } else {
+      // Lógica WEB
+      const handleWebClick = (event) => {
+        const route = event.notification.data?.route;
+        if (route) navigate(route);
       };
       OneSignalWeb.Notifications.addEventListener("click", handleWebClick);
       return () => OneSignalWeb.Notifications.removeEventListener("click", handleWebClick);
     }
-  }, [navigate, isNative]);
+  }, [navigate, location, isNative]);
 
   return null;
 }
@@ -133,7 +140,7 @@ export default function App() {
   return (
     <HashRouter>
       <NavigationHandler /> 
-      <Toaster richColors position="top-center" />
+      <Toaster richColors position="top-center" expand={false} />
       <Routes>
         <Route path="/login" element={!user ? <Login /> : <Navigate to="/" replace />} />
         <Route path="/ofrendar" element={<Ofrendar />} /> 

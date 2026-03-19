@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom'; 
 import { 
   Cake, BookOpen, Pin, Link as LinkIcon, ExternalLink, 
@@ -92,9 +92,9 @@ export default function Home() {
   const [postToDelete, setPostToDelete] = useState(null);
   const [fullImage, setFullImage] = useState(null);
 
-  // 1. CARGAR POSTS
+  // 1. CARGAR POSTS (Optimizado con limit)
   useEffect(() => {
-    const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(20));
+    const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(15));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const postsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       postsData.sort((a, b) => (a.isPinned === b.isPinned ? 0 : a.isPinned ? -1 : 1));
@@ -104,7 +104,7 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // 2. CARGAR CUMPLEAÑOS Y AUTO-NOTIF
+  // 2. CARGAR CUMPLEAÑOS
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
       const today = new Date();
@@ -134,15 +134,17 @@ export default function Home() {
       const bdayPeople = allUsers.filter(u => u.birthday && u.birthday.slice(5) === format(today, 'MM-dd'));
       if (bdayPeople.length > 0) {
         const names = bdayPeople.map(u => u.displayName.split(' ')[0]).join(', ');
+        const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
+        
         await fetch("https://onesignal.com/api/v1/notifications", {
           method: "POST",
-          headers: { "Content-Type": "application/json; charset=utf-8", "Authorization": `Basic ${import.meta.env.VITE_ONESIGNAL_REST_API_KEY}` },
+          headers: { "Content-Type": "application/json; charset=utf-8", "Authorization": `Basic ${REST_API_KEY}` },
           body: JSON.stringify({
             app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
             included_segments: ["Total Subscriptions"],
             headings: { en: "🎂 ¡Cumpleaños de hoy!", es: "🎂 ¡Cumpleaños de hoy!" },
-            contents: { en: `Hoy celebramos a: ${names}. ¡Escríbeles un mensaje!`, es: `Hoy celebramos a: ${names}. ¡Escríbeles un mensaje!` },
-            url: "https://cdsapp.vercel.app/#/",
+            contents: { en: `Hoy celebramos a: ${names}. ¡Mándales un saludo!`, es: `Hoy celebramos a: ${names}. ¡Mándales un saludo!` },
+            // 🎯 QUITAMOS URL PARA FORZAR LA APP
             data: { route: "/" }
           })
         });
@@ -151,7 +153,6 @@ export default function Home() {
     } catch (e) { /* silent */ }
   };
 
-  // ✅ VOTOS DINÁMICOS (CAMBIAR / QUITAR)
   const handleVote = async (post, optionIdx) => {
     if (!currentUser) return;
     const postRef = doc(db, 'posts', post.id);
@@ -160,30 +161,26 @@ export default function Home() {
         const postDoc = await transaction.get(postRef);
         const data = postDoc.data();
         const voters = data.poll.voters || [];
-        const voteIndex = data.poll.votesDetails?.findIndex(v => v.uid === currentUser.uid);
+        const voteRecord = data.poll.votesDetails?.find(v => v.uid === currentUser.uid);
         
         let newOptions = [...data.poll.options];
         let newVoters = [...voters];
         let newVotesDetails = data.poll.votesDetails ? [...data.poll.votesDetails] : [];
 
-        if (voteIndex !== -1) {
-            // Ya votó. Quitamos el voto anterior.
-            const prevOptionText = newVotesDetails[voteIndex].option;
+        if (voteRecord) {
+            const prevOptionText = voteRecord.option;
             const prevOptIdx = newOptions.findIndex(o => o.text === prevOptionText);
             if (prevOptIdx !== -1) newOptions[prevOptIdx].votes = Math.max(0, newOptions[prevOptIdx].votes - 1);
             
             newVoters = newVoters.filter(id => id !== currentUser.uid);
-            newVotesDetails.splice(voteIndex, 1);
+            newVotesDetails = newVotesDetails.filter(v => v.uid !== currentUser.uid);
             
-            // Si la opción que tocó es diferente, agregamos el nuevo voto (CAMBIAR)
             if (data.poll.options[optionIdx].text !== prevOptionText) {
                 newOptions[optionIdx].votes += 1;
                 newVoters.push(currentUser.uid);
                 newVotesDetails.push({ uid: currentUser.uid, name: currentUser.displayName, option: data.poll.options[optionIdx].text });
             }
-            // Si tocó la misma, solo se quita (QUITAR VOTO)
         } else {
-            // VOTO NUEVO
             newOptions[optionIdx].votes += 1;
             newVoters.push(currentUser.uid);
             newVotesDetails.push({ uid: currentUser.uid, name: currentUser.displayName, option: data.poll.options[optionIdx].text });
@@ -195,7 +192,7 @@ export default function Home() {
           'poll.votesDetails': newVotesDetails
         });
       });
-    } catch (e) { console.error("Error voto:", e); }
+    } catch (e) { /* error silent */ }
   };
 
   const handleLinkClick = (e, url) => {
@@ -221,24 +218,27 @@ export default function Home() {
     setReactionPickerOpen(null);
   };
 
-  const filteredPosts = filter === 'Todo' ? posts : posts.filter(p => p.type === filter);
+  // ✅ OPTIMIZACIÓN: Memoizamos el filtrado
+  const filteredPosts = useMemo(() => {
+    return filter === 'Todo' ? posts : posts.filter(p => p.type === filter);
+  }, [filter, posts]);
 
   return (
     <div className="pb-36 animate-fade-in min-h-screen bg-slate-50 font-outfit relative">
       <TopBar />
 
       <div className="px-4 mt-6 space-y-4">
-          <div onClick={() => birthdays.length > 0 && setIsBirthdayModalOpen(true)} className={`bg-white p-5 border border-slate-100 rounded-[30px] flex items-center justify-between shadow-sm transition-all ${birthdays.length > 0 ? 'bg-gradient-to-r from-white to-brand-50/30' : ''}`}>
+          <div onClick={() => birthdays.length > 0 && setIsBirthdayModalOpen(true)} className={`bg-white p-5 border border-slate-100 rounded-[30px] flex items-center justify-between shadow-sm transition-all ${birthdays.length > 0 ? 'bg-gradient-to-r from-white to-brand-50/30 active:scale-95' : ''}`}>
             <div className="flex items-center gap-4">
               <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white ${birthdays.length > 0 ? 'bg-brand-500 shadow-lg shadow-brand-200 animate-pulse' : 'bg-slate-200'}`}><Cake size={28} /></div>
               <div className="text-left">
-                <p className="text-base font-black text-slate-900 tracking-tighter uppercase">Cumpleaños</p>
+                <p className="text-base font-black text-slate-800 tracking-tighter uppercase">Cumpleaños</p>
                 <p className={`text-[10px] font-bold uppercase tracking-widest ${birthdays.length > 0 ? 'text-brand-600' : 'text-slate-400'}`}>
-                  {birthdays.length > 0 ? `${birthdays.length} Hermanos festejan hoy` : "Sin festejos hoy"}
+                  {birthdays.length > 0 ? `${birthdays.length} Hermanos hoy 🎂` : "No hay festejos hoy"}
                 </p>
               </div>
             </div>
-            {birthdays.length > 0 && <span className="text-[9px] font-black text-white bg-brand-600 px-3 py-1.5 rounded-full uppercase shadow-md">Ver</span>}
+            {birthdays.length > 0 && <span className="text-[9px] font-black text-white bg-brand-600 px-3 py-1.5 rounded-full uppercase">Ver</span>}
           </div>
 
           <div className="flex gap-2 overflow-x-auto py-2 no-scrollbar">
@@ -255,16 +255,20 @@ export default function Home() {
             <EmptyState />
         ) : (
             filteredPosts.map(post => {
-                const myVote = post.poll?.votesDetails?.find(v => v.uid === currentUser.uid);
-                return (
-              <div key={post.id} className={`bg-white pt-6 sm:rounded-[40px] shadow-sm border-y sm:border border-slate-100 relative ${post.type === 'Urgente' ? 'border-l-4 border-l-rose-500 shadow-rose-100' : ''} ${post.isPinned ? 'bg-slate-50/50' : ''}`}>
+              const myVote = post.poll?.votesDetails?.find(v => v.uid === currentUser.uid);
+              return (
+              <div key={post.id} className={`bg-white pt-6 sm:rounded-[40px] shadow-sm border-y sm:border border-slate-100 relative ${post.type === 'Urgente' ? 'border-l-4 border-l-rose-500' : ''} ${post.isPinned ? 'bg-slate-50/50' : ''}`}>
                 {post.isPinned && <div className="absolute top-0 right-10 bg-brand-600 text-white px-3 py-1 rounded-b-xl text-[8px] font-black tracking-[0.2em] shadow-lg flex items-center gap-1"><Pin size={10} /> FIJADO</div>}
                 
                 <div className="flex justify-between items-start mb-5 px-6">
                   <div className="flex items-center gap-3">
-                      {/* FIX IMAGEN PERFIL ANDROID */}
+                      {/* ✅ FIX ANDROID: IMAGEN DE PERFIL RÍGIDA */}
                       <div className="w-12 h-12 rounded-2xl border-2 border-white shadow-md overflow-hidden bg-slate-100 shrink-0">
-                        <img src={post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}`} className="w-full h-full object-cover" />
+                        <img 
+                          src={post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}`} 
+                          className="w-full h-full object-cover" 
+                          loading="lazy"
+                        />
                       </div>
                       <div className="text-left">
                         <h3 className="text-xs font-black text-slate-900 uppercase tracking-tighter">{post.authorName}</h3>
@@ -274,7 +278,7 @@ export default function Home() {
                   
                   {(isModerator || post.authorId === currentUser?.uid) && (
                     <div className="relative">
-                      <button onClick={() => setMenuOpenId(menuOpenId === post.id ? null : post.id)} className="p-2 text-slate-300 hover:text-slate-900"><MoreVertical size={24}/></button>
+                      <button onClick={() => setMenuOpenId(menuOpenId === post.id ? null : post.id)} className="p-2 text-slate-300 active:text-slate-900"><MoreVertical size={24}/></button>
                       {menuOpenId === post.id && (
                         <div className="absolute right-0 top-10 bg-white shadow-2xl rounded-2xl border border-slate-100 py-2 w-48 z-[60] animate-scale-in origin-top-right overflow-hidden">
                           {isModerator && (
@@ -285,7 +289,7 @@ export default function Home() {
                           <button onClick={() => { setEditingPost(post); setIsModalOpen(true); setMenuOpenId(null); }} className="w-full text-left px-5 py-3.5 text-[9px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50 flex items-center gap-3">
                             <Edit3 size={14}/> Editar
                           </button>
-                          <button onClick={async () => { if(window.confirm('¿Eliminar?')){ await deleteDoc(doc(db, 'posts', post.id)); } setMenuOpenId(null); }} className="w-full text-left px-5 py-3.5 text-[9px] font-black uppercase tracking-widest text-rose-500 hover:bg-rose-50 flex items-center gap-3">
+                          <button onClick={async () => { if(window.confirm('¿Borrar?')){ await deleteDoc(doc(db, 'posts', post.id)); } setMenuOpenId(null); }} className="w-full text-left px-5 py-3.5 text-[9px] font-black uppercase tracking-widest text-rose-500 hover:bg-rose-50 flex items-center gap-3">
                             <Trash2 size={14}/> Eliminar
                           </button>
                         </div>
@@ -301,13 +305,13 @@ export default function Home() {
 
                 {post.image && (
                   <div className="w-full mb-4 bg-slate-100 cursor-pointer" onClick={() => navigate(`/post/${post.id}`)}>
-                    <img src={post.image} className="w-full h-auto max-h-[450px] object-cover" />
+                    <img src={post.image} className="w-full h-auto max-h-[450px] object-cover" loading="lazy" />
                   </div>
                 )}
                 
                 {post.link && (
                     <div className="px-6 mb-4">
-                        <button onClick={(e) => handleLinkClick(e, post.link)} className="flex items-center justify-between w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-[22px] shadow-sm active:scale-[0.98]">
+                        <button onClick={(e) => handleLinkClick(e, post.link)} className="flex items-center justify-between w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-[22px] active:scale-[0.98]">
                           <span className="text-[10px] font-black text-brand-700 flex items-center gap-3 uppercase tracking-widest">{post.link.startsWith('/') ? <Calendar size={18} /> : <LinkIcon size={18} />} {post.linkText || 'Ver más'}</span>
                           <ExternalLink size={16} className="text-slate-300" />
                         </button>
@@ -319,11 +323,9 @@ export default function Home() {
                       <div className="bg-slate-50 rounded-[30px] p-5 border border-slate-100">
                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 text-left">Encuesta rápida</p>
                         {post.poll.options.map((opt, idx) => {
-                          const voters = post.poll.voters || [];
-                          const total = voters.length || 0;
+                          const total = post.poll.voters?.length || 0;
                           const percent = total > 0 ? Math.round((opt.votes / total) * 100) : 0;
                           const isMyOption = myVote?.option === opt.text;
-
                           return (
                             <button key={idx} onClick={() => handleVote(post, idx)} className="w-full relative mb-3 h-12 rounded-xl overflow-hidden bg-white border border-slate-100 text-left active:scale-[0.98] transition-all">
                               <div className={`absolute top-0 left-0 h-full transition-all duration-700 ${isMyOption ? 'bg-brand-500/20' : 'bg-slate-100'}`} style={{ width: `${percent}%` }}></div>
@@ -382,4 +384,4 @@ export default function Home() {
       )}
     </div>
   );
-}
+}X

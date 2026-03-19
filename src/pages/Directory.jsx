@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react'; // ✅ useMemo para velocidad
 import { db, auth } from '../firebase';
 import { collection, query, onSnapshot, doc, setDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { 
@@ -27,6 +27,25 @@ export default function Directory() {
   const CLOUD_NAME = "djmkggzjp"; 
   const UPLOAD_PRESET = "ml_default"; 
 
+  // ✅ FUNCIÓN PARA LIMPIAR WHATSAPP (Arregla el error de número inválido)
+  const formatWhatsApp = (phone) => {
+    if (!phone) return '';
+    let cleaned = phone.replace(/\D/g, ''); // Quita todo lo que no sea número
+    
+    // Si el número empieza con 11 o 15 y tiene 10 dígitos (Formato Arg local)
+    // le agregamos el código de país 54 y el 9 de celular para WhatsApp
+    if (cleaned.length === 10 && (cleaned.startsWith('11') || cleaned.startsWith('15'))) {
+      cleaned = '549' + cleaned;
+    }
+    
+    // Si ya tiene el 54 pero le falta el 9 antes del 11 (Común en Arg)
+    if (cleaned.startsWith('5411') && cleaned.length === 12) {
+      cleaned = '549' + cleaned.slice(2);
+    }
+
+    return cleaned;
+  };
+
   useEffect(() => {
     const q = query(collection(db, 'users'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -50,7 +69,6 @@ export default function Directory() {
     setSaveStatus('saving');
     try {
       const userRef = doc(db, 'users', editingUser.id);
-      // Guardamos todo el objeto editingUser que ya tiene los campos actualizados
       await setDoc(userRef, {
         ...editingUser,
         displayName: editingUser.finalName,
@@ -114,12 +132,15 @@ export default function Directory() {
     return matchesSearch && matchesFilter;
   });
 
-  const groupedUsers = filteredUsers.reduce((acc, user) => {
-    const letter = (user.finalName[0] || '#').toUpperCase();
-    if (!acc[letter]) acc[letter] = [];
-    acc[letter].push(user);
-    return acc;
-  }, {});
+  // ✅ OPTIMIZACIÓN: Memoizamos la agrupación para que al escribir no laguee
+  const groupedUsers = useMemo(() => {
+    return filteredUsers.reduce((acc, user) => {
+      const letter = (user.finalName[0] || '#').toUpperCase();
+      if (!acc[letter]) acc[letter] = [];
+      acc[letter].push(user);
+      return acc;
+    }, {});
+  }, [filteredUsers]);
 
   const alphabet = Object.keys(groupedUsers).sort();
 
@@ -167,7 +188,13 @@ export default function Directory() {
                   onClick={() => { setEditingUser(user); setSaveStatus('idle'); }}
                   className="bg-white p-3 rounded-[22px] border border-slate-100 shadow-sm flex items-center gap-4 cursor-pointer hover:bg-slate-50 transition-all active:scale-[0.98]"
                 >
-                  <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.finalName}&background=0f172a&color=fff`} className="w-14 h-14 rounded-2xl object-cover" />
+                  <div className="w-14 h-14 rounded-2xl overflow-hidden shrink-0 bg-slate-100 border-2 border-white shadow-sm">
+                    <img 
+                       src={user.photoURL || `https://ui-avatars.com/api/?name=${user.finalName}&background=0f172a&color=fff`} 
+                       className="w-full h-full object-cover"
+                       loading="lazy" 
+                    />
+                  </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-black text-slate-800 text-sm truncate uppercase">{user.finalName}</h3>
                     <div className="flex items-center gap-2 mt-1">
@@ -200,7 +227,9 @@ export default function Directory() {
                <button onClick={() => setEditingUser(null)} className="absolute top-6 right-6 p-2 bg-white/10 text-white rounded-full"><X size={20}/></button>
                <div className="absolute -bottom-10 left-0 right-0 flex justify-center">
                   <div className="relative group">
-                    <img src={editingUser.photoURL || `https://ui-avatars.com/api/?name=${editingUser.finalName}`} className="w-24 h-24 rounded-[30px] object-cover border-4 border-white shadow-lg bg-white" />
+                    <div className="w-24 h-24 rounded-[30px] overflow-hidden border-4 border-white shadow-lg bg-white">
+                      <img src={editingUser.photoURL || `https://ui-avatars.com/api/?name=${editingUser.finalName}`} className="w-full h-full object-cover" />
+                    </div>
                     {dbUser?.role === 'pastor' && (
                       <label className="absolute bottom-0 right-0 bg-brand-600 text-white p-2 rounded-xl cursor-pointer shadow-md">
                         {uploading ? <Loader2 size={14} className="animate-spin"/> : <Camera size={14}/>}
@@ -223,17 +252,18 @@ export default function Directory() {
               </div>
 
               <div className="grid grid-cols-2 gap-3 mb-6">
-                <a href={`https://wa.me/${editingUser.phone?.replace(/\D/g,'')}`} target="_blank" className="flex flex-col items-center gap-2 p-4 bg-emerald-50 text-emerald-700 rounded-3xl border border-emerald-100 active:scale-95 transition-all text-center">
+                {/* 🎯 CORRECCIÓN WHATSAPP */}
+                <a href={`https://wa.me/${formatWhatsApp(editingUser.phone)}`} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center gap-2 p-4 bg-emerald-50 text-emerald-700 rounded-3xl border border-emerald-100 active:scale-95 transition-all text-center">
                   <MessageCircle size={20}/><span className="text-[9px] font-black uppercase">WhatsApp</span>
                 </a>
-                {/* ✅ URL de Maps Corregida */}
-                <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(editingUser.address || '')}`} target="_blank" className="flex flex-col items-center gap-2 p-4 bg-blue-50 text-blue-700 rounded-3xl border border-blue-100 active:scale-95 transition-all text-center">
+                
+                {/* 🎯 CORRECCIÓN GOOGLE MAPS */}
+                <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(editingUser.address || '')}`} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center gap-2 p-4 bg-blue-50 text-blue-700 rounded-3xl border border-blue-100 active:scale-95 transition-all text-center">
                   <MapPin size={20}/><span className="text-[9px] font-black uppercase">Maps</span>
                 </a>
               </div>
 
               <div className="space-y-4">
-                {/* ROL Y AREA */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Rol</label>
@@ -247,7 +277,6 @@ export default function Directory() {
                   </div>
                 </div>
 
-                {/* WHATSAPP Y DIRECCION (Nuevos campos editables para el Pastor) */}
                 <div className="space-y-1">
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Teléfono WhatsApp</label>
                   <input disabled={dbUser?.role !== 'pastor'} value={editingUser.phone || ''} onChange={e => setEditingUser({...editingUser, phone: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none" placeholder="11..." />
@@ -258,7 +287,6 @@ export default function Directory() {
                   <input disabled={dbUser?.role !== 'pastor'} value={editingUser.address || ''} onChange={e => setEditingUser({...editingUser, address: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none" placeholder="Calle y altura..." />
                 </div>
 
-                {/* DNI Y SANGRE */}
                 <div className="grid grid-cols-2 gap-3">
                    <div className="space-y-1">
                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">DNI</label>
@@ -275,7 +303,6 @@ export default function Directory() {
                   <input type="date" disabled={dbUser?.role !== 'pastor'} value={editingUser.birthday || ''} onChange={e => setEditingUser({...editingUser, birthday: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none" />
                 </div>
 
-                {/* EMERGENCIA */}
                 {['pastor', 'lider'].includes(dbUser?.role) ? (
                   <div className="bg-rose-50 p-5 rounded-[30px] border border-rose-100 shadow-inner">
                     <label className="text-[9px] font-black text-rose-600 uppercase mb-3 block tracking-widest flex items-center gap-1.5"><Heart size={10}/> Datos de Emergencia</label>
@@ -285,17 +312,15 @@ export default function Directory() {
                 ) : (
                   <div className="p-5 bg-slate-100 rounded-[30px] flex flex-col items-center gap-2">
                     <Shield size={20} className="text-slate-400 opacity-50"/>
-                    <p className="text-[8px] font-black text-slate-400 uppercase italic tracking-tighter text-center">Acceso a datos de emergencia<br/>restringido por seguridad</p>
+                    <p className="text-[8px] font-black text-slate-400 uppercase italic tracking-tighter text-center">Acceso restringido por seguridad</p>
                   </div>
                 )}
 
-                {/* QR */}
                 <div className="flex flex-col items-center pt-6 opacity-20 grayscale">
                   <QRCodeCanvas value={editingUser.id} size={60} />
                   <p className="text-[7px] font-mono mt-2 tracking-widest">ID: {editingUser.id.toUpperCase()}</p>
                 </div>
 
-                {/* BOTONES ACCIÓN */}
                 {dbUser?.role === 'pastor' && (
                   <div className="pt-6 space-y-3">
                     <button onClick={handleSaveUser} disabled={saveStatus !== 'idle'} className={`w-full font-black py-4 rounded-2xl flex items-center justify-center gap-2 text-xs uppercase tracking-widest shadow-xl transition-all ${saveStatus === 'success' ? 'bg-green-500 text-white' : 'bg-slate-900 text-white active:scale-95'}`}>
