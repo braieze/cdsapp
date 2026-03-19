@@ -7,7 +7,7 @@ import { Toaster } from 'sonner';
 import { Capacitor } from '@capacitor/core'; 
 import OneSignalWeb from 'react-onesignal'; 
 
-// ✅ IMPORTACIÓN OFICIAL DE ONESIGNAL (VERSIÓN 5)
+// ✅ ONESIGNAL VERSIÓN 5
 import OneSignal from 'onesignal-cordova-plugin';
 
 // Importaciones de Páginas
@@ -26,31 +26,36 @@ import Directory from './pages/Directory';
 import Ofrendar from './pages/Ofrendar'; 
 import Tesoreria from './pages/Tesoreria';
 
-// --- MANEJADOR DE NAVEGACIÓN (Escucha clics en notificaciones) ---
+// --- MANEJADOR DE NAVEGACIÓN (Deep Linking Corregido) ---
 function NavigationHandler() {
   const navigate = useNavigate();
   const isNative = Capacitor.isNativePlatform();
 
   useEffect(() => {
-    // 1. Lógica para WEB (Service Worker)
-    if ('serviceWorker' in navigator) {
-      const handleMessage = (event) => {
-        if (event.data && event.data.type === 'NAVIGATE') {
-          navigate(event.data.url);
-        }
-      };
-      navigator.serviceWorker.addEventListener('message', handleMessage);
-      return () => navigator.serviceWorker.removeEventListener('message', handleMessage);
-    }
-
-    // 2. Lógica para NATIVO (Android/APK)
+    // 1. Lógica para NATIVO (Android/APK)
     if (isNative) {
       const handleNotificationClick = (event) => {
+        // Obtenemos la ruta desde additionalData
         const route = event.notification.additionalData?.route;
-        if (route) navigate(route);
+        if (route) {
+          navigate(route);
+        }
       };
+      
       OneSignal.Notifications.addEventListener("click", handleNotificationClick);
       return () => OneSignal.Notifications.removeEventListener("click", handleNotificationClick);
+    } 
+    // 2. Lógica para WEB (Navegador)
+    else {
+      const handleWebClick = (event) => {
+        // En web el objeto data contiene la ruta
+        const route = event.notification.data?.route;
+        if (route) {
+          navigate(route);
+        }
+      };
+      OneSignalWeb.Notifications.addEventListener("click", handleWebClick);
+      return () => OneSignalWeb.Notifications.removeEventListener("click", handleWebClick);
     }
   }, [navigate, isNative]);
 
@@ -67,30 +72,17 @@ export default function App() {
     const initNotifications = async () => {
       try {
         if (isNative) {
-          // ✅ INICIALIZACIÓN NATIVA
           OneSignal.initialize("742a62cd-6d15-427f-8bab-5b8759fabd0a");
           OneSignal.Notifications.requestPermission(true);
         } else {
-          // ✅ INICIALIZACIÓN WEB (V16)
           await OneSignalWeb.init({
             appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
             allowLocalhostAsSecureOrigin: true,
             serviceWorkerPath: "OneSignalSDKWorker.js",
           });
-
-          // 🔍 DEBUG PARA VERSIÓN 16 (Detección de ID)
-          setTimeout(() => {
-            const subscriptionId = OneSignalWeb.User.PushSubscription.id;
-            const isOptedIn = OneSignalWeb.User.PushSubscription.optedIn;
-
-            console.log("-----------------------------------------");
-            console.log("🆔 MI ID DE ONESIGNAL:", subscriptionId || "AÚN NO GENERADO");
-            console.log("🔔 ¿SUSCRITO?:", isOptedIn ? "SÍ ✅" : "NO ❌");
-            console.log("-----------------------------------------");
-          }, 8000);
         }
       } catch (e) {
-        console.error("Critical OneSignal Error:", e);
+        // Error silencioso para no ensuciar la consola en producción
       }
     };
 
@@ -100,8 +92,7 @@ export default function App() {
       setUser(currentUser);
       setLoading(false); 
       if (currentUser) {
-        // Vinculación segura de External ID
-        setTimeout(() => syncMaster(currentUser), 2000);
+        syncMaster(currentUser);
       }
     });
 
@@ -124,14 +115,14 @@ export default function App() {
         });
       }
 
-      // Login en OneSignal para que lleguen notificaciones personalizadas
+      // Login en OneSignal para notificaciones personalizadas (UID como External ID)
       if (isNative) {
         OneSignal.login(currentUser.uid);
       } else {
         await OneSignalWeb.login(currentUser.uid);
       }
 
-    } catch (error) { console.warn("Sync failed", error); }
+    } catch (error) { /* Sync error silent */ }
   };
 
   if (loading) {
