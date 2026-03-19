@@ -62,15 +62,14 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         },
         body: JSON.stringify({
           app_id: APP_ID,
-          // 🎯 FUERZA BRUTA: Mandar a absolutamente todos los registros
+          // 🎯 CAMBIO CLAVE: Usamos el nombre exacto que aparece en tu Dashboard
           included_segments: ["Total Subscriptions"], 
           headings: { en: notifTitle, es: notifTitle },
-          contents: { 
-            en: notifContent ? notifContent.substring(0, 100) : "Toca para ver las novedades.", 
-            es: notifContent ? notifContent.substring(0, 100) : "Toca para ver las novedades." 
-          },
+          contents: { en: notifBody, es: notifBody },
           url: webUrl,
-          data: { route: postUrl },
+          data: { route: path },
+          isAnyWeb: true,
+          isAndroid: true,
           isIos: true,
           priority: 10
         })
