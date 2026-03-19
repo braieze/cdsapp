@@ -41,20 +41,15 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     setImage(null); setPreview(null); setShowPoll(false); setPollOptions(['', '']);
   };
 
-  // ✅ FUNCIÓN DE NOTIFICACIÓN BLINDADA
+  // ✅ FUNCIÓN DE NOTIFICACIÓN FORZADA A LA APP (SIN LINKS EXTERNOS)
   const sendPushNotification = async (notifTitle, notifContent, postUrl) => {
     try {
       const APP_ID = "742a62cd-6d15-427f-8bab-5b8759fabd0a";
       const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
 
-      if (!REST_API_KEY) {
-        console.error("❌ Error: Falta API KEY en variables de entorno");
-        return;
-      }
+      if (!REST_API_KEY) return;
 
-      const webUrl = `https://cdsapp.vercel.app/#${postUrl}`;
-
-      const response = await fetch("https://onesignal.com/api/v1/notifications", {
+      await fetch("https://onesignal.com/api/v1/notifications", {
         method: "POST",
         headers: {
           "Content-Type": "application/json; charset=utf-8",
@@ -62,23 +57,19 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         },
         body: JSON.stringify({
           app_id: APP_ID,
-          // 🎯 SEGMENTO DE FUERZA BRUTA PARA QUE LLEGUE A TODOS
           included_segments: ["Total Subscriptions"], 
           headings: { en: notifTitle, es: notifTitle },
           contents: { en: notifContent, es: notifContent },
-          url: webUrl,
+          // 🎯 ELIMINAMOS URL PARA QUE NO ABRA CHROME
+          // Pasamos solo data para que App.jsx capture la ruta internamente
           data: { route: postUrl },
-          isAnyWeb: true,
           isAndroid: true,
           isIos: true,
           priority: 10
         })
       });
-
-      const data = await response.json();
-      console.log("✅ OneSignal Post dice:", data);
     } catch (error) {
-      console.error("❌ Error disparando notificación:", error);
+      console.error("Error disparando notificación:", error);
     }
   };
 
@@ -140,7 +131,8 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           if (validOptions.length >= 2) {
             finalPoll = {
               options: validOptions.map(opt => ({ text: opt, votes: 0 })),
-              voters: [] 
+              voters: [],
+              votesDetails: [] 
             };
           }
         }
@@ -158,7 +150,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           commentsCount: 0
         });
 
-        // ✅ DISPARO DE NOTIFICACIÓN AL CREAR
         const cleanContent = text.length > 80 ? text.substring(0, 80) + "..." : text;
         await sendPushNotification(
             commonData.title, 
@@ -174,32 +165,34 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     } catch (error) {
       console.error("Error:", error);
       setLoading(false);
-      alert('Error al guardar.');
     }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-      <div className="bg-white w-full max-w-md rounded-2xl p-4 shadow-2xl relative max-h-[85vh] overflow-y-auto flex flex-col no-scrollbar">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md font-outfit">
+      <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto flex flex-col no-scrollbar border-2 border-slate-50">
         
-        <div className="flex justify-between items-center mb-4 border-b pb-3">
-          <h3 className="font-black text-slate-800 text-lg uppercase tracking-tighter">
-            {postToEdit ? 'Editar Publicación' : 'Crear Publicación'}
-          </h3>
-          <button onClick={onClose} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200">
-            <X size={20} className="text-slate-500" />
+        <div className="flex justify-between items-center mb-6 border-b pb-4">
+          <div>
+            <h3 className="font-black text-slate-900 text-xl uppercase tracking-tighter">
+              {postToEdit ? 'Editar Post' : 'Nueva Publicación'}
+            </h3>
+            <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest">Comunicación Iglesia CDS</p>
+          </div>
+          <button onClick={onClose} className="p-3 bg-slate-50 rounded-full active:scale-90 transition-transform">
+            <X size={20} className="text-slate-400" />
           </button>
         </div>
 
-        <div className="flex-1">
-          <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar pb-1">
+        <div className="flex-1 space-y-5">
+          <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
             {['Noticia', 'Devocional', 'Urgente'].map(t => (
               <button 
                 key={t} onClick={() => setType(t)}
-                className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-full border transition-all ${
-                  type === t ? 'bg-slate-900 text-white border-slate-900 shadow-md' : 'bg-white text-slate-400 border-slate-200'
+                className={`px-6 py-2.5 text-[10px] font-black uppercase tracking-[0.2em] rounded-full border-2 transition-all ${
+                  type === t ? 'bg-slate-900 text-white border-slate-900 shadow-xl scale-105' : 'bg-white text-slate-300 border-slate-50'
                 }`}
               >
                 {t}
@@ -207,77 +200,77 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
             ))}
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-4">
             <input 
-              type="text" placeholder="Título de la publicación..." value={title} onChange={(e) => setTitle(e.target.value)}
-              className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 font-bold text-slate-800 focus:outline-none focus:border-brand-500 text-sm"
+              type="text" placeholder="Título impactante..." value={title} onChange={(e) => setTitle(e.target.value)}
+              className="w-full p-5 bg-slate-50 rounded-[22px] border-2 border-slate-50 font-black text-slate-800 focus:outline-none focus:border-brand-500 uppercase text-sm"
             />
 
             <textarea
               value={text} onChange={(e) => setText(e.target.value)}
-              placeholder={type === 'Devocional' ? "Escribe la reflexión del día..." : "¿Qué quieres compartir con la iglesia?"}
-              className="w-full h-40 p-4 bg-slate-50 rounded-2xl border border-slate-100 focus:outline-none focus:border-brand-500 resize-none text-sm font-medium"
+              placeholder={type === 'Devocional' ? "Escribe la palabra de Dios hoy..." : "¿Qué está pasando en la iglesia?"}
+              className="w-full h-44 p-5 bg-slate-50 rounded-[22px] border-2 border-slate-50 focus:outline-none focus:border-brand-500 resize-none text-sm font-semibold text-slate-700"
             />
 
             {!postToEdit && (
               <button 
                 onClick={() => setShowPoll(!showPoll)} 
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${showPoll ? 'bg-brand-50 text-brand-600 border border-brand-200' : 'bg-slate-50 text-slate-500 border border-slate-100'}`}
+                className={`flex items-center gap-3 px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${showPoll ? 'bg-brand-600 text-white shadow-lg' : 'bg-slate-50 text-slate-400 border border-slate-100'}`}
               >
-                <BarChart2 size={16} /> {showPoll ? 'Quitar Encuesta' : 'Añadir Encuesta'}
+                <BarChart2 size={18} /> {showPoll ? 'Quitar Encuesta' : 'Añadir Encuesta'}
               </button>
             )}
 
             {showPoll && !postToEdit && (
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2 animate-slide-down">
+              <div className="bg-slate-50 p-5 rounded-[28px] border-2 border-slate-100 space-y-3 animate-slide-up">
+                <p className="text-[9px] font-black text-slate-400 uppercase ml-2 mb-2">Opciones de respuesta</p>
                 {pollOptions.map((opt, idx) => (
                   <input 
-                    key={idx} type="text" placeholder={`Opción ${idx + 1}`} value={opt} onChange={(e) => handlePollChange(idx, e.target.value)}
-                    className="w-full p-3 bg-white rounded-xl border border-slate-100 text-xs font-bold outline-none focus:border-brand-300"
+                    key={idx} type="text" placeholder={`Respuesta ${idx + 1}`} value={opt} onChange={(e) => handlePollChange(idx, e.target.value)}
+                    className="w-full p-4 bg-white rounded-xl border-2 border-slate-50 text-xs font-black uppercase outline-none focus:border-brand-200"
                   />
                 ))}
                 {pollOptions.length < 5 && (
-                  <button onClick={handleAddPollOption} className="text-[10px] text-brand-600 font-black uppercase tracking-widest mt-1">+ Agregar opción</button>
+                  <button onClick={handleAddPollOption} className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-[9px] text-slate-400 font-black uppercase tracking-widest">+ Agregar opción</button>
                 )}
               </div>
             )}
 
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-3">
-              <div className="flex gap-2">
+            <div className="p-5 bg-slate-50 rounded-[28px] border-2 border-slate-100 space-y-4">
+              <p className="text-[9px] font-black text-slate-400 uppercase ml-2">Acción en el post</p>
+              <div className="flex gap-3">
                 <div className="flex-1 space-y-1">
-                  <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Link Externo</label>
-                  <input type="text" placeholder="https://..." value={link} onChange={e => setLink(e.target.value)} className="w-full p-3 bg-white rounded-xl border border-slate-100 text-xs outline-none font-bold text-brand-600" />
+                  <input type="text" placeholder="https://link.com" value={link} onChange={e => setLink(e.target.value)} className="w-full p-4 bg-white rounded-xl border-2 border-slate-50 text-[10px] outline-none font-bold text-brand-600" />
                 </div>
                 <div className="w-1/3 space-y-1">
-                  <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Texto Botón</label>
-                  <input type="text" placeholder="Ver..." value={linkText} onChange={e => setLinkText(e.target.value)} className="w-full p-3 bg-white rounded-xl border border-slate-100 text-xs outline-none font-bold" />
+                  <input type="text" placeholder="Texto botón" value={linkText} onChange={e => setLinkText(e.target.value)} className="w-full p-4 bg-white rounded-xl border-2 border-slate-50 text-[10px] outline-none font-black uppercase" />
                 </div>
               </div>
             </div>
 
             {preview && (
-              <div className="relative rounded-2xl overflow-hidden border-2 border-white shadow-lg animate-scale-in">
-                <img src={preview} alt="Preview" className="w-full h-48 object-cover" />
-                <button onClick={() => { setImage(null); setPreview(null); }} className="absolute top-2 right-2 bg-slate-900/80 text-white p-2 rounded-full backdrop-blur-md"><X size={16} /></button>
+              <div className="relative rounded-[28px] overflow-hidden border-4 border-white shadow-2xl animate-scale-in">
+                <img src={preview} alt="Preview" className="w-full h-52 object-cover" />
+                <button onClick={() => { setImage(null); setPreview(null); }} className="absolute top-3 right-3 bg-slate-900/90 text-white p-2.5 rounded-full backdrop-blur-md active:scale-75 transition-all"><X size={18} /></button>
               </div>
             )}
           </div>
         </div>
 
-        <div className="flex justify-between items-center pt-4 mt-6 border-t border-slate-100">
-          <label className="flex items-center gap-2 bg-slate-100 px-4 py-2.5 rounded-2xl text-slate-600 cursor-pointer active:scale-95 transition-all">
-            {loading ? <Loader2 size={18} className="animate-spin text-brand-600" /> : <ImageIcon size={18} />}
-            <span className="text-[10px] font-black uppercase tracking-widest">Imagen</span>
+        <div className="flex gap-3 pt-6 mt-8 border-t border-slate-50 shrink-0">
+          <label className="flex-1 flex items-center justify-center gap-3 bg-slate-50 p-4 rounded-2xl text-slate-500 cursor-pointer active:scale-95 transition-all border-2 border-slate-100">
+            {loading ? <Loader2 size={20} className="animate-spin text-brand-600" /> : <ImageIcon size={20} />}
+            <span className="text-[10px] font-black uppercase tracking-widest">Subir Foto</span>
             <input type="file" className="hidden" accept="image/*" onChange={handleImageChange} disabled={loading} />
           </label>
 
           <button 
             onClick={handleSubmit} 
             disabled={loading || (!text && !image && !preview && !title)} 
-            className="bg-brand-600 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-xl shadow-brand-200 flex items-center gap-3 disabled:opacity-50 active:scale-95 transition-all"
+            className="flex-[2] bg-brand-600 text-white p-4 rounded-2xl font-black text-[11px] uppercase tracking-[0.3em] shadow-xl shadow-brand-100 flex items-center justify-center gap-3 active:scale-95 transition-all disabled:opacity-30"
           >
-            {loading ? <Loader2 size={18} className="animate-spin" /> : (postToEdit ? <Save size={18}/> : <Send size={18} />)} 
-            {postToEdit ? 'Guardar' : 'Publicar'}
+            {loading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />} 
+            {postToEdit ? 'Guardar' : 'Lanzar Post'}
           </button>
         </div>
       </div>

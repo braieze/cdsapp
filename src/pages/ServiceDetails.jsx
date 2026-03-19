@@ -55,7 +55,6 @@ export default function ServiceDetails() {
     }
   }, [toast]);
 
-  // Login en OneSignal para asegurar que este dispositivo reciba sus notis
   useEffect(() => {
     if (currentUser) {
       if (isNative) { OneSignal.login(currentUser.uid); } 
@@ -84,27 +83,28 @@ export default function ServiceDetails() {
     fetchData();
   }, [id, navigate, currentUser.uid]);
 
-  // Escuchador de Chat (con scroll automático al final)
+  // Listener de Chat con Scroll Forzado al Final
   useEffect(() => {
     const q = query(collection(db, `events/${id}/notes`), orderBy('createdAt', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setMessages(msgs);
       
-      // Marcar como leído
       msgs.forEach(async (m) => {
         if (!m.readBy?.includes(currentUser.uid)) {
           await updateDoc(doc(db, `events/${id}/notes`, m.id), { readBy: arrayUnion(currentUser.uid) });
         }
       });
 
-      // 🔥 SCROLL AL FINAL: Siempre inicia con el último mensaje
-      setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: 'smooth' }), 150);
+      // 🔥 AUTO-SCROLL AL ÚLTIMO MENSAJE
+      setTimeout(() => {
+        scrollRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }, 200);
     });
     return () => unsubscribe();
   }, [id, currentUser.uid]);
 
-  // ✅ FUNCIÓN DE NOTIFICACIÓN CORREGIDA (Deep Linking + Destinatarios Inteligentes)
+  // ✅ FUNCIÓN DE NOTIFICACIÓN BLINDADA (SIN LINKS EXTERNOS)
   const sendOneSignalNotification = async (userIds, title, message) => {
     try {
       const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
@@ -124,10 +124,8 @@ export default function ServiceDetails() {
           include_external_user_ids: userIds,
           headings: { en: title, es: title },
           contents: { en: message, es: message },
-          // 🎯 web_url + data para abrir la App directamente
-          web_url: `https://cdsapp.vercel.app/#${path}`,
+          // 🎯 NO MANDAMOS URL NI WEB_URL PARA FORZAR LA APP
           data: { route: path },
-          isAnyWeb: true,
           isAndroid: true,
           isIos: true,
           priority: 10
@@ -163,20 +161,17 @@ export default function ServiceDetails() {
         createdAt: serverTimestamp(), readBy: [currentUser.uid], isPinned: false
       });
       
-      // ✅ NOTIFICACIÓN SEGÚN QUIÉN ESCRIBE
       let targetIds = [];
       const assignedNames = Object.values(event.assignments || {}).flat();
       
       if (isModerator) {
-        // Pastor avisa a todo el equipo asignado
         targetIds = allUsers.filter(u => assignedNames.includes(u.displayName) && u.id !== currentUser.uid).map(u => u.id);
       } else {
-        // Servidor avisa a los moderadores (Pastores/Líderes)
         targetIds = allUsers.filter(u => (u.role === 'pastor' || u.role === 'lider') && u.id !== currentUser.uid).map(u => u.id);
       }
 
       const cleanTitle = `${currentUser.displayName} en ${event.title}`;
-      const cleanBody = imageUrl ? "📷 Imagen enviada" : checklist ? "📋 Nueva lista de tareas" : txt;
+      const cleanBody = imageUrl ? "📷 Imagen enviada" : checklist ? "📋 Nueva checklist" : txt;
       
       await sendOneSignalNotification(targetIds, cleanTitle, cleanBody);
       
@@ -189,11 +184,10 @@ export default function ServiceDetails() {
     const eventRef = doc(db, 'events', id);
     await updateDoc(eventRef, { [`confirmations.${currentUser.displayName}`]: status, updatedAt: serverTimestamp() });
     
-    // ✅ Notificar al Pastor sobre la confirmación
     if (status) {
       const moderators = allUsers.filter(u => (u.role === 'pastor' || u.role === 'lider') && u.id !== currentUser.uid).map(u => u.id);
-      const statusLabel = status === 'confirmed' ? 'Confirmó asistencia ✅' : 'Marcó que no puede ir ❌';
-      await sendOneSignalNotification(moderators, `Estado: ${currentUser.displayName}`, `${statusLabel} - ${event.title}`);
+      const statusLabel = status === 'confirmed' ? 'Confirmó asistencia ✓' : 'No asiste ✗';
+      await sendOneSignalNotification(moderators, `Estado: ${currentUser.displayName}`, `${statusLabel} para ${event.title}`);
     }
 
     setEvent(prev => ({ ...prev, confirmations: { ...prev.confirmations, [currentUser.displayName]: status } }));
@@ -217,7 +211,7 @@ export default function ServiceDetails() {
     if (window.confirm("¿Eliminar este mensaje?")) await deleteDoc(doc(db, `events/${id}/notes`, msgId));
   };
 
-  if (loading) return <div className="fixed inset-0 flex items-center justify-center bg-white z-[100]"><Loader2 className="animate-spin text-brand-600" /></div>;
+  if (loading) return <div className="fixed inset-0 bg-white z-[100] flex items-center justify-center"><Loader2 className="animate-spin text-brand-600" /></div>;
 
   const myRole = Object.keys(event.assignments || {}).find(role => event.assignments[role].includes(currentUser.displayName));
   const myStatus = event.confirmations?.[currentUser.displayName];
@@ -261,7 +255,7 @@ export default function ServiceDetails() {
               <div className="bg-brand-500/20 p-2 rounded-xl text-brand-400"><Users size={18} /></div>
               <div className="min-w-0 flex-1"><p className="text-[8px] font-black text-white/40 uppercase">Tu función</p><p className="text-sm font-bold text-white capitalize truncate">{myRole?.replace(/_/g, ' ') || 'Servidor'}</p></div>
            </div>
-           <button onClick={() => navigate(`/calendario/${id}`)} className="text-[9px] font-black bg-brand-600 text-white px-4 py-2 rounded-full flex items-center gap-1.5 active:scale-95 transition-all shadow-lg uppercase tracking-widest">Ver Equipo</button>
+           <button onClick={() => navigate(`/calendario/${id}`)} className="text-[9px] font-black bg-brand-600 text-white px-4 py-2 rounded-full flex items-center gap-1.5 active:scale-95 transition-all shadow-lg uppercase tracking-widest text-left">Ver Equipo</button>
         </div>
 
         {!myStatus ? (
@@ -275,14 +269,12 @@ export default function ServiceDetails() {
       </header>
 
       <main className="flex-1 overflow-hidden flex flex-col relative bg-white">
-        {/* Panel Superior de Notas y Mensaje Fijado */}
-        <div className="bg-slate-50/95 backdrop-blur-md z-40 border-b border-slate-200 flex-shrink-0">
+        <div className="bg-slate-50/95 backdrop-blur-md z-40 border-b border-slate-200 flex-shrink-0 text-left">
             <div className="p-4 flex items-center justify-between">
               <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><MessageSquare size={14} className="text-brand-500"/> Chat de Servicio</h3>
               <button onClick={() => setHideReceipts(!hideReceipts)} className="p-1.5 text-slate-400 active:scale-90">{hideReceipts ? <Eye size={16} /> : <EyeOff size={16} />}</button>
             </div>
             
-            {/* MENSAJE FIJADO (Visible siempre arriba si existe) */}
             {pinnedMessage && (
               <div onClick={() => {
                   const el = document.getElementById(`msg-${pinnedMessage.id}`);
@@ -294,7 +286,6 @@ export default function ServiceDetails() {
             )}
         </div>
 
-        {/* Scroll de mensajes */}
         <div className="flex-1 overflow-y-auto p-5 space-y-6 scroll-smooth no-scrollbar">
           {messages.map((m) => {
               const isMy = m.uid === currentUser.uid;
@@ -330,7 +321,7 @@ export default function ServiceDetails() {
         )}
         
         {showChecklistCreator && (
-          <div className="absolute bottom-full left-4 right-4 bg-white border-2 border-slate-50 rounded-[35px] p-5 mb-4 space-y-3 shadow-[0_-20px_50px_rgba(0,0,0,0.1)] animate-slide-up">
+          <div className="absolute bottom-full left-4 right-4 bg-white border-2 border-slate-50 rounded-[35px] p-5 mb-4 space-y-3 shadow-[0_-20px_50px_rgba(0,0,0,0.1)] animate-slide-up text-left">
             <div className="flex justify-between items-center mb-2"><span className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Nueva Checklist</span><button onClick={() => setShowChecklistCreator(false)} className="p-2 bg-slate-50 rounded-full"><X size={14}/></button></div>
             <div className="max-h-40 overflow-y-auto pr-1 no-scrollbar space-y-2">
                 {tempTasks.map((t, i) => (
@@ -341,7 +332,7 @@ export default function ServiceDetails() {
                   }} placeholder="Escribir tarea..." className="w-full text-xs p-3 bg-slate-50 border-b border-slate-100 rounded-xl outline-none font-bold text-slate-700 focus:bg-white focus:border-brand-500 transition-all" />
                 ))}
             </div>
-            <p className="text-[8px] font-black text-slate-300 uppercase text-center mt-2 tracking-widest">Las tareas se enviarán como una nota de equipo</p>
+            <p className="text-[8px] font-black text-slate-300 uppercase text-center mt-2 tracking-widest">Tareas compartidas para el equipo</p>
           </div>
         )}
 
@@ -351,14 +342,14 @@ export default function ServiceDetails() {
                 const file = e.target.files[0];
                 if (file) { setSelectedFile(file); setImagePreview(URL.createObjectURL(file)); }
             }} /></label>
-            <button onClick={() => setShowChecklistCreator(!showChecklistCreator)} className={`p-3.5 border-2 rounded-2xl active:scale-95 transition-all shadow-sm ${showChecklistCreator ? 'bg-brand-600 border-brand-600 text-white shadow-xl' : 'bg-slate-50 text-slate-400 border-slate-100'}`}><ListPlus size={20}/></button>
+            <button onClick={() => setShowChecklistCreator(!showChecklistCreator)} className={`p-3.5 border-2 rounded-2xl active:scale-95 transition-all shadow-sm ${showChecklistCreator ? 'bg-brand-600 text-white border-brand-600 shadow-xl' : 'bg-slate-50 text-slate-400 border-slate-100'}`}><ListPlus size={20}/></button>
           </div>
-          <textarea rows="1" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Escribe una nota de servicio..." className="flex-1 bg-slate-50 border-2 border-slate-100 rounded-[22px] px-5 py-3.5 text-sm outline-none resize-none max-h-32 font-semibold focus:border-brand-500 focus:bg-white transition-all shadow-inner" />
+          <textarea rows="1" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Nota de servicio..." className="flex-1 bg-slate-50 border-2 border-slate-100 rounded-[22px] px-5 py-3.5 text-sm outline-none resize-none max-h-32 font-semibold focus:border-brand-500 focus:bg-white transition-all shadow-inner" />
           <button onClick={handleSendMessage} disabled={isSending || (!newMessage.trim() && !selectedFile && !showChecklistCreator)} className="bg-brand-600 text-white p-4.5 rounded-[22px] shadow-xl shadow-brand-100 disabled:opacity-50 active:scale-90 transition-all">{isSending ? <Loader2 size={22} className="animate-spin"/> : <Send size={22}/>}</button>
         </div>
       </footer>
 
-      {/* MODALES DE SOPORTE */}
+      {/* MODALES SOPORTE */}
       {viewingImage && (
         <div className="fixed inset-0 z-[200] bg-black/98 flex items-center justify-center p-4 animate-fade-in" onClick={() => setViewingImage(null)}>
           <img src={viewingImage} className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl border-2 border-white/10" onClick={e => e.stopPropagation()} />
@@ -368,7 +359,7 @@ export default function ServiceDetails() {
 
       {showReadersId && (
         <div className="fixed inset-0 z-[200] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-8 animate-fade-in" onClick={() => setShowReadersId(null)}>
-          <div className="bg-white w-full max-w-xs rounded-[45px] p-8 shadow-2xl animate-scale-in border-2 border-slate-50" onClick={e => e.stopPropagation()}>
+          <div className="bg-white w-full max-w-xs rounded-[45px] p-8 shadow-2xl animate-scale-in border-2 border-slate-50 text-left" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-8 border-b pb-4">
               <div>
                 <h4 className="font-black text-slate-900 text-xs uppercase tracking-widest">Leído por:</h4>
@@ -388,7 +379,7 @@ export default function ServiceDetails() {
         </div>
       )}
 
-      {/* TOASTS DE FEEDBACK */}
+      {/* TOASTS */}
       {toast && (
         <div className="fixed bottom-32 left-6 right-6 z-[400] animate-slide-up">
           <div className={`flex items-center gap-4 px-8 py-5 rounded-[30px] shadow-2xl border-2 ${toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-400 shadow-emerald-200' : 'bg-slate-900 text-white border-slate-700 shadow-slate-200'}`}>

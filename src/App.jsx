@@ -26,7 +26,7 @@ import Directory from './pages/Directory';
 import Ofrendar from './pages/Ofrendar'; 
 import Tesoreria from './pages/Tesoreria';
 
-// --- MANEJADOR DE NAVEGACIÓN (Deep Linking Corregido) ---
+// --- MANEJADOR DE NAVEGACIÓN (Forzado a solo App) ---
 function NavigationHandler() {
   const navigate = useNavigate();
   const isNative = Capacitor.isNativePlatform();
@@ -35,9 +35,10 @@ function NavigationHandler() {
     // 1. Lógica para NATIVO (Android/APK)
     if (isNative) {
       const handleNotificationClick = (event) => {
-        // Obtenemos la ruta desde additionalData
+        // Leemos de additionalData que es donde viajan nuestros datos internos
         const route = event.notification.additionalData?.route;
         if (route) {
+          console.log("Navegando internamente a:", route);
           navigate(route);
         }
       };
@@ -45,10 +46,10 @@ function NavigationHandler() {
       OneSignal.Notifications.addEventListener("click", handleNotificationClick);
       return () => OneSignal.Notifications.removeEventListener("click", handleNotificationClick);
     } 
-    // 2. Lógica para WEB (Navegador)
+    // 2. Lógica para WEB (PWA)
     else {
       const handleWebClick = (event) => {
-        // En web el objeto data contiene la ruta
+        // En la web OneSignal usa el objeto data
         const route = event.notification.data?.route;
         if (route) {
           navigate(route);
@@ -62,7 +63,6 @@ function NavigationHandler() {
   return null;
 }
 
-// --- COMPONENTE PRINCIPAL ---
 export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -81,9 +81,7 @@ export default function App() {
             serviceWorkerPath: "OneSignalSDKWorker.js",
           });
         }
-      } catch (e) {
-        // Error silencioso para no ensuciar la consola en producción
-      }
+      } catch (e) { /* silent */ }
     };
 
     initNotifications();
@@ -115,14 +113,13 @@ export default function App() {
         });
       }
 
-      // Login en OneSignal para notificaciones personalizadas (UID como External ID)
       if (isNative) {
         OneSignal.login(currentUser.uid);
       } else {
         await OneSignalWeb.login(currentUser.uid);
       }
 
-    } catch (error) { /* Sync error silent */ }
+    } catch (error) { /* silent */ }
   };
 
   if (loading) {
