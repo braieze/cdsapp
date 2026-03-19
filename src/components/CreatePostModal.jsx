@@ -41,18 +41,17 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     setImage(null); setPreview(null); setShowPoll(false); setPollOptions(['', '']);
   };
 
-  // ✅ FUNCIÓN DE NOTIFICACIÓN UNIVERSAL (Punto #1 y #2)
-  const sendPushNotification = async (postTitle, postContent, postUrl) => {
+  // ✅ FUNCIÓN CORREGIDA (Variables sincronizadas con los argumentos)
+  const sendPushNotification = async (notifTitle, notifContent, postUrl) => {
     try {
       const APP_ID = "742a62cd-6d15-427f-8bab-5b8759fabd0a";
       const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
 
       if (!REST_API_KEY) {
-        console.error("❌ Error: Falta VITE_ONESIGNAL_REST_API_KEY en Vercel.");
+        console.error("❌ Error: Falta API KEY");
         return;
       }
 
-      // IMPORTANTE: Como usas HashRouter, la URL web debe incluir el #
       const webUrl = `https://cdsapp.vercel.app/#${postUrl}`;
 
       const response = await fetch("https://onesignal.com/api/v1/notifications", {
@@ -61,24 +60,25 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           "Content-Type": "application/json; charset=utf-8",
           "Authorization": `Basic ${REST_API_KEY}`
         },
-       body: JSON.stringify({
+        body: JSON.stringify({
           app_id: APP_ID,
-          // 🎯 Cambiamos a 'All' o 'Total Subscriptions'. 
-          // 'All' es el comando de fuerza bruta para OneSignal.
-          included_segments: ["All"], 
-          headings: { en: title, es: title },
-          contents: { en: body, es: body },
+          included_segments: ["Subscribed Users"], 
+          headings: { en: notifTitle, es: notifTitle },
+          contents: { 
+            en: notifContent ? notifContent.substring(0, 100) : "Toca para ver las novedades.", 
+            es: notifContent ? notifContent.substring(0, 100) : "Toca para ver las novedades." 
+          },
           url: webUrl,
-          data: { route: path },
+          data: { route: postUrl },
           isIos: true,
           priority: 10
         })
       });
 
       const data = await response.json();
-      console.log("✅ OneSignal dice:", data);
+      console.log("✅ OneSignal Post dice:", data);
     } catch (error) {
-      console.error("❌ Error OneSignal:", error);
+      console.error("❌ Error disparando notificación:", error);
     }
   };
 
@@ -160,7 +160,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           commentsCount: 0
         });
 
-        // 🔥 Punto #1 y #2: ENVIAR NOTIFICACIÓN CON LINK DIRECTO
+        // ✅ Llamada a notificación con los datos correctos
         await sendPushNotification(
             commonData.title, 
             text,
@@ -217,7 +217,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
             className="w-full h-32 p-3 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:border-brand-500 resize-none text-sm mb-3"
           />
 
-          {/* ... resto del formulario de encuesta y links (se mantiene igual) ... */}
           {!postToEdit && showPoll && (
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 mb-3">
               {pollOptions.map((opt, idx) => (

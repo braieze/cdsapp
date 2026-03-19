@@ -1,34 +1,32 @@
 import { useState, useEffect } from 'react';
 import { db, auth } from '../firebase';
-import { collection, query, onSnapshot, doc, setDoc, serverTimestamp, getDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, setDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { 
   Search, Shield, Briefcase, Camera, Loader2, Save, X, Phone, 
   UserPlus, MapPin, Calendar as CalendarIcon, Mail, CheckCircle, 
   AlertCircle, MessageCircle, QrCode, Trash2, Heart 
 } from 'lucide-react';
-import { useOutletContext } from 'react-router-dom'; // Para obtener dbUser
+import { useOutletContext } from 'react-router-dom';
 import { QRCodeCanvas } from 'qrcode.react'; 
 import imageCompression from 'browser-image-compression';
 
 export default function Directory() {
-  const { dbUser } = useOutletContext(); // Obtenemos el usuario logueado en vivo
+  const { dbUser } = useOutletContext();
   const [users, setUsers] = useState([]);
   const [search, setSearch] = useState('');
-  const [activeFilter, setActiveFilter] = useState('Todos'); // Para los Chips
+  const [activeFilter, setActiveFilter] = useState('Todos');
   const [loading, setLoading] = useState(true);
   
   const [editingUser, setEditingUser] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [saveStatus, setSaveStatus] = useState('idle'); 
-  const [errorMessage, setErrorMessage] = useState('');
 
   const [newUser, setNewUser] = useState({ displayName: '', role: 'miembro', area: 'ninguna', phone: '' });
 
   const CLOUD_NAME = "djmkggzjp"; 
   const UPLOAD_PRESET = "ml_default"; 
 
-  // 1. Cargar Usuarios
   useEffect(() => {
     const q = query(collection(db, 'users'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -47,56 +45,49 @@ export default function Directory() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Guardar TODOS los datos (BLINDADO POR ROL)
   const handleSaveUser = async () => {
-    if (!editingUser || dbUser?.role !== 'pastor') return; // Solo Pastor edita
+    if (!editingUser || dbUser?.role !== 'pastor') return;
     setSaveStatus('saving');
     try {
       const userRef = doc(db, 'users', editingUser.id);
+      // Guardamos todo el objeto editingUser que ya tiene los campos actualizados
       await setDoc(userRef, {
         ...editingUser,
         displayName: editingUser.finalName,
-        name: editingUser.finalName,
         updatedAt: serverTimestamp()
       }, { merge: true });
+      
       setSaveStatus('success');
-      setTimeout(() => { setEditingUser(null); setSaveStatus('idle'); }, 1500);
+      setTimeout(() => { setEditingUser(null); setSaveStatus('idle'); }, 1000);
     } catch (error) {
-      setSaveStatus('error');
-      setErrorMessage(error.message);
+      setSaveStatus('idle');
+      alert("Error al guardar: " + error.message);
     }
   };
 
-  // ✅ NUEVO: Eliminar Miembro (Solo Pastor)
   const handleDeleteMember = async (id, name) => {
     if (dbUser?.role !== 'pastor') return;
-    if (window.confirm(`¿ELIMINAR COMPLETAMENTE A ${name}? Esta acción no tiene vuelta atrás.`)) {
+    if (window.confirm(`¿ELIMINAR A ${name}? Esta acción es permanente.`)) {
       try {
         await deleteDoc(doc(db, 'users', id));
         setEditingUser(null);
-      } catch (e) { alert("Error al eliminar"); }
+      } catch (e) { alert("Error"); }
     }
   };
 
-  // 3. Crear Usuario Manual (Pastor/Líder)
   const handleCreateUser = async () => {
     if (!newUser.displayName.trim()) return alert("El nombre es obligatorio");
     try {
       const newRef = doc(collection(db, 'users'));
       await setDoc(newRef, {
         ...newUser,
-        displayName: newUser.displayName,
-        name: newUser.displayName,
-        email: 'registrado_manualmente', 
-        photoURL: null,
         createdAt: serverTimestamp()
       });
       setIsCreating(false);
       setNewUser({ displayName: '', role: 'miembro', area: 'ninguna', phone: '' });
-    } catch (error) { alert("Error al crear: " + error.message); }
+    } catch (error) { alert("Error"); }
   };
 
-  // 4. Subir Foto (Solo Pastor)
   const handlePhotoUpload = async (e) => {
     const file = e.target.files[0];
     if (!file || dbUser?.role !== 'pastor') return;
@@ -114,10 +105,9 @@ export default function Directory() {
         await setDoc(userRef, { photoURL: data.secure_url }, { merge: true });
         setEditingUser({ ...editingUser, photoURL: data.secure_url });
       }
-    } catch (error) { alert("Error al subir foto"); } finally { setUploading(false); }
+    } catch (error) { console.error(error); } finally { setUploading(false); }
   };
 
-  // ✅ FILTRADO Y AGRUPACIÓN ALFABÉTICA
   const filteredUsers = users.filter(u => {
     const matchesSearch = u.finalName.toLowerCase().includes(search.toLowerCase());
     const matchesFilter = activeFilter === 'Todos' || u.role?.toLowerCase() === activeFilter.toLowerCase();
@@ -134,21 +124,20 @@ export default function Directory() {
   const alphabet = Object.keys(groupedUsers).sort();
 
   return (
-    <div className="pb-24 bg-slate-50 min-h-screen animate-fade-in p-4 relative font-outfit">
+    <div className="pb-24 bg-slate-50 min-h-screen animate-fade-in p-4 font-outfit">
       
       <div className="mb-6">
-        <h1 className="text-2xl font-black text-slate-800 mb-1">Directorio</h1>
-        <p className="text-sm text-slate-500 uppercase font-black tracking-widest text-[10px]">Gestión de miembros ({users.length})</p>
+        <h1 className="text-2xl font-black text-slate-800">Directorio</h1>
+        <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Base de datos de la Iglesia ({users.length})</p>
       </div>
 
-      {/* ✅ CHIPS DE FILTRADO */}
       <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4 pb-2">
-        {['Todos', 'Pastor', 'Lider', 'Servidor'].map(f => (
+        {['Todos', 'Pastor', 'Lider', 'Servidor', 'Miembro'].map(f => (
           <button 
             key={f} onClick={() => setActiveFilter(f)}
             className={`px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${activeFilter === f ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-100'}`}
           >
-            {f === 'Todos' ? f : f + 'es'}
+            {f}
           </button>
         ))}
       </div>
@@ -156,19 +145,18 @@ export default function Directory() {
       <div className="bg-white p-4 rounded-[25px] shadow-sm border border-slate-100 mb-6 flex items-center gap-2 sticky top-4 z-10">
         <Search className="text-slate-400" size={20}/>
         <input 
-          type="text" placeholder="Buscar miembro..." 
-          className="flex-1 outline-none text-slate-700 font-bold"
+          type="text" placeholder="Buscar por nombre..." 
+          className="flex-1 outline-none text-slate-700 font-bold bg-transparent"
           value={search} onChange={(e) => setSearch(e.target.value)}
         />
       </div>
 
-      {/* ✅ LISTA AGRUPADA CON SEPARADORES */}
       <div className="space-y-6">
         {loading && <div className="text-center py-10"><Loader2 className="animate-spin mx-auto text-brand-600"/></div>}
         
         {alphabet.map(letter => (
           <div key={letter}>
-            <div className="flex items-center gap-4 mb-3">
+            <div className="flex items-center gap-4 mb-3 px-2">
                <span className="text-xl font-black text-slate-300">{letter}</span>
                <div className="h-[1px] flex-1 bg-slate-200"></div>
             </div>
@@ -177,14 +165,14 @@ export default function Directory() {
                 <div 
                   key={user.id} 
                   onClick={() => { setEditingUser(user); setSaveStatus('idle'); }}
-                  className="bg-white p-3 rounded-[22px] border border-slate-100 shadow-sm flex items-center gap-4 cursor-pointer hover:bg-slate-50 active:scale-95 transition-all"
+                  className="bg-white p-3 rounded-[22px] border border-slate-100 shadow-sm flex items-center gap-4 cursor-pointer hover:bg-slate-50 transition-all active:scale-[0.98]"
                 >
-                  <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.finalName}&background=0f172a&color=fff`} className="w-14 h-14 rounded-2xl object-cover border border-slate-100 shadow-sm" />
-                  <div className="flex-1 min-w-0 text-left">
+                  <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.finalName}&background=0f172a&color=fff`} className="w-14 h-14 rounded-2xl object-cover" />
+                  <div className="flex-1 min-w-0">
                     <h3 className="font-black text-slate-800 text-sm truncate uppercase">{user.finalName}</h3>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className={`text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest ${user.role === 'pastor' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{user.role}</span>
-                      {user.area && user.area !== 'ninguna' && <span className="text-[9px] text-brand-600 font-black uppercase">{user.area}</span>}
+                      <span className={`text-[8px] font-black px-2 py-0.5 rounded uppercase tracking-tighter ${user.role === 'pastor' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{user.role}</span>
+                      {user.area && user.area !== 'ninguna' && <span className="text-[8px] text-brand-600 font-black uppercase">{user.area}</span>}
                     </div>
                   </div>
                 </div>
@@ -194,7 +182,6 @@ export default function Directory() {
         ))}
       </div>
 
-      {/* ✅ BOTÓN CREAR (SOLO PASTOR/LIDER) */}
       {['pastor', 'lider'].includes(dbUser?.role) && (
         <button 
           onClick={() => setIsCreating(true)}
@@ -204,7 +191,7 @@ export default function Directory() {
         </button>
       )}
 
-      {/* MODAL FICHA TÉCNICA (VISTA/EDICIÓN) */}
+      {/* MODAL FICHA TÉCNICA */}
       {editingUser && (
         <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white w-full max-w-sm rounded-[40px] animate-slide-up relative flex flex-col max-h-[90vh] shadow-2xl overflow-hidden">
@@ -224,7 +211,7 @@ export default function Directory() {
                </div>
             </div>
 
-            <div className="pt-12 px-6 pb-8 overflow-y-auto">
+            <div className="pt-12 px-6 pb-8 overflow-y-auto no-scrollbar">
               <div className="text-center mb-6">
                 <input 
                   disabled={dbUser?.role !== 'pastor'}
@@ -232,20 +219,21 @@ export default function Directory() {
                   value={editingUser.finalName} 
                   onChange={(e) => setEditingUser({...editingUser, finalName: e.target.value})}
                 />
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{editingUser.email}</p>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{editingUser.email || 'Sin correo'}</p>
               </div>
 
-              {/* ✅ ACCIONES INTELIGENTES */}
               <div className="grid grid-cols-2 gap-3 mb-6">
                 <a href={`https://wa.me/${editingUser.phone?.replace(/\D/g,'')}`} target="_blank" className="flex flex-col items-center gap-2 p-4 bg-emerald-50 text-emerald-700 rounded-3xl border border-emerald-100 active:scale-95 transition-all text-center">
                   <MessageCircle size={20}/><span className="text-[9px] font-black uppercase">WhatsApp</span>
                 </a>
-                <a href={`http://google.com/maps/search/${encodeURIComponent(editingUser.address || '')}`} target="_blank" className="flex flex-col items-center gap-2 p-4 bg-blue-50 text-blue-700 rounded-3xl border border-blue-100 active:scale-95 transition-all text-center">
+                {/* ✅ URL de Maps Corregida */}
+                <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(editingUser.address || '')}`} target="_blank" className="flex flex-col items-center gap-2 p-4 bg-blue-50 text-blue-700 rounded-3xl border border-blue-100 active:scale-95 transition-all text-center">
                   <MapPin size={20}/><span className="text-[9px] font-black uppercase">Maps</span>
                 </a>
               </div>
 
               <div className="space-y-4">
+                {/* ROL Y AREA */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Rol</label>
@@ -255,10 +243,22 @@ export default function Directory() {
                   </div>
                   <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Área</label>
-                    <input disabled={dbUser?.role !== 'pastor'} value={editingUser.area} onChange={e => setEditingUser({...editingUser, area: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none" />
+                    <input disabled={dbUser?.role !== 'pastor'} value={editingUser.area} onChange={e => setEditingUser({...editingUser, area: e.target.value.toLowerCase()})} className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none" placeholder="sonido, etc" />
                   </div>
                 </div>
 
+                {/* WHATSAPP Y DIRECCION (Nuevos campos editables para el Pastor) */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Teléfono WhatsApp</label>
+                  <input disabled={dbUser?.role !== 'pastor'} value={editingUser.phone || ''} onChange={e => setEditingUser({...editingUser, phone: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none" placeholder="11..." />
+                </div>
+                
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Dirección Completa</label>
+                  <input disabled={dbUser?.role !== 'pastor'} value={editingUser.address || ''} onChange={e => setEditingUser({...editingUser, address: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none" placeholder="Calle y altura..." />
+                </div>
+
+                {/* DNI Y SANGRE */}
                 <div className="grid grid-cols-2 gap-3">
                    <div className="space-y-1">
                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">DNI</label>
@@ -275,39 +275,34 @@ export default function Directory() {
                   <input type="date" disabled={dbUser?.role !== 'pastor'} value={editingUser.birthday || ''} onChange={e => setEditingUser({...editingUser, birthday: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none" />
                 </div>
 
-                {/* ✅ SECCIÓN EMERGENCIA (BLOQUEADA PARA SERVIDORES) */}
+                {/* EMERGENCIA */}
                 {['pastor', 'lider'].includes(dbUser?.role) ? (
                   <div className="bg-rose-50 p-5 rounded-[30px] border border-rose-100 shadow-inner">
                     <label className="text-[9px] font-black text-rose-600 uppercase mb-3 block tracking-widest flex items-center gap-1.5"><Heart size={10}/> Datos de Emergencia</label>
-                    <input disabled={dbUser?.role !== 'pastor'} value={editingUser.emergencyName || ''} onChange={e => setEditingUser({...editingUser, emergencyName: e.target.value})} className="w-full p-3 bg-white border border-rose-100 rounded-xl text-xs font-bold mb-3 outline-none" placeholder="Nombre" />
-                    <div className="flex gap-2">
-                       <input disabled={dbUser?.role !== 'pastor'} value={editingUser.emergencyPhone || ''} onChange={e => setEditingUser({...editingUser, emergencyPhone: e.target.value})} className="flex-1 p-3 bg-white border border-rose-100 rounded-xl text-xs font-bold outline-none" placeholder="Teléfono" />
-                       {editingUser.emergencyPhone && (
-                         <a href={`https://wa.me/${editingUser.emergencyPhone.replace(/\D/g,'')}`} target="_blank" className="p-3 bg-emerald-500 text-white rounded-xl shadow-lg shadow-emerald-200"><MessageCircle size={18}/></a>
-                       )}
-                    </div>
+                    <input disabled={dbUser?.role !== 'pastor'} value={editingUser.emergencyName || ''} onChange={e => setEditingUser({...editingUser, emergencyName: e.target.value})} className="w-full p-3 bg-white border border-rose-100 rounded-xl text-xs font-bold mb-3 outline-none" placeholder="Nombre contacto" />
+                    <input disabled={dbUser?.role !== 'pastor'} value={editingUser.emergencyPhone || ''} onChange={e => setEditingUser({...editingUser, emergencyPhone: e.target.value})} className="w-full p-3 bg-white border border-rose-100 rounded-xl text-xs font-bold outline-none" placeholder="Teléfono contacto" />
                   </div>
                 ) : (
                   <div className="p-5 bg-slate-100 rounded-[30px] flex flex-col items-center gap-2">
                     <Shield size={20} className="text-slate-400 opacity-50"/>
-                    <p className="text-[8px] font-black text-slate-400 uppercase italic tracking-tighter">Acceso restringido por seguridad</p>
+                    <p className="text-[8px] font-black text-slate-400 uppercase italic tracking-tighter text-center">Acceso a datos de emergencia<br/>restringido por seguridad</p>
                   </div>
                 )}
 
-                {/* ✅ IDENTIFICACIÓN QR */}
-                <div className="flex flex-col items-center pt-6 opacity-30 grayscale pointer-events-none">
-                  <QRCodeCanvas value={editingUser.id} size={80} />
-                  <p className="text-[8px] font-mono mt-2 tracking-widest">ID: {editingUser.id.toUpperCase()}</p>
+                {/* QR */}
+                <div className="flex flex-col items-center pt-6 opacity-20 grayscale">
+                  <QRCodeCanvas value={editingUser.id} size={60} />
+                  <p className="text-[7px] font-mono mt-2 tracking-widest">ID: {editingUser.id.toUpperCase()}</p>
                 </div>
 
-                {/* ✅ BOTONES DE ACCIÓN (PASTOR) */}
+                {/* BOTONES ACCIÓN */}
                 {dbUser?.role === 'pastor' && (
                   <div className="pt-6 space-y-3">
                     <button onClick={handleSaveUser} disabled={saveStatus !== 'idle'} className={`w-full font-black py-4 rounded-2xl flex items-center justify-center gap-2 text-xs uppercase tracking-widest shadow-xl transition-all ${saveStatus === 'success' ? 'bg-green-500 text-white' : 'bg-slate-900 text-white active:scale-95'}`}>
-                      {saveStatus === 'idle' ? <><Save size={18}/> Guardar Cambios</> : <Loader2 size={18} className="animate-spin"/>}
+                      {saveStatus === 'idle' ? <><Save size={18}/> Guardar Cambios</> : saveStatus === 'saving' ? <Loader2 size={18} className="animate-spin"/> : "✓ Guardado"}
                     </button>
                     <button onClick={() => handleDeleteMember(editingUser.id, editingUser.finalName)} className="w-full py-4 text-red-500 font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-red-50 rounded-2xl transition-colors">
-                      <Trash2 size={14}/> Eliminar permanentemente
+                      <Trash2 size={14}/> Eliminar de la Iglesia
                     </button>
                   </div>
                 )}
@@ -317,23 +312,21 @@ export default function Directory() {
         </div>
       )}
 
-      {/* MODAL CREAR (SOLO PASTOR/LIDER) */}
+      {/* MODAL CREAR */}
       {isCreating && (
         <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-sm rounded-[40px] p-8 animate-scale-in relative shadow-2xl">
             <button onClick={() => setIsCreating(false)} className="absolute top-6 right-6 p-2 bg-slate-50 rounded-full"><X size={20}/></button>
-            <h2 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-3 uppercase tracking-tighter">Nuevo Miembro</h2>
+            <h2 className="text-xl font-black text-slate-800 mb-6 uppercase tracking-tighter">Nuevo Miembro</h2>
             <div className="space-y-4">
-              <input autoFocus placeholder="Nombre Completo" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-black text-sm outline-none" value={newUser.displayName} onChange={e => setNewUser({...newUser, displayName: e.target.value})}/>
+              <input placeholder="Nombre Completo" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-black text-sm outline-none" value={newUser.displayName} onChange={e => setNewUser({...newUser, displayName: e.target.value})}/>
               <div className="grid grid-cols-2 gap-3">
-                <select className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-black uppercase outline-none" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}>
+                <select className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-[10px] font-black uppercase outline-none" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}>
                   <option value="miembro">Miembro</option><option value="servidor">Servidor</option><option value="lider">Líder</option><option value="pastor">Pastor</option>
                 </select>
-                <select className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-black uppercase outline-none" value={newUser.area} onChange={e => setNewUser({...newUser, area: e.target.value})}>
-                  <option value="ninguna">Sin Área</option><option value="multimedia">Multimedia</option><option value="alabanza">Alabanza</option><option value="recepcion">Recepción</option>
-                </select>
+                <input placeholder="Area" className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-[10px] font-black uppercase outline-none" value={newUser.area} onChange={e => setNewUser({...newUser, area: e.target.value.toLowerCase()})}/>
               </div>
-              <button onClick={handleCreateUser} className="w-full bg-brand-600 text-white font-black py-4 rounded-2xl mt-4 shadow-xl uppercase text-xs tracking-widest shadow-brand-200">Agregar Persona</button>
+              <button onClick={handleCreateUser} className="w-full bg-brand-600 text-white font-black py-4 rounded-2xl mt-4 shadow-xl uppercase text-[10px] tracking-widest">Registrar Miembro</button>
             </div>
           </div>
         </div>

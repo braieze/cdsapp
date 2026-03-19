@@ -50,14 +50,16 @@ export default function CalendarPage() {
     }
   }, [toast]);
 
-
- // ✅ FUNCIÓN CORREGIDA (Sin errores de nombres de variables)
-  const sendOneSignalNotification = async (title, body, path) => {
+  // ✅ FUNCIÓN DE NOTIFICACIÓN CORREGIDA
+  const sendOneSignalNotification = async (notifTitle, notifBody, path) => {
     try {
       const APP_ID = "742a62cd-6d15-427f-8bab-5b8759fabd0a";
       const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
 
-      if (!REST_API_KEY) return;
+      if (!REST_API_KEY) {
+        console.error("❌ No se encontró la REST_API_KEY");
+        return;
+      }
 
       const webUrl = `https://cdsapp.vercel.app/#${path}`;
 
@@ -69,11 +71,9 @@ export default function CalendarPage() {
         },
         body: JSON.stringify({
           app_id: APP_ID,
-          // 🎯 Cambiamos a 'All' o 'Total Subscriptions'. 
-          // 'All' es el comando de fuerza bruta para OneSignal.
-          included_segments: ["All"], 
-          headings: { en: title, es: title },
-          contents: { en: body, es: body },
+          included_segments: ["Subscribed Users"], 
+          headings: { en: notifTitle, es: notifTitle },
+          contents: { en: notifBody, es: notifBody },
           url: webUrl,
           data: { route: path },
           isIos: true,
@@ -82,7 +82,7 @@ export default function CalendarPage() {
       });
 
       const data = await response.json();
-      console.log("✅ Respuesta Calendario:", data);
+      console.log("✅ Respuesta Calendario OneSignal:", data);
     } catch (error) { 
       console.error("❌ Error OneSignal Calendario:", error); 
     }
@@ -110,8 +110,8 @@ export default function CalendarPage() {
         });
         await batch.commit();
         
-        // 🔥 PUNTO #1: Notificación de calendario mensual listo
         const monthName = format(currentDate, 'MMMM', { locale: es });
+        // ✅ Llamada corregida
         await sendOneSignalNotification(
           `📅 Agenda de ${monthName} lista`,
           "Se publicaron las nuevas actividades. ¡Revisa las fechas!",
@@ -167,10 +167,10 @@ export default function CalendarPage() {
             createdBy: auth.currentUser?.uid
         });
 
-        // 🔥 PUNTO #1 y #2: Notificación de evento individual
         if (newEvent.published) {
             const dateStr = format(new Date(newEvent.date + 'T00:00:00'), "EEEE d 'de' MMMM", { locale: es });
             const typeLabel = EVENT_TYPES[newEvent.type]?.label || "Evento";
+            // ✅ Llamada corregida con los nombres de variables nuevos
             await sendOneSignalNotification(
               `Nuevo evento: ${typeLabel}`,
               `${newEvent.title} - 📅 ${dateStr}`,
@@ -191,11 +191,13 @@ export default function CalendarPage() {
         setNewEvent({ title: '', type: 'culto', date: '', endDate: '', time: '19:30', description: '', published: false });
         setImageFile(null); setImagePreview(null);
         setToast({ message: "Evento guardado en agenda", type: "success" });
-    } catch (error) { setToast({ message: "Error al guardar", type: "error" }); }
+    } catch (error) { 
+        console.error(error);
+        setToast({ message: "Error al guardar", type: "error" }); 
+    }
     finally { setIsUploading(false); }
   };
 
-  // ... (Resto de funciones nextMonth, prevMonth, renders se mantienen igual)
   const nextMonth = () => setCurrentDate(addMonths(currentDate, 1));
   const prevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const filteredEvents = events.filter(e => isSameMonth(new Date(e.date + 'T00:00:00'), currentDate));
@@ -294,7 +296,6 @@ export default function CalendarPage() {
           </div>
       )}
 
-      {/* ... Resto del JSX (Header, Modales, etc.) se mantiene igual ... */}
       <div className="flex items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-slate-100 mb-6">
          <button onClick={prevMonth} className="p-2 text-slate-400"><ChevronLeft size={24} /></button>
          <h2 className="text-lg font-black text-slate-800 capitalize">{format(currentDate, 'MMMM yyyy', { locale: es })}</h2>
@@ -307,7 +308,6 @@ export default function CalendarPage() {
         <button onClick={() => setIsModalOpen(true)} className="fixed bottom-24 right-4 w-14 h-14 bg-slate-900 text-white rounded-full shadow-lg flex items-center justify-center z-40 active:scale-90"><Plus size={28} /></button>
       )}
 
-      {/* Modal Confirmación y demás elementos finales */}
       {actionConfirm && (
         <div className="fixed inset-0 z-[300] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6">
           <div className="bg-white w-full max-w-xs rounded-[35px] p-8 shadow-2xl text-center">
@@ -328,7 +328,6 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* Toast y Modal Crear Evento (Simplificado para el ejemplo) */}
       {toast && (
         <div className="fixed bottom-24 left-6 right-6 z-[150] animate-slide-up">
           <div className={`flex items-center gap-3 px-6 py-4 rounded-[22px] shadow-2xl border ${toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-400' : 'bg-rose-600 text-white'}`}>
@@ -351,7 +350,6 @@ export default function CalendarPage() {
                        <span className="text-[10px] font-black uppercase tracking-wider">¿Notificar ya mismo?</span>
                        {newEvent.published ? <CheckCircle size={20}/> : <XCircle size={20}/>}
                     </button>
-                    {/* Select de tipos */}
                     <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
                         {Object.entries(EVENT_TYPES).map(([key, config]) => (
                             <button key={key} onClick={() => setNewEvent({...newEvent, type: key})} className={`flex items-center gap-2 p-2.5 rounded-xl border text-[10px] font-black uppercase transition-all ${newEvent.type === key ? config.color : 'bg-white border-slate-100 text-slate-400'}`}><config.icon size={16}/> {config.label}</button>

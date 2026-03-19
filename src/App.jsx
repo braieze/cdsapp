@@ -31,6 +31,7 @@ function NavigationHandler() {
   const isNative = Capacitor.isNativePlatform();
 
   useEffect(() => {
+    // Escuchador para WEB (Service Worker)
     if ('serviceWorker' in navigator) {
       const handleMessage = (event) => {
         if (event.data && event.data.type === 'NAVIGATE') {
@@ -41,6 +42,7 @@ function NavigationHandler() {
       return () => navigator.serviceWorker.removeEventListener('message', handleMessage);
     }
 
+    // ✅ ESCUCHADOR PARA NATIVO (Android/iOS)
     if (isNative) {
       const handleNotificationClick = (event) => {
         const route = event.notification.additionalData?.route;
@@ -61,24 +63,24 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const isNative = Capacitor.isNativePlatform();
 
-useEffect(() => {
+  useEffect(() => {
     const initNotifications = async () => {
       try {
         if (isNative) {
+          // ✅ INICIALIZACIÓN NATIVA
           OneSignal.initialize("742a62cd-6d15-427f-8bab-5b8759fabd0a");
           OneSignal.Notifications.requestPermission(true);
         } else {
-          // ✅ SOLO INICIALIZAMOS. OneSignal se encarga del resto.
-          // Borramos el navigator.serviceWorker.register que estaba acá.
+          // ✅ INICIALIZACIÓN WEB (PWA)
+          // Eliminamos cualquier registro manual de Service Worker aquí.
           await OneSignalWeb.init({
             appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
             allowLocalhostAsSecureOrigin: true,
-            serviceWorkerParam: { scope: "/" },
             serviceWorkerPath: "OneSignalSDKWorker.js",
           });
         }
       } catch (e) { 
-        console.error("Critical OneSignal Error:", e); 
+        console.warn("OneSignal Init Delay/Error:", e); 
       }
     };
 
@@ -88,7 +90,8 @@ useEffect(() => {
       setUser(currentUser);
       setLoading(false); 
       if (currentUser) {
-        setTimeout(() => syncMaster(currentUser), 1500);
+        // Un pequeño delay para asegurar que OneSignal esté listo antes del login
+        setTimeout(() => syncMaster(currentUser), 2000);
       }
     });
 
@@ -111,7 +114,7 @@ useEffect(() => {
         });
       }
 
-      // ✅ LOGINS PARA NOTIFICACIONES INDIVIDUALES
+      // Vinculación de External ID
       if (isNative) {
         OneSignal.login(currentUser.uid);
       } else {

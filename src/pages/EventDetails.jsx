@@ -64,7 +64,7 @@ export default function EventDetails() {
     fetchData();
   }, [id, navigate, currentUser]);
 
-  // ✅ PUNTO #1 y #2: NOTIFICACIÓN PERSONALIZADA POR ASIGNACIÓN
+  // ✅ FUNCIÓN DE NOTIFICACIÓN POR ASIGNACIÓN (Punto #1 y #2)
   const notifyNewAssignments = async (newAssignments) => {
     try {
       const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
@@ -75,11 +75,10 @@ export default function EventDetails() {
       const oldAssigned = Object.values(event.assignments || {}).flat();
       const currentAssigned = Object.values(newAssignments).flat();
       
-      // Buscamos quiénes son los nuevos para no spamear
       const newlyAddedNames = currentAssigned.filter(name => !oldAssigned.includes(name));
       if (newlyAddedNames.length === 0) return;
 
-      // Buscamos sus IDs de Firebase (External IDs en OneSignal)
+      // Filtramos los IDs de Firebase de los usuarios nuevos
       const targetUserIds = users
         .filter(u => newlyAddedNames.includes(u.displayName))
         .map(u => u.id);
@@ -88,7 +87,7 @@ export default function EventDetails() {
 
       const path = `/calendario/${id}`;
 
-      await fetch("https://onesignal.com/api/v1/notifications", {
+      const response = await fetch("https://onesignal.com/api/v1/notifications", {
         method: "POST",
         headers: {
           "Content-Type": "application/json; charset=utf-8",
@@ -96,22 +95,25 @@ export default function EventDetails() {
         },
         body: JSON.stringify({
           app_id: APP_ID,
-          // 🎯 Enviamos solo a los usuarios específicos usando su ID de Firebase
+          // 🎯 Enviamos SOLO a estos UIDs específicos (External IDs)
           include_external_user_ids: targetUserIds,
           headings: { en: "📍 Nueva tarea asignada", es: "📍 Nueva tarea asignada" },
           contents: { 
-            en: `Fuiste asignado en: ${event.title}. Toca para confirmar.`, 
-            es: `Fuiste asignado en: ${event.title}. Toca para confirmar.` 
+            en: `Fuiste asignado en: ${event.title}. Toca para confirmar asistencia.`, 
+            es: `Fuiste asignado en: ${event.title}. Toca para confirmar asistencia.` 
           },
           url: `https://cdsapp.vercel.app/#${path}`,
           data: { route: path },
-          isIos: true
+          isIos: true,
+          priority: 10
         })
       });
 
+      const data = await response.json();
+      console.log("✅ OneSignal Tarea dice:", data);
       setToast({ message: "Servidores notificados", type: "success" });
     } catch (error) { 
-      console.error("Error al notificar:", error);
+      console.error("❌ Error al notificar tarea:", error);
     }
   };
 
@@ -128,7 +130,6 @@ export default function EventDetails() {
     } finally { setIsSaving(false); }
   };
 
-  // ✅ PUNTO #5: CONTROL DE ROLES
   const canEdit = ['pastor', 'lider'].includes(userRole);
 
   const downloadPDF = async () => {
@@ -190,8 +191,6 @@ export default function EventDetails() {
 
   return (
     <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-fade-in overflow-hidden font-outfit">
-      
-      {/* HEADER */}
       <div className={`relative pt-12 pb-24 px-6 ${event.type === 'ayuno' ? 'bg-rose-500' : 'bg-slate-900'} flex-shrink-0`}>
         <div className="absolute top-4 left-4 right-4 flex justify-between items-center">
             <button onClick={() => navigate('/calendario')} className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white"><X size={24} /></button>
@@ -215,7 +214,6 @@ export default function EventDetails() {
         <div className="absolute -bottom-1 left-0 right-0 h-12 bg-white rounded-t-[40px]"></div>
       </div>
 
-      {/* CONTENIDO ASIGNACIONES */}
       <div ref={reportRef} className="flex-1 overflow-y-auto bg-white px-6 pb-24 no-scrollbar">
         <div className="max-w-xl mx-auto space-y-6">
             <div className="flex flex-wrap gap-2 justify-center mt-2">
@@ -265,7 +263,6 @@ export default function EventDetails() {
         </div>
       </div>
 
-      {/* BOTÓN GUARDAR (SOLO LÍDERES) */}
       {isEditing && (
           <div className="p-4 bg-white border-t border-slate-100 absolute bottom-0 w-full shadow-2xl flex gap-3 z-50 animate-slide-up">
               <button onClick={async () => { if(window.confirm("¿Eliminar?")) { await deleteDoc(doc(db, 'events', id)); navigate('/calendario'); } }} className="p-4 bg-red-50 text-red-500 rounded-2xl"><Trash2 size={24}/></button>
@@ -276,7 +273,6 @@ export default function EventDetails() {
           </div>
       )}
 
-      {/* MODAL SELECTOR DE PERSONA */}
       {isSelectorOpen && (
           <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-end justify-center animate-fade-in" onClick={() => setIsSelectorOpen(false)}>
               <div className="bg-white w-full max-w-sm rounded-t-[40px] max-h-[80vh] flex flex-col shadow-2xl overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
@@ -316,7 +312,6 @@ export default function EventDetails() {
           </div>
       )}
 
-      {/* TOASTS */}
       {toast && (
         <div className="fixed bottom-24 left-6 right-6 z-[400] animate-slide-up">
           <div className={`flex items-center gap-4 px-8 py-5 rounded-[30px] shadow-2xl border-2 ${toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-400' : 'bg-slate-900 text-white border-slate-700'}`}>
