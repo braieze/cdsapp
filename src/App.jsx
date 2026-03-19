@@ -30,33 +30,55 @@ function NavigationHandler() {
   const navigate = useNavigate();
   const isNative = Capacitor.isNativePlatform();
 
-  useEffect(() => {
-    // Escuchador para WEB (Service Worker)
-    if ('serviceWorker' in navigator) {
-      const handleMessage = (event) => {
-        if (event.data && event.data.type === 'NAVIGATE') {
-          navigate(event.data.url);
-        }
-      };
-      navigator.serviceWorker.addEventListener('message', handleMessage);
-      return () => navigator.serviceWorker.removeEventListener('message', handleMessage);
-    }
+ useEffect(() => {
+    const initNotifications = async () => {
+      try {
+        if (isNative) {
+          // ✅ INICIALIZACIÓN NATIVA (Android/iOS)
+          OneSignal.initialize("742a62cd-6d15-427f-8bab-5b8759fabd0a");
+          OneSignal.Notifications.requestPermission(true);
+        } else {
+          // ✅ INICIALIZACIÓN WEB (PWA)
+          await OneSignalWeb.init({
+            appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
+            allowLocalhostAsSecureOrigin: true,
+            serviceWorkerPath: "OneSignalSDKWorker.js",
+          });
 
-    // ✅ ESCUCHADOR PARA NATIVO (Android/iOS)
-    if (isNative) {
-      const handleNotificationClick = (event) => {
-        const route = event.notification.additionalData?.route;
-        if (route) {
-          navigate(route);
-        }
-      };
-      OneSignal.Notifications.addEventListener("click", handleNotificationClick);
-      return () => OneSignal.Notifications.removeEventListener("click", handleNotificationClick);
-    }
-  }, [navigate, isNative]);
+          // 🔍 SISTEMA DE DEBUG PARA V16 (Sustituye al viejo getUserId)
+          setTimeout(() => {
+            const subscriptionId = OneSignalWeb.User.PushSubscription.id;
+            const isOptedIn = OneSignalWeb.User.PushSubscription.optedIn;
+            const token = OneSignalWeb.User.PushSubscription.token;
 
-  return null;
-}
+            console.log("-----------------------------------------");
+            console.log("🆔 MI ID DE ONESIGNAL:", subscriptionId || "AÚN NO GENERADO");
+            console.log("🔔 ¿Suscripción activa?:", isOptedIn);
+            console.log("🎫 Push Token:", token ? "GENERADO ✅" : "NO HAY TOKEN ❌");
+            console.log("-----------------------------------------");
+
+            if (!subscriptionId) {
+              console.error("⚠️ EL NAVEGADOR NO GENERÓ ID: Revisa si el archivo OneSignalSDKWorker.js está en la carpeta /public");
+            }
+          }, 8000); // Esperamos 8 segundos para dar tiempo al registro
+        }
+      } catch (e) {
+        console.error("Critical OneSignal Error:", e);
+      }
+    };
+
+    initNotifications();
+
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setLoading(false); 
+      if (currentUser) {
+        setTimeout(() => syncMaster(currentUser), 2000);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [isNative]);
 
 export default function App() {
   const [user, setUser] = useState(null);
