@@ -53,7 +53,7 @@ const LIMPIEZA_STRUCTURE = [
     section: 'Equipo Asignado',
     roles: [
       { key: 'lider_limpieza', label: 'Responsable', icon: Shield, type: 'single', allowedRoles: ['lider', 'pastor'] },
-      { key: 'voluntarios', label: 'Voluntarios', icon: User, type: 'multi'] }
+      { key: 'voluntarios', label: 'Voluntarios', icon: User, type: 'multi' }
     ]
   }
 ];
