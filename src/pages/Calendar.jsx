@@ -66,14 +66,21 @@ export default function CalendarPage() {
           "Content-Type": "application/json; charset=utf-8",
           "Authorization": `Basic ${REST_API_KEY}`
         },
-        body: JSON.stringify({
+	body: JSON.stringify({
           app_id: APP_ID,
-          included_segments: ["Subscribed Users"],
-          headings: { en: title, es: title },
-          contents: { en: body, es: body },
-          url: webUrl, // Para Web/iPhone
-          data: { route: path }, // Para Android Nativo
-          isIos: true
+          // 🎯 Usamos SOLO el segmento garantizado por OneSignal
+          included_segments: ["Subscribed Users"], 
+          headings: { en: postTitle, es: postTitle },
+          contents: { 
+            en: postContent ? postContent.substring(0, 100) : "Novedades en la app.", 
+            es: postContent ? postContent.substring(0, 100) : "Novedades en la app." 
+          },
+          // 📱 Link para iPhone/Web y Ruta para Android
+          url: `https://cdsapp.vercel.app/#${postUrl}`,
+          data: { route: postUrl },
+          isIos: true,
+          // Forzamos prioridad alta
+          priority: 10 
         })
       });
     } catch (error) { console.error("Error OneSignal:", error); }
