@@ -61,23 +61,17 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           "Content-Type": "application/json; charset=utf-8",
           "Authorization": `Basic ${REST_API_KEY}`
         },
-        body: JSON.stringify({
+       body: JSON.stringify({
           app_id: APP_ID,
-          included_segments: ["Subscribed Users"], 
-          headings: { en: postTitle, es: postTitle },
-          contents: { 
-            en: postContent ? postContent.substring(0, 100) + "..." : "Toca para ver las novedades.", 
-            es: postContent ? postContent.substring(0, 100) + "..." : "Toca para ver las novedades." 
-          },
-          // 🌐 Para WEB (PWA):
-          url: webUrl, 
-          // 📱 Para NATIVO (Android/iOS):
-          data: { route: postUrl }, 
-          // 🍎 Mejoras para iOS:
+          // 🎯 Cambiamos a 'All' o 'Total Subscriptions'. 
+          // 'All' es el comando de fuerza bruta para OneSignal.
+          included_segments: ["All"], 
+          headings: { en: title, es: title },
+          contents: { en: body, es: body },
+          url: webUrl,
+          data: { route: path },
           isIos: true,
-          ios_badgeType: "Increase",
-          ios_badgeCount: 1,
-          android_accent_color: "FF0047AB" // Un azul formal para la iglesia
+          priority: 10
         })
       });
 

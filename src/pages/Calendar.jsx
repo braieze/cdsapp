@@ -69,13 +69,15 @@ export default function CalendarPage() {
         },
         body: JSON.stringify({
           app_id: APP_ID,
-          included_segments: ["Subscribed Users"],
-          // 🛠️ AQUÍ ESTABA EL ERROR: debe ser 'title' y 'body'
+          // 🎯 Cambiamos a 'All' o 'Total Subscriptions'. 
+          // 'All' es el comando de fuerza bruta para OneSignal.
+          included_segments: ["All"], 
           headings: { en: title, es: title },
           contents: { en: body, es: body },
           url: webUrl,
           data: { route: path },
-          isIos: true
+          isIos: true,
+          priority: 10
         })
       });
 

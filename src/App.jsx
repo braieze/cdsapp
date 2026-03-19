@@ -61,36 +61,21 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const isNative = Capacitor.isNativePlatform();
 
-  useEffect(() => {
+useEffect(() => {
     const initNotifications = async () => {
       try {
         if (isNative) {
-          // ✅ INICIALIZACIÓN NATIVA (ANDROID/IOS)
           OneSignal.initialize("742a62cd-6d15-427f-8bab-5b8759fabd0a");
-          // Pedimos permiso explícito al arrancar
           OneSignal.Notifications.requestPermission(true);
         } else {
-          // ✅ INICIALIZACIÓN WEB (PWA)
+          // ✅ SOLO INICIALIZAMOS. OneSignal se encarga del resto.
+          // Borramos el navigator.serviceWorker.register que estaba acá.
           await OneSignalWeb.init({
             appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
             allowLocalhostAsSecureOrigin: true,
-            // Agregamos esto para asegurar que el prompt aparezca
-            promptOptions: {
-                slidedown: {
-                    enabled: true,
-                    autoPrompt: true,
-                    timeDelay: 5,
-                    pageViews: 1
-                }
-            }
+            serviceWorkerParam: { scope: "/" },
+            serviceWorkerPath: "OneSignalSDKWorker.js",
           });
-
-          // Forzamos registro de Service Worker si es posible
-          if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/OneSignalSDKWorker.js')
-              .then(() => console.log("SW Registered"))
-              .catch(err => console.error("SW Error:", err));
-          }
         }
       } catch (e) { 
         console.error("Critical OneSignal Error:", e); 
