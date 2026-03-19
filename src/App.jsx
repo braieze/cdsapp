@@ -26,39 +26,68 @@ import Directory from './pages/Directory';
 import Ofrendar from './pages/Ofrendar'; 
 import Tesoreria from './pages/Tesoreria';
 
+// --- MANEJADOR DE NAVEGACIÓN (Escucha clics en notificaciones) ---
 function NavigationHandler() {
   const navigate = useNavigate();
   const isNative = Capacitor.isNativePlatform();
 
- useEffect(() => {
+  useEffect(() => {
+    // 1. Lógica para WEB (Service Worker)
+    if ('serviceWorker' in navigator) {
+      const handleMessage = (event) => {
+        if (event.data && event.data.type === 'NAVIGATE') {
+          navigate(event.data.url);
+        }
+      };
+      navigator.serviceWorker.addEventListener('message', handleMessage);
+      return () => navigator.serviceWorker.removeEventListener('message', handleMessage);
+    }
+
+    // 2. Lógica para NATIVO (Android/APK)
+    if (isNative) {
+      const handleNotificationClick = (event) => {
+        const route = event.notification.additionalData?.route;
+        if (route) navigate(route);
+      };
+      OneSignal.Notifications.addEventListener("click", handleNotificationClick);
+      return () => OneSignal.Notifications.removeEventListener("click", handleNotificationClick);
+    }
+  }, [navigate, isNative]);
+
+  return null;
+}
+
+// --- COMPONENTE PRINCIPAL ---
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const isNative = Capacitor.isNativePlatform();
+
+  useEffect(() => {
     const initNotifications = async () => {
       try {
         if (isNative) {
-          // ✅ INICIALIZACIÓN NATIVA (Android/APK)
+          // ✅ INICIALIZACIÓN NATIVA
           OneSignal.initialize("742a62cd-6d15-427f-8bab-5b8759fabd0a");
           OneSignal.Notifications.requestPermission(true);
         } else {
-          // ✅ INICIALIZACIÓN WEB (Vercel/Chrome)
+          // ✅ INICIALIZACIÓN WEB (V16)
           await OneSignalWeb.init({
             appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
             allowLocalhostAsSecureOrigin: true,
             serviceWorkerPath: "OneSignalSDKWorker.js",
           });
 
-          // 🔍 DEBUG PARA VERSIÓN 16 (Sustituye al viejo getUserId)
+          // 🔍 DEBUG PARA VERSIÓN 16 (Detección de ID)
           setTimeout(() => {
             const subscriptionId = OneSignalWeb.User.PushSubscription.id;
             const isOptedIn = OneSignalWeb.User.PushSubscription.optedIn;
 
             console.log("-----------------------------------------");
-            console.log("🆔 MI ID DE ONESIGNAL:", subscriptionId || "⚠️ NO GENERADO AÚN");
-            console.log("🔔 ¿SUSCRITO REALMENTE?:", isOptedIn ? "SÍ ✅" : "NO ❌");
+            console.log("🆔 MI ID DE ONESIGNAL:", subscriptionId || "AÚN NO GENERADO");
+            console.log("🔔 ¿SUSCRITO?:", isOptedIn ? "SÍ ✅" : "NO ❌");
             console.log("-----------------------------------------");
-
-            if (!subscriptionId) {
-              console.error("🚨 ERROR: El navegador no generó ID. Entrá a https://cdsapp.vercel.app/OneSignalSDKWorker.js para ver si el archivo existe.");
-            }
-          }, 8000); 
+          }, 8000);
         }
       } catch (e) {
         console.error("Critical OneSignal Error:", e);
@@ -71,55 +100,7 @@ function NavigationHandler() {
       setUser(currentUser);
       setLoading(false); 
       if (currentUser) {
-        // Vinculación segura
-        setTimeout(async () => {
-          if (isNative) {
-            OneSignal.login(currentUser.uid);
-          } else {
-            await OneSignalWeb.login(currentUser.uid);
-          }
-        }, 2000);
-      }
-    });
-
-    return () => unsubscribe();
-  }, [isNative]);
-
-export default function App() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const isNative = Capacitor.isNativePlatform();
-
-  useEffect(() => {
-const initNotifications = async () => {
-      try {
-        if (isNative) {
-          OneSignal.initialize("742a62cd-6d15-427f-8bab-5b8759fabd0a");
-          OneSignal.Notifications.requestPermission(true);
-        } else {
-          await OneSignalWeb.init({
-            appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
-            allowLocalhostAsSecureOrigin: true,
-            serviceWorkerPath: "OneSignalSDKWorker.js",
-          });
-
-          // 🔍 ESTO ES PARA EL DEBUG:
-          setTimeout(async () => {
-            const id = await OneSignalWeb.getUserId();
-            console.log("🆔 MI ID DE ONESIGNAL ES:", id);
-            if (!id) console.error("❌ NO ESTOY SUSCRITO REALMENTE");
-          }, 5000);
-        }
-      } catch (e) { console.error("Error init:", e); }
-    };
-
-    initNotifications();
-
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setLoading(false); 
-      if (currentUser) {
-        // Un pequeño delay para asegurar que OneSignal esté listo antes del login
+        // Vinculación segura de External ID
         setTimeout(() => syncMaster(currentUser), 2000);
       }
     });
@@ -143,7 +124,7 @@ const initNotifications = async () => {
         });
       }
 
-      // Vinculación de External ID
+      // Login en OneSignal para que lleguen notificaciones personalizadas
       if (isNative) {
         OneSignal.login(currentUser.uid);
       } else {
