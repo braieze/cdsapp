@@ -50,7 +50,8 @@ export default function CalendarPage() {
     }
   }, [toast]);
 
-  // ✅ FUNCIÓN UNIVERSAL ONESIGNAL PARA CALENDARIO (Punto #1 y #2)
+
+ // ✅ FUNCIÓN CORREGIDA (Sin errores de nombres de variables)
   const sendOneSignalNotification = async (title, body, path) => {
     try {
       const APP_ID = "742a62cd-6d15-427f-8bab-5b8759fabd0a";
@@ -60,30 +61,29 @@ export default function CalendarPage() {
 
       const webUrl = `https://cdsapp.vercel.app/#${path}`;
 
-      await fetch("https://onesignal.com/api/v1/notifications", {
+      const response = await fetch("https://onesignal.com/api/v1/notifications", {
         method: "POST",
         headers: {
           "Content-Type": "application/json; charset=utf-8",
           "Authorization": `Basic ${REST_API_KEY}`
         },
-	body: JSON.stringify({
+        body: JSON.stringify({
           app_id: APP_ID,
-          // 🎯 Usamos SOLO el segmento garantizado por OneSignal
-          included_segments: ["Subscribed Users"], 
-          headings: { en: postTitle, es: postTitle },
-          contents: { 
-            en: postContent ? postContent.substring(0, 100) : "Novedades en la app.", 
-            es: postContent ? postContent.substring(0, 100) : "Novedades en la app." 
-          },
-          // 📱 Link para iPhone/Web y Ruta para Android
-          url: `https://cdsapp.vercel.app/#${postUrl}`,
-          data: { route: postUrl },
-          isIos: true,
-          // Forzamos prioridad alta
-          priority: 10 
+          included_segments: ["Subscribed Users"],
+          // 🛠️ AQUÍ ESTABA EL ERROR: debe ser 'title' y 'body'
+          headings: { en: title, es: title },
+          contents: { en: body, es: body },
+          url: webUrl,
+          data: { route: path },
+          isIos: true
         })
       });
-    } catch (error) { console.error("Error OneSignal:", error); }
+
+      const data = await response.json();
+      console.log("✅ Respuesta Calendario:", data);
+    } catch (error) { 
+      console.error("❌ Error OneSignal Calendario:", error); 
+    }
   };
 
   const executeConfirmedAction = async () => {
