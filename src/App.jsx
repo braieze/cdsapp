@@ -34,33 +34,31 @@ function NavigationHandler() {
     const initNotifications = async () => {
       try {
         if (isNative) {
-          // ✅ INICIALIZACIÓN NATIVA (Android/iOS)
+          // ✅ INICIALIZACIÓN NATIVA (Android/APK)
           OneSignal.initialize("742a62cd-6d15-427f-8bab-5b8759fabd0a");
           OneSignal.Notifications.requestPermission(true);
         } else {
-          // ✅ INICIALIZACIÓN WEB (PWA)
+          // ✅ INICIALIZACIÓN WEB (Vercel/Chrome)
           await OneSignalWeb.init({
             appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
             allowLocalhostAsSecureOrigin: true,
             serviceWorkerPath: "OneSignalSDKWorker.js",
           });
 
-          // 🔍 SISTEMA DE DEBUG PARA V16 (Sustituye al viejo getUserId)
+          // 🔍 DEBUG PARA VERSIÓN 16 (Sustituye al viejo getUserId)
           setTimeout(() => {
             const subscriptionId = OneSignalWeb.User.PushSubscription.id;
             const isOptedIn = OneSignalWeb.User.PushSubscription.optedIn;
-            const token = OneSignalWeb.User.PushSubscription.token;
 
             console.log("-----------------------------------------");
-            console.log("🆔 MI ID DE ONESIGNAL:", subscriptionId || "AÚN NO GENERADO");
-            console.log("🔔 ¿Suscripción activa?:", isOptedIn);
-            console.log("🎫 Push Token:", token ? "GENERADO ✅" : "NO HAY TOKEN ❌");
+            console.log("🆔 MI ID DE ONESIGNAL:", subscriptionId || "⚠️ NO GENERADO AÚN");
+            console.log("🔔 ¿SUSCRITO REALMENTE?:", isOptedIn ? "SÍ ✅" : "NO ❌");
             console.log("-----------------------------------------");
 
             if (!subscriptionId) {
-              console.error("⚠️ EL NAVEGADOR NO GENERÓ ID: Revisa si el archivo OneSignalSDKWorker.js está en la carpeta /public");
+              console.error("🚨 ERROR: El navegador no generó ID. Entrá a https://cdsapp.vercel.app/OneSignalSDKWorker.js para ver si el archivo existe.");
             }
-          }, 8000); // Esperamos 8 segundos para dar tiempo al registro
+          }, 8000); 
         }
       } catch (e) {
         console.error("Critical OneSignal Error:", e);
@@ -73,7 +71,14 @@ function NavigationHandler() {
       setUser(currentUser);
       setLoading(false); 
       if (currentUser) {
-        setTimeout(() => syncMaster(currentUser), 2000);
+        // Vinculación segura
+        setTimeout(async () => {
+          if (isNative) {
+            OneSignal.login(currentUser.uid);
+          } else {
+            await OneSignalWeb.login(currentUser.uid);
+          }
+        }, 2000);
       }
     });
 
