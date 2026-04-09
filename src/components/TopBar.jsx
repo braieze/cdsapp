@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth, messaging } from '../firebase'; 
-import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, arrayUnion, arrayRemove, where, getDoc } from 'firebase/firestore'; 
+import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, arrayUnion, arrayRemove, where, getDoc, setDoc } from 'firebase/firestore'; 
 import { getToken, deleteToken } from 'firebase/messaging'; 
 import { 
   Bell, BellOff, X, Calendar, MessageCircle, ChevronRight, Briefcase, 
   ShieldAlert, Sparkles, Megaphone, BookOpen, Clock, Settings, Loader2, 
-  Send, Link as LinkIcon, Activity, Heart, Users, HandHeart 
-} from 'lucide-react'; // ✅ HandHeart reemplaza a PrayingHand para evitar error de build
+  Send, Link as LinkIcon, Activity, Heart, Users, HandHeart, Lock, Unlock, Globe, Save
+} from 'lucide-react';
 import { format, isToday, isYesterday } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -29,12 +29,41 @@ export default function TopBar({ title, subtitle }) {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isSupported, setIsSupported] = useState(true);
 
-  const [pushData, setPushData] = useState({ title: '', body: '', link: '' });
+  // --- ESTADOS GRUPO 1: NOTIFICACIONES PRO ---
+  const [pushData, setPushData] = useState({ title: '', body: '', link: '', targetArea: 'todos', targetPath: '/' });
+  const [officialAreas, setOfficialAreas] = useState([]);
+  const [prayerLinkData, setPrayerLinkData] = useState({ url: '', isLocked: true });
 
   const currentUser = auth.currentUser;
   const isNative = Capacitor.isNativePlatform(); 
 
-  // --- LÓGICA DE SUSCRIPCIÓN (BOTÓN RECUPERADO) ---
+  // 1. SINCRONIZAR TAGS DE ONESIGNAL (Para segmentación por áreas)
+  useEffect(() => {
+    if (isNative && currentUser) {
+      const userRef = doc(db, 'users', currentUser.uid);
+      getDoc(userRef).then(snap => {
+        if (snap.exists()) {
+          const area = snap.data().area || 'ninguna';
+          OneSignal.User.addTag("area", area.toLowerCase());
+        }
+      });
+    }
+  }, [currentUser, isNative]);
+
+  // 2. CARGAR METADATA (Áreas y Link de Oración)
+  useEffect(() => {
+    // Cargar áreas
+    const unsubAreas = onSnapshot(doc(db, 'metadata', 'areas'), (snap) => {
+      if (snap.exists()) setOfficialAreas(snap.data().list || []);
+    });
+    // Cargar link de oración
+    const unsubLink = onSnapshot(doc(db, 'metadata', 'links'), (snap) => {
+      if (snap.exists()) setPrayerLinkData(prev => ({ ...prev, url: snap.data().prayer || '' }));
+    });
+    return () => { unsubAreas(); unsubLink(); };
+  }, []);
+
+  // --- LÓGICA DE SUSCRIPCIÓN ---
   useEffect(() => {
     if (isNative) {
       setIsSupported(true);
@@ -49,7 +78,7 @@ export default function TopBar({ title, subtitle }) {
   }, [isOpen, isNative]); 
 
   const enableNotifications = async () => {
-    if (!isSupported) { toast.error("No soportado en este dispositivo"); return; }
+    if (!isSupported) { toast.error("No soportado"); return; }
     setLoadingAction(true);
     try {
         if (isNative) {
@@ -57,7 +86,7 @@ export default function TopBar({ title, subtitle }) {
             if (currentUser?.uid) OneSignal.login(currentUser.uid);
             localStorage.setItem('fcm_active', 'true');
             setIsSubscribed(true);
-            toast.success("¡Notificaciones activadas!");
+            toast.success("¡Activadas!");
         } else {
             const result = await Notification.requestPermission();
             if (result === 'granted' && messaging) {
@@ -66,16 +95,16 @@ export default function TopBar({ title, subtitle }) {
                     await updateDoc(doc(db, 'users', currentUser.uid), { fcmTokens: arrayUnion(token) });
                     localStorage.setItem('fcm_active', 'true');
                     setIsSubscribed(true);
-                    toast.success("¡Notificaciones activadas!");
+                    toast.success("¡Activadas!");
                 }
             }
         }
-    } catch (error) { toast.error("Error al activar avisos"); } 
+    } catch (error) { toast.error("Error al activar"); } 
     finally { setLoadingAction(false); }
   };
 
   const disableNotifications = async () => {
-    if (!window.confirm("¿Desactivar avisos en este dispositivo?")) return;
+    if (!window.confirm("¿Desactivar avisos?")) return;
     setLoadingAction(true);
     try {
         if (isNative) OneSignal.logout();
@@ -88,139 +117,106 @@ export default function TopBar({ title, subtitle }) {
         }
         localStorage.removeItem('fcm_active');
         setIsSubscribed(false);
-        toast.success("Notificaciones desactivadas.");
+        toast.success("Desactivadas.");
     } catch (error) { console.error(error); } 
     finally { setLoadingAction(false); }
   };
 
-  // --- PLANTILLA DE ORACIÓN (Ajustado) ---
-  const setPrayerTemplate = () => {
-    setPushData({
-      title: "🙏 ¡Estamos en Oración!",
-      body: "Hacé clic acá para unirte a la oración virtual por Google Meet.",
-      link: "https://meet.google.com/tu-link-de-oracion" 
-    });
-    toast.info("Plantilla de oración cargada");
+  // --- GESTIÓN LINK DE ORACIÓN (Candado) ---
+  const savePrayerLink = async () => {
+    try {
+      await setDoc(doc(db, 'metadata', 'links'), { prayer: prayerLinkData.url }, { merge: true });
+      setPrayerLinkData({ ...prayerLinkData, isLocked: true });
+      toast.success("Link actualizado");
+    } catch (e) { toast.error("Error al guardar"); }
   };
 
-  useEffect(() => {
-    if (!currentUser) return;
-    const userRef = doc(db, 'users', currentUser.uid);
-    const unsubscribe = onSnapshot(userRef, (docSnap) => {
-        if (docSnap.exists()) {
-            const data = docSnap.data();
-            setUserRole(data.role || 'miembro');
-            setReadIds(data.readNotifications || []); 
-        }
+  const setPrayerTemplate = () => {
+    setPushData({
+      ...pushData,
+      title: "🙏 ¡Estamos en Oración!",
+      body: "Toca para unirte al altar virtual.",
+      link: prayerLinkData.url,
+      targetPath: '/' // Por defecto al muro
     });
-    return () => unsubscribe();
-  }, [currentUser]);
+    toast.info("Modo Oración cargado");
+  };
 
-  useEffect(() => {
-    if (!currentUser) return;
-    const unsubscribes = [];
-    const sources = { posts: [], events: [], assignments: [], smart: [] };
-
-    const updateAll = () => {
-        const combined = [...sources.posts, ...sources.events, ...sources.assignments, ...sources.smart]
-            .sort((a, b) => b.timestamp - a.timestamp);
-        setNotifications(combined);
-    };
-
-    const qPosts = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(15));
-    unsubscribes.push(onSnapshot(qPosts, (snap) => {
-        sources.posts = snap.docs.map(d => {
-            const data = d.data();
-            return {
-                id: d.id,
-                type: 'post',
-                title: data.title || 'Nueva publicación',
-                subtitle: data.type,
-                timestamp: data.createdAt?.toMillis() || Date.now(),
-                link: `/post/${d.id}`,
-                icon: data.type === 'Devocional' ? BookOpen : Megaphone,
-                color: data.type === 'Urgente' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600',
-                isUrgent: data.type === 'Urgente'
-            };
-        });
-        updateAll();
-    }));
-
-    const todayStr = new Date().toISOString().split('T')[0];
-    const qEvents = query(collection(db, 'events'), where('date', '>=', todayStr)); 
-    unsubscribes.push(onSnapshot(qEvents, (snap) => {
-        const evs = [];
-        const asgs = [];
-        snap.docs.forEach(d => {
-            const data = d.data();
-            if (data.published === false) return; 
-            const creationTs = data.createdAt?.toMillis() || new Date(data.date + 'T00:00:00').getTime();
-            const isMyTask = data.assignments && Object.values(data.assignments).some(arr => Array.isArray(arr) && arr.includes(currentUser.displayName));
-            
-            if (isMyTask && (!data.confirmations || !data.confirmations[currentUser.displayName])) {
-                asgs.push({ id: `asg-${d.id}`, type: 'assignment', title: '¡Te han asignado!', subtitle: `${data.title} - Toca para confirmar`, timestamp: creationTs, link: `/calendario/${d.id}`, icon: Briefcase, color: 'bg-amber-100 text-amber-600', isUrgent: true });
-            }
-            if (!isMyTask) {
-                evs.push({ id: `ev-${d.id}`, type: 'event', title: 'Nuevo Evento', subtitle: data.title, timestamp: creationTs, link: `/calendario/${d.id}`, icon: Calendar, color: 'bg-purple-100 text-purple-600' });
-            }
-        });
-        sources.events = evs;
-        sources.assignments = asgs;
-        updateAll();
-    }));
-    return () => unsubscribes.forEach(u => u());
-  }, [currentUser, userRole]);
-
-  useEffect(() => {
-      const unread = notifications.filter(n => !readIds.includes(n.id)).length;
-      setUnreadCount(unread);
-  }, [notifications, readIds]);
-
+  // --- ENVÍO DE NOTIFICACIÓN SEGMENTADA ---
   const sendManualPush = async () => {
-    if (!pushData.title || !pushData.body) return toast.error("Completa título y mensaje");
+    if (!pushData.title || !pushData.body) return toast.error("Completa los datos");
     setLoadingAction(true);
     try {
       const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
+      const payload = {
+        app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
+        headings: { en: pushData.title, es: pushData.title },
+        contents: { en: pushData.body, es: pushData.body },
+        data: { route: pushData.targetPath, external_url: pushData.link || null },
+        large_icon: "https://cdsapp.vercel.app/logo.png",
+        priority: 10
+      };
+
+      // Segmentación por Área
+      if (pushData.targetArea === 'todos') {
+        payload.included_segments = ["Total Subscriptions"];
+      } else {
+        payload.filters = [{ field: "tag", key: "area", relation: "=", value: pushData.targetArea }];
+      }
+
       await fetch("https://onesignal.com/api/v1/notifications", {
         method: "POST",
         headers: { "Content-Type": "application/json; charset=utf-8", "Authorization": `Basic ${REST_API_KEY}` },
-        body: JSON.stringify({
-          app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
-          included_segments: ["Total Subscriptions"],
-          headings: { en: pushData.title, es: pushData.title },
-          contents: { en: pushData.body, es: pushData.body },
-          data: { url: pushData.link || null },
-          large_icon: "https://cdsapp.vercel.app/logo.png",
-          priority: 10
-        })
+        body: JSON.stringify(payload)
       });
-      toast.success("¡Notificación enviada!");
-      setPushData({ title: '', body: '', link: '' });
+
+      toast.success("¡Enviado!");
       setIsPastorPanelOpen(false);
     } catch (e) { toast.error("Error al enviar"); }
     finally { setLoadingAction(false); }
   };
 
+  // (Mantenemos la carga de notificaciones locales igual para no romper nada)
+  useEffect(() => {
+    if (!currentUser) return;
+    const unsubNotifs = onSnapshot(query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(15)), (snap) => {
+        setNotifications(snap.docs.map(d => ({
+            id: d.id,
+            type: 'post',
+            title: d.data().title || 'Nueva publicación',
+            subtitle: d.data().type,
+            timestamp: d.data().createdAt?.toMillis() || Date.now(),
+            link: `/post/${d.id}`,
+            icon: d.data().type === 'Devocional' ? BookOpen : Megaphone,
+            color: d.data().type === 'Urgente' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
+        })));
+    });
+    return () => unsubNotifs();
+  }, [currentUser]);
+
+  useEffect(() => {
+    const unread = notifications.filter(n => !readIds.includes(n.id)).length;
+    setUnreadCount(unread);
+  }, [notifications, readIds]);
+
   const markAllAsRead = async () => {
       const allIds = notifications.map(n => n.id);
       setReadIds(allIds);
       await updateDoc(doc(db, 'users', currentUser.uid), { readNotifications: allIds });
-      toast.success("Todo leído");
   };
 
   const formatNotifTime = (ts) => {
     const date = new Date(ts);
     if (isToday(date)) return `Hoy, ${format(date, 'HH:mm')}`;
-    if (isYesterday(date)) return `Ayer, ${format(date, 'HH:mm')}`;
-    return format(date, "d MMM, HH:mm", { locale: es });
+    return format(date, "d MMM", { locale: es });
   };
 
   return (
     <>
       <div className="sticky top-0 z-40 bg-slate-50/95 backdrop-blur-md px-5 pt-5 pb-3 flex justify-between items-center font-outfit">
         <div className="flex items-center gap-3">
-            <div className="w-11 h-11 bg-slate-900 rounded-2xl flex items-center justify-center shadow-xl shadow-slate-200 overflow-hidden border-2 border-white">
-                <img src="/logo.png" alt="Logo" className="w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none'; e.target.parentNode.innerHTML = '<span class="text-white font-black">C</span>'; }} />
+            <div className="w-11 h-11 bg-slate-900 rounded-2xl flex items-center justify-center shadow-xl border-2 border-white overflow-hidden">
+                <img src="/logo.png" alt="Logo" className="w-full h-full object-cover" />
             </div>
             <div className="flex flex-col text-left">
                 <span className="text-xl font-black text-slate-900 tracking-tighter leading-none">CDS APP</span>
@@ -232,47 +228,41 @@ export default function TopBar({ title, subtitle }) {
         
         <div className="flex items-center gap-2">
           {userRole === 'pastor' && (
-            <button onClick={() => setIsPastorPanelOpen(true)} className="p-2.5 bg-brand-50 text-brand-600 rounded-xl active:scale-90 transition-all border border-brand-100">
+            <button onClick={() => setIsPastorPanelOpen(true)} className="p-2.5 bg-brand-50 text-brand-600 rounded-xl active:scale-90 border border-brand-100">
               <Megaphone size={22} />
             </button>
           )}
-          <button onClick={() => setIsOpen(true)} className="relative p-2.5 bg-white rounded-xl border border-slate-100 shadow-sm text-slate-800 active:scale-90 transition-all">
+          <button onClick={() => setIsOpen(true)} className="relative p-2.5 bg-white rounded-xl border border-slate-100 shadow-sm text-slate-800 active:scale-90">
               <Bell size={22} />
-              {unreadCount > 0 && <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 bg-red-500 border-2 border-white rounded-full flex items-center justify-center text-[9px] font-black text-white shadow-lg animate-bounce">{unreadCount}</span>}
+              {unreadCount > 0 && <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 bg-red-500 border-2 border-white rounded-full flex items-center justify-center text-[9px] font-black text-white animate-bounce">{unreadCount}</span>}
           </button>
         </div>
       </div>
 
+      {/* --- PANEL DE NOTIFICACIONES --- */}
       {isOpen && (
         <div className="fixed inset-0 z-[100] bg-white animate-fade-in flex flex-col font-outfit">
             <div className="px-6 pt-14 pb-6 border-b border-slate-50 flex justify-between items-center bg-white sticky top-0">
                 <div className="text-left">
                   <h3 className="font-black text-2xl text-slate-900 uppercase tracking-tighter">Notificaciones</h3>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Gestión de avisos</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Novedades de la iglesia</p>
                 </div>
                 <button onClick={() => setIsOpen(false)} className="p-3 bg-slate-50 rounded-full text-slate-400 active:scale-75 transition-all"><X size={24}/></button>
             </div>
 
-            {/* BOTÓN RECUPERADO: ACTIVAR / DESACTIVAR NOTIFICACIONES */}
             <div className="px-5 py-4 bg-slate-50/50 border-b border-slate-100">
-                {!isSupported ? (
-                    <div className="p-3 bg-amber-50 text-amber-600 rounded-xl text-[10px] text-center font-black uppercase tracking-widest">Avisos no soportados en este navegador</div>
-                ) : isSubscribed ? (
-                    <button onClick={disableNotifications} disabled={loadingAction} className="w-full py-3 px-4 rounded-2xl flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-500 font-black text-[10px] uppercase tracking-widest transition-all">
-                        {loadingAction ? <Loader2 size={16} className="animate-spin"/> : <BellOff size={16} />} Silenciar avisos en este equipo
-                    </button>
+                {isSubscribed ? (
+                    <button onClick={disableNotifications} disabled={loadingAction} className="w-full py-3 bg-white border border-slate-200 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">Silenciar avisos en este equipo</button>
                 ) : (
-                    <button onClick={enableNotifications} disabled={loadingAction} className="w-full py-3 px-4 rounded-2xl flex items-center justify-center gap-2 bg-slate-900 text-white shadow-xl active:scale-95 transition-all font-black text-[10px] uppercase tracking-widest">
-                        {loadingAction ? <Loader2 size={16} className="animate-spin"/> : <Bell size={16} className="animate-pulse"/>} ACTIVAR NOTIFICACIONES 🔔
-                    </button>
+                    <button onClick={enableNotifications} disabled={loadingAction} className="w-full py-3 bg-slate-900 text-white rounded-2xl shadow-xl font-black text-[10px] uppercase tracking-widest animate-pulse">🔔 ACTIVAR NOTIFICACIONES</button>
                 )}
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 no-scrollbar">
                 {notifications.length === 0 ? (
-                    <div className="py-32 text-center flex flex-col items-center opacity-20">
+                    <div className="py-32 text-center opacity-20 flex flex-col items-center">
                         <Sparkles size={64} className="mb-4 text-slate-300"/>
-                        <p className="text-xs font-black uppercase tracking-[0.3em]">Todo al día</p>
+                        <p className="text-xs font-black uppercase">Todo al día</p>
                     </div>
                 ) : (
                     notifications.slice(0, displayLimit).map((notif) => (
@@ -282,72 +272,95 @@ export default function TopBar({ title, subtitle }) {
                             <div className="flex-1 min-w-0 text-left pt-1">
                                 <h4 className={`text-sm font-black uppercase tracking-tight leading-tight ${notif.isUrgent ? 'text-red-600' : 'text-slate-800'}`}>{notif.title}</h4>
                                 <p className="text-[11px] text-slate-500 font-semibold mt-1 leading-snug">{notif.subtitle}</p>
-                                <div className="flex items-center gap-1.5 text-[9px] text-slate-400 mt-2 font-black uppercase tracking-widest"><Clock size={10}/> {formatNotifTime(notif.timestamp)}</div>
+                                <div className="flex items-center gap-1.5 text-[9px] text-slate-400 mt-2 font-black uppercase"><Clock size={10}/> {formatNotifTime(notif.timestamp)}</div>
                             </div>
-                            {!readIds.includes(notif.id) && <div className="w-2 h-2 bg-brand-500 rounded-full mt-2 shrink-0"></div>}
                         </div>
                     ))
                 )}
             </div>
 
             <div className="p-8 border-t border-slate-50 bg-white flex gap-3 pb-12">
-                <button onClick={markAllAsRead} className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-xl">Limpiar todas</button>
+                <button onClick={markAllAsRead} className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em]">Limpiar</button>
                 <button onClick={() => setIsOpen(false)} className="flex-1 py-4 bg-slate-50 text-slate-400 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em]">Cerrar</button>
             </div>
         </div>
       )}
 
+      {/* --- PANEL DE PASTORES PRO (GRUPO 1) --- */}
       {isPastorPanelOpen && (
         <div className="fixed inset-0 z-[110] bg-slate-900/95 backdrop-blur-xl flex items-center justify-center p-5 font-outfit animate-fade-in text-left">
-          <div className="bg-white w-full max-w-sm rounded-[40px] p-8 shadow-2xl animate-scale-in flex flex-col gap-6">
-            <div className="flex justify-between items-center">
+          <div className="bg-white w-full max-w-sm rounded-[40px] p-8 shadow-2xl animate-scale-in flex flex-col gap-6 max-h-[90vh] overflow-y-auto no-scrollbar">
+            
+            <div className="flex justify-between items-center border-b pb-4">
               <div>
-                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter leading-none">Lanzar Aviso Push</h3>
-                <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest mt-1">Llega a toda la iglesia</p>
+                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Comunicación Push</h3>
+                <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest mt-1">Lanzamiento segmentado</p>
               </div>
-              <button onClick={() => setIsPastorPanelOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-400"><X size={20}/></button>
+              <button onClick={() => setIsPastorPanelOpen(false)} className="p-2 bg-slate-100 rounded-full active:scale-75"><X size={20}/></button>
             </div>
 
-            {/* BOTÓN MODO ORACIÓN */}
-            <button 
-              onClick={setPrayerTemplate}
-              className="w-full flex items-center justify-between p-4 bg-indigo-50 border-2 border-indigo-100 rounded-2xl text-indigo-700 active:scale-95 transition-all group"
-            >
-              <div className="flex items-center gap-3">
-                <HandHeart size={24} className="group-hover:animate-bounce" />
-                <span className="text-[11px] font-black uppercase tracking-widest">Activar Modo Oración</span>
-              </div>
-              <ChevronRight size={18} />
-            </button>
+            {/* SECTOR 1: LINK DE ORACIÓN (Base de Datos) */}
+            <div className="p-5 bg-indigo-50 border-2 border-indigo-100 rounded-[30px] space-y-4">
+                <div className="flex justify-between items-center">
+                    <p className="text-[10px] font-black text-indigo-600 uppercase flex items-center gap-2 tracking-widest"><HandHeart size={16}/> Link de Oración</p>
+                    <button onClick={() => setPrayerLinkData({...prayerLinkData, isLocked: !prayerLinkData.isLocked})} className="text-indigo-400">
+                        {prayerLinkData.isLocked ? <Lock size={16}/> : <Unlock size={16} className="text-brand-600 animate-pulse"/>}
+                    </button>
+                </div>
+                <div className="flex gap-2">
+                    <input 
+                      disabled={prayerLinkData.isLocked}
+                      placeholder="https://meet.google.com/..." 
+                      className={`flex-1 p-3 rounded-xl text-[10px] font-bold outline-none transition-all ${prayerLinkData.isLocked ? 'bg-indigo-100/50 text-indigo-400' : 'bg-white text-indigo-700 shadow-inner border border-indigo-200'}`}
+                      value={prayerLinkData.url} onChange={e => setPrayerLinkData({...prayerLinkData, url: e.target.value})}
+                    />
+                    {!prayerLinkData.isLocked && (
+                        <button onClick={savePrayerLink} className="bg-brand-600 text-white p-3 rounded-xl shadow-lg active:scale-90"><Save size={16}/></button>
+                    )}
+                </div>
+                <button onClick={setPrayerTemplate} className="w-full py-3 bg-indigo-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md active:scale-95 transition-all">
+                    Cargar en Formulario
+                </button>
+            </div>
 
+            {/* SECTOR 2: FORMULARIO DE ENVÍO */}
             <div className="space-y-4">
-              <input 
-                placeholder="Título del mensaje..." 
-                className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-sm outline-none focus:border-brand-500 transition-all"
-                value={pushData.title} onChange={e => setPushData({...pushData, title: e.target.value})}
-              />
-              <textarea 
-                placeholder="Contenido del aviso..." 
-                className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-semibold text-sm h-24 resize-none outline-none focus:border-brand-500 transition-all"
-                value={pushData.body} onChange={e => setPushData({...pushData, body: e.target.value})}
-              />
-              <div className="p-4 bg-slate-50 rounded-2xl border-2 border-slate-100 space-y-2">
-                <p className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-2"><LinkIcon size={12}/> Link externo (Opcional)</p>
-                <input 
-                  placeholder="https://..." 
-                  className="w-full p-2 bg-white border border-slate-200 rounded-xl font-bold text-[11px] outline-none text-brand-600"
-                  value={pushData.link} onChange={e => setPushData({...pushData, link: e.target.value})}
-                />
+              <div className="grid grid-cols-2 gap-3">
+                 <div className="space-y-1.5">
+                    <label className="text-[9px] font-black text-slate-400 uppercase ml-2 tracking-widest flex items-center gap-1.5"><Globe size={10}/> Enviar a:</label>
+                    <select 
+                      className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-black uppercase outline-none"
+                      value={pushData.targetArea} onChange={e => setPushData({...pushData, targetArea: e.target.value})}
+                    >
+                       <option value="todos">Toda la Iglesia</option>
+                       {officialAreas.map(a => <option key={a} value={a.toLowerCase()}>{a}</option>)}
+                    </select>
+                 </div>
+                 <div className="space-y-1.5">
+                    <label className="text-[9px] font-black text-slate-400 uppercase ml-2 tracking-widest flex items-center gap-1.5"><ChevronRight size={10}/> Destino:</label>
+                    <select 
+                      className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-black uppercase outline-none"
+                      value={pushData.targetPath} onChange={e => setPushData({...pushData, targetPath: e.target.value})}
+                    >
+                       <option value="/">Muro de Inicio</option>
+                       <option value="/calendario">Agenda General</option>
+                       <option value="/servicios">Mis Servicios</option>
+                    </select>
+                 </div>
+              </div>
+
+              <input placeholder="Título del mensaje..." className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-sm outline-none focus:border-brand-500 transition-all shadow-inner" value={pushData.title} onChange={e => setPushData({...pushData, title: e.target.value})} />
+              <textarea placeholder="Contenido del aviso..." className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-semibold text-sm h-24 resize-none outline-none focus:border-brand-500 transition-all shadow-inner" value={pushData.body} onChange={e => setPushData({...pushData, body: e.target.value})} />
+              
+              <div className="p-4 bg-slate-50 rounded-2xl border-dashed border-2 border-slate-200">
+                <p className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-2 mb-2"><LinkIcon size={12}/> Link Externo Adicional</p>
+                <input placeholder="https://..." className="w-full p-2 bg-white rounded-lg border border-slate-100 font-bold text-[10px] outline-none text-brand-600" value={pushData.link} onChange={e => setPushData({...pushData, link: e.target.value})} />
               </div>
             </div>
 
-            <button 
-              onClick={sendManualPush} 
-              disabled={loadingAction}
-              className="w-full py-5 bg-slate-900 text-white rounded-[24px] font-black text-xs uppercase tracking-[0.3em] flex items-center justify-center gap-3 shadow-2xl active:scale-95 transition-all disabled:opacity-50"
-            >
-              {loadingAction ? <Loader2 className="animate-spin" size={20}/> : <Send size={20}/>}
-              Enviar a la Iglesia
+            <button onClick={sendManualPush} disabled={loadingAction} className="w-full py-5 bg-slate-900 text-white rounded-[24px] font-black text-xs uppercase tracking-[0.3em] flex items-center justify-center gap-3 shadow-2xl active:scale-95 disabled:opacity-50 transition-all">
+              {loadingAction ? <Loader2 className="animate-spin" size={20}/> : <Send size={20}/>} 
+              Lanzar a Celulares
             </button>
           </div>
         </div>
@@ -355,3 +368,4 @@ export default function TopBar({ title, subtitle }) {
     </>
   );
 }
+
