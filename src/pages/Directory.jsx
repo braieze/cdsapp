@@ -1,11 +1,14 @@
 import { useState, useEffect, useMemo } from 'react'; 
 import { db, auth } from '../firebase';
-import { collection, query, onSnapshot, doc, setDoc, serverTimestamp, deleteDoc, updateDoc, getDoc } from 'firebase/firestore';
+import { 
+  collection, query, onSnapshot, doc, setDoc, serverTimestamp, 
+  deleteDoc, updateDoc, getDoc, writeBatch // ✅ Añadido writeBatch para la purga
+} from 'firebase/firestore';
 import { 
   Search, Shield, Briefcase, Camera, Loader2, Save, X, Phone, 
   UserPlus, MapPin, Calendar as CalendarIcon, Mail, CheckCircle, 
   AlertCircle, MessageCircle, QrCode, Trash2, Heart, Home, UserCheck, Star,
-  ArrowRightCircle, Plus, Settings // ✅ Agregados iconos faltantes
+  ArrowRightCircle, Plus, Settings, Broom, RefreshCw // ✅ Añadidos iconos de limpieza
 } from 'lucide-react';
 import { useOutletContext } from 'react-router-dom';
 import { QRCodeCanvas } from 'qrcode.react'; 
@@ -22,6 +25,7 @@ export default function Directory() {
   const [officialAreas, setOfficialAreas] = useState(['ninguna']);
   const [isManagingAreas, setIsManagingAreas] = useState(false);
   const [newAreaInput, setNewAreaInput] = useState('');
+  const [isPurging, setIsPurging] = useState(false); // ✅ Estado para la purga
 
   const [editingUser, setEditingUser] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -69,12 +73,39 @@ export default function Directory() {
       if (docSnap.exists()) {
         setOfficialAreas(docSnap.data().list || ['ninguna']);
       } else {
-        // Inicializar si no existe
         setDoc(areaRef, { list: ['ninguna', 'Alabanza', 'Ujieres', 'Multimedia'] });
       }
     });
     return () => unsubscribe();
   }, []);
+
+  // 🎯 SCRIPT DE PURGA (Limpia áreas "basura" de la base de datos)
+  const purgeInvalidAreas = async () => {
+    if (!window.confirm("Esto reseteará a 'ninguna' a todos los hermanos que tengan áreas que NO están en tu lista oficial. ¿Confirmar purga?")) return;
+    setIsPurging(true);
+    try {
+      const batch = writeBatch(db);
+      let count = 0;
+      const validAreasLower = officialAreas.map(a => a.toLowerCase());
+
+      users.forEach(user => {
+        const currentArea = (user.area || 'ninguna').toLowerCase();
+        if (!validAreasLower.includes(currentArea)) {
+          const userRef = doc(db, 'users', user.id);
+          batch.update(userRef, { area: 'ninguna' });
+          count++;
+        }
+      });
+
+      await batch.commit();
+      alert(`Purga completada. Se normalizaron ${count} perfiles.`);
+    } catch (e) {
+      console.error(e);
+      alert("Error al limpiar base de datos");
+    } finally {
+      setIsPurging(false);
+    }
+  };
 
   const handleAddArea = async () => {
     if (!newAreaInput.trim()) return;
@@ -262,6 +293,23 @@ export default function Directory() {
                 <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Gestor de Áreas</h2>
                 <button onClick={() => setIsManagingAreas(false)} className="p-2 bg-slate-100 rounded-full text-slate-400"><X size={20}/></button>
               </div>
+
+              {/* ✅ BOTÓN DE PURGA / LIMPIEZA TOTAL */}
+              <button 
+                onClick={purgeInvalidAreas}
+                disabled={isPurging}
+                className="w-full mb-6 p-4 bg-amber-50 border-2 border-amber-100 rounded-2xl flex items-center justify-between text-amber-700 active:scale-95 transition-all"
+              >
+                <div className="flex items-center gap-3 text-left">
+                  {isPurging ? <RefreshCw size={24} className="animate-spin" /> : <Broom size={24}/>}
+                  <div>
+                    <p className="text-[10px] font-black uppercase">Limpiar Áreas Inválidas</p>
+                    <p className="text-[8px] font-bold opacity-60 uppercase mt-0.5">Resetear áreas escritas a mano</p>
+                  </div>
+                </div>
+                <ArrowRightCircle size={20} className="opacity-40" />
+              </button>
+
               <div className="flex gap-2 mb-6">
                  <input 
                     placeholder="Nueva área..." 
@@ -324,32 +372,20 @@ export default function Directory() {
                   value={editingUser.finalName} 
                   onChange={(e) => setEditingUser({...editingUser, finalName: e.target.value})}
                 />
-                <div className="flex items-center justify-center gap-2 mt-1">
-                    <Mail size={10} className="text-slate-300"/>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{editingUser.email || 'Acceso sin correo'}</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 mb-8">
-                <a href={`https://wa.me/${formatWhatsApp(editingUser.phone)}`} target="_blank" className="flex flex-col items-center gap-2 p-5 bg-emerald-50 text-emerald-700 rounded-[30px] border-2 border-emerald-100 active:scale-95 transition-all shadow-sm text-center">
-                  <MessageCircle size={24}/><span className="text-[10px] font-black uppercase tracking-widest text-center">WhatsApp</span>
-                </a>
-                <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(editingUser.address || '')}`} target="_blank" className="flex flex-col items-center gap-2 p-5 bg-blue-50 text-blue-700 rounded-[30px] border-2 border-blue-100 active:scale-95 transition-all shadow-sm text-center">
-                  <MapPin size={24}/><span className="text-[10px] font-black uppercase tracking-widest text-center">Ver Mapa</span>
-                </a>
               </div>
 
               <div className="space-y-5">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Rango Eclesiástico</label>
-                    <select disabled={dbUser?.role !== 'pastor'} value={editingUser.role} onChange={e => setEditingUser({...editingUser, role: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-xs font-black uppercase outline-none focus:border-brand-200">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Rango</label>
+                    <select disabled={dbUser?.role !== 'pastor'} value={editingUser.role} onChange={e => setEditingUser({...editingUser, role: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-[10px] font-black uppercase outline-none focus:border-brand-200">
                         <option value="pastor">Pastor</option><option value="lider">Líder</option><option value="servidor">Servidor</option><option value="miembro">Miembro</option>
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Área de Servicio</label>
-                    <select disabled={dbUser?.role !== 'pastor'} value={editingUser.area} onChange={e => setEditingUser({...editingUser, area: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-xs font-black uppercase outline-none">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Área</label>
+                    {/* ✅ SELECT DE ÁREAS FIJAS SIN TEXTO LIBRE */}
+                    <select disabled={dbUser?.role !== 'pastor'} value={editingUser.area?.toLowerCase()} onChange={e => setEditingUser({...editingUser, area: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-[10px] font-black uppercase outline-none">
                         {officialAreas.map(area => <option key={area} value={area.toLowerCase()}>{area}</option>)}
                     </select>
                   </div>
@@ -359,38 +395,18 @@ export default function Directory() {
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2 flex items-center gap-1.5"><Phone size={10}/> Teléfono</label>
                   <input disabled={dbUser?.role !== 'pastor'} value={editingUser.phone || ''} onChange={e => setEditingUser({...editingUser, phone: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-sm font-bold outline-none" placeholder="Sin número" />
                 </div>
-                
-                <div className="space-y-1.5">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2 flex items-center gap-1.5"><Home size={10}/> Dirección</label>
-                  <input disabled={dbUser?.role !== 'pastor'} value={editingUser.address || ''} onChange={e => setEditingUser({...editingUser, address: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-sm font-bold outline-none" placeholder="No registrada" />
-                </div>
 
                 <button 
                     disabled={dbUser?.role !== 'pastor'}
                     onClick={() => setEditingUser({...editingUser, needsVisit: !editingUser.needsVisit})}
                     className={`w-full flex items-center justify-between p-5 rounded-[28px] border-2 transition-all ${editingUser.needsVisit ? 'bg-rose-50 border-rose-100 text-rose-600 shadow-inner' : 'bg-slate-50 border-slate-50 text-slate-400'}`}
                 >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 text-left">
                         <Heart size={20} fill={editingUser.needsVisit ? "currentColor" : "none"}/>
                         <span className="text-[10px] font-black uppercase tracking-widest">Desea ser visitado/a</span>
                     </div>
                     {editingUser.needsVisit ? <CheckCircle size={20}/> : <div className="w-5 h-5 rounded-full border-2 border-slate-200"></div>}
                 </button>
-
-                {dbUser?.role === 'pastor' && editingUser.role === 'servidor' && (
-                    <button 
-                        onClick={() => handleGrantPermission(editingUser.id, editingUser.canAddMembers)}
-                        className={`w-full flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${editingUser.canAddMembers ? 'bg-amber-50 border-amber-100 text-amber-600' : 'bg-slate-50 border-slate-100 text-slate-400'}`}
-                    >
-                        <Star size={18} fill={editingUser.canAddMembers ? "currentColor" : "none"}/>
-                        <span className="text-[9px] font-black uppercase tracking-widest">Permiso para inscribir</span>
-                    </button>
-                )}
-
-                <div className="flex flex-col items-center pt-8 opacity-20">
-                  <QRCodeCanvas value={editingUser.id} size={50} />
-                  <p className="text-[7px] font-mono mt-2 tracking-widest uppercase">ID: {editingUser.id}</p>
-                </div>
 
                 {dbUser?.role === 'pastor' && (
                   <div className="pt-8 space-y-4">
@@ -413,48 +429,26 @@ export default function Directory() {
         <div className="fixed inset-0 z-[120] bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in text-left">
           <div className="bg-white w-full max-w-sm rounded-[45px] p-8 animate-scale-in relative shadow-2xl border-t-8 border-slate-900 overflow-y-auto no-scrollbar max-h-[90vh]">
             <button onClick={() => setIsCreating(false)} className="absolute top-6 right-6 p-2 bg-slate-50 rounded-full text-slate-400"><X size={20}/></button>
-            <h2 className="text-2xl font-black text-slate-900 mb-2 uppercase tracking-tighter leading-none">Nueva Persona</h2>
-            <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest mb-8">Inscripción al padrón</p>
+            <h2 className="text-2xl font-black text-slate-900 mb-8 uppercase tracking-tighter leading-none">Inscripción</h2>
             
             <div className="space-y-5">
-              <div className="space-y-1.5 text-left">
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Nombre Completo</label>
-                <input placeholder="Ej: Juan Perez" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-sm outline-none focus:border-brand-500 transition-all" value={newUser.displayName} onChange={e => setNewUser({...newUser, displayName: e.target.value})}/>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5 text-left">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Rol</label>
-                  <select className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-[10px] font-black uppercase outline-none" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}>
+              <input placeholder="Nombre Completo" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-sm outline-none focus:border-brand-500 transition-all" value={newUser.displayName} onChange={e => setNewUser({...newUser, displayName: e.target.value})}/>
+              <div className="grid grid-cols-2 gap-4 text-left">
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Rol</label>
+                  <select className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-[10px] font-black uppercase" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}>
                     <option value="miembro">Miembro</option><option value="servidor">Servidor</option><option value="lider">Líder</option><option value="pastor">Pastor</option>
                   </select>
                 </div>
-                <div className="space-y-1.5 text-left">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Área Inicial</label>
-                  <select className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-[10px] font-black uppercase outline-none" value={newUser.area} onChange={e => setNewUser({...newUser, area: e.target.value})}>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Área</label>
+                  {/* ✅ SIN TEXTO LIBRE */}
+                  <select className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-[10px] font-black uppercase" value={newUser.area} onChange={e => setNewUser({...newUser, area: e.target.value})}>
                     {officialAreas.map(area => <option key={area} value={area.toLowerCase()}>{area}</option>)}
                   </select>
                 </div>
               </div>
-
-              <div className="space-y-1.5 text-left">
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Teléfono WhatsApp</label>
-                <input placeholder="11..." className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold outline-none" value={newUser.phone} onChange={e => setNewUser({...newUser, phone: e.target.value})}/>
-              </div>
-
-              <div className="space-y-1.5 text-left">
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Dirección</label>
-                <input placeholder="Calle, Altura, Localidad" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold outline-none" value={newUser.address} onChange={e => setNewUser({...newUser, address: e.target.value})}/>
-              </div>
-
-              <button 
-                onClick={() => setNewUser({...newUser, needsVisit: !newUser.needsVisit})}
-                className={`w-full flex items-center justify-between p-5 rounded-3xl border-2 transition-all ${newUser.needsVisit ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-slate-50 border-slate-50 text-slate-400'}`}
-              >
-                <span className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2"><Heart size={16}/> Solicita Visita</span>
-                {newUser.needsVisit ? <CheckCircle size={18}/> : <div className="w-4 h-4 rounded-full border-2 border-slate-200"></div>}
-              </button>
-
+              <input placeholder="WhatsApp" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold outline-none" value={newUser.phone} onChange={e => setNewUser({...newUser, phone: e.target.value})}/>
               <button onClick={handleCreateUser} className="w-full bg-slate-900 text-white font-black py-5 rounded-[25px] mt-4 shadow-2xl uppercase text-xs tracking-[0.3em] flex items-center justify-center gap-2 active:scale-95 transition-all">
                 <UserCheck size={20}/> Registrar Miembro
               </button>

@@ -4,7 +4,7 @@ import {
   Cake, BookOpen, Pin, Link as LinkIcon, ExternalLink, 
   MessageCircle, MoreVertical, X, Edit3, Trash2, 
   PlusCircle, AlertTriangle, Calendar, Heart, Send, 
-  AlertCircle, CheckCircle, Flame, HandHeart, ThumbsUp, // ✅ Corregido a HandHeart
+  AlertCircle, CheckCircle, Flame, HandHeart, ThumbsUp, // ✅ HandHeart garantizado
   Archive, ChevronDown, Sparkles, Smile, Frown, Sun, CloudRain, Anchor, HelpCircle
 } from 'lucide-react';
 import CreatePostModal from '../components/CreatePostModal';
@@ -25,6 +25,38 @@ const MOODS = [
   { id: 'Necesidad', label: 'Necesidad', icon: CloudRain, color: 'bg-slate-500' },
   { id: 'Paz', label: 'Paz', icon: Smile, color: 'bg-emerald-500' },
 ];
+
+// --- 💬 SUB-COMPONENTE: PREVIEW DE COMENTARIOS (Grupo 3) ---
+function CommentPreview({ postId, count, onClick }) {
+  const [previewComments, setPreviewComments] = useState([]);
+  
+  useEffect(() => {
+    if (!postId) return;
+    const q = query(collection(db, `posts/${postId}/comments`), orderBy('createdAt', 'desc'), limit(2));
+    const unsub = onSnapshot(q, (snap) => setPreviewComments(snap.docs.map(d => d.data())));
+    return () => unsub();
+  }, [postId]);
+
+  if (count === 0 && previewComments.length === 0) return null;
+
+  return (
+    <div className="mt-4 bg-slate-50/50 rounded-2xl p-4 border border-slate-100 cursor-pointer active:scale-[0.98] transition-all" onClick={(e) => { e.stopPropagation(); onClick(); }}>
+      <div className="flex items-center gap-2 mb-3">
+        <MessageCircle size={12} className="text-brand-600" />
+        <span className="text-[10px] font-black uppercase tracking-widest text-brand-600">{count} Comentarios</span>
+      </div>
+      <div className="space-y-2">
+        {previewComments.map((c, idx) => (
+          <div key={idx} className="flex gap-2 text-left items-start">
+            <span className="font-black text-[10px] text-slate-800 uppercase mt-0.5 whitespace-nowrap">{c.name?.split(' ')[0]}:</span>
+            <span className="text-[11px] text-slate-500 line-clamp-1 font-medium">{c.text}</span>
+          </div>
+        ))}
+      </div>
+      <p className="mt-2 text-[8px] font-black text-slate-400 uppercase tracking-widest">Toca para conversar</p>
+    </div>
+  );
+}
 
 const PostSkeleton = () => (
   <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm animate-pulse mb-4 mx-4">
@@ -123,7 +155,7 @@ export default function Home() {
       result = posts.filter(p => p.isArchived !== true);
       if (filter !== 'Todo') result = result.filter(p => p.type === filter);
     }
-    if (selectedMood) {
+    if (selectedMood && filter === 'Devocional') {
       result = result.filter(p => p.mood === selectedMood);
     }
     return result;
@@ -154,7 +186,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* TABS MODERNAS (Añadido Oración) */}
+          {/* TABS MODERNAS */}
           <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
             {['Todo', 'Devocional', 'Oración', 'Noticia', 'Archivados'].map((cat) => {
               if (cat === 'Archivados' && !isPastor) return null;
@@ -172,21 +204,23 @@ export default function Home() {
             })}
           </div>
 
-          {/* FILTRO DE ÁNIMOS */}
-          <div className="flex gap-3 overflow-x-auto no-scrollbar px-1">
-             {MOODS.map(m => (
-               <button 
-                key={m.id} 
-                onClick={() => setSelectedMood(selectedMood === m.id ? null : m.id)}
-                className={`flex flex-col items-center gap-2 transition-all active:scale-90 min-w-[70px] ${selectedMood === m.id ? 'scale-110' : 'opacity-50 grayscale'}`}
-               >
-                 <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white shadow-lg ${m.color}`}>
-                    <m.icon size={20} />
-                 </div>
-                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-600">{m.label}</span>
-               </button>
-             ))}
-          </div>
+          {/* ✅ BURBUJAS DE ÁNIMOS (Solo en pestaña Devocional) */}
+          {filter === 'Devocional' && (
+            <div className="flex gap-3 overflow-x-auto no-scrollbar px-1 animate-slide-up">
+               {MOODS.map(m => (
+                 <button 
+                  key={m.id} 
+                  onClick={() => setSelectedMood(selectedMood === m.id ? null : m.id)}
+                  className={`flex flex-col items-center gap-2 transition-all active:scale-90 min-w-[70px] ${selectedMood === m.id ? 'scale-110' : 'opacity-40 grayscale'}`}
+                 >
+                   <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white shadow-lg ${m.color}`}>
+                      <m.icon size={20} />
+                   </div>
+                   <span className="text-[9px] font-black uppercase tracking-widest text-slate-600">{m.label}</span>
+                 </button>
+               ))}
+            </div>
+          )}
       </div>
 
       <div className="space-y-10 px-0 sm:px-5 mt-10">
@@ -214,7 +248,6 @@ export default function Home() {
                 : 'bg-white border border-slate-100 rounded-[35px] shadow-sm'
               }`}>
                 
-                {/* --- 🎬 ESTILO NETFLIX PARA DEVOCIONALES --- */}
                 {isDevocional ? (
                   <div className="absolute inset-0 w-full h-full" onClick={() => navigate(`/post/${post.id}`)}>
                     {post.image ? (
@@ -241,7 +274,6 @@ export default function Home() {
                     </div>
                   </div>
                 ) : (
-                  /* --- 📝 ESTILO NORMAL Y ORACIÓN --- */
                   <div className="p-6">
                     <div className="flex justify-between items-start mb-5">
                       <div className="flex items-center gap-3 text-left">
@@ -285,10 +317,12 @@ export default function Home() {
                         <img src={post.image} className="w-full h-auto max-h-[400px] object-cover block" loading="lazy" referrerPolicy="no-referrer"/>
                       </div>
                     )}
+                    
+                    {/* ✅ PREVIEW DE COMENTARIOS (Grupo 3) */}
+                    <CommentPreview postId={post.id} count={post.commentsCount || 0} onClick={() => navigate(`/post/${post.id}`)} />
                   </div>
                 )}
 
-                {/* --- 🚀 BARRA DE REACCIONES ÉPICA --- */}
                 {!isDevocional && (
                   <div className="px-6 py-5 border-t border-slate-100 bg-white/50 rounded-b-[35px]">
                     <div className="flex items-center justify-between gap-2">

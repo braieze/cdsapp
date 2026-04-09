@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth, messaging } from '../firebase'; 
 import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, arrayUnion, arrayRemove, where, getDoc, setDoc } from 'firebase/firestore'; 
-import { getToken, deleteToken } from 'firebase/messaging'; 
+import { getToken, deleteToken, onMessage } from 'firebase/messaging'; 
 import { 
   Bell, BellOff, X, Calendar, MessageCircle, ChevronRight, Briefcase, 
   ShieldAlert, Sparkles, Megaphone, BookOpen, Clock, Settings, Loader2, 
@@ -24,7 +24,11 @@ export default function TopBar({ title, subtitle }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isPastorPanelOpen, setIsPastorPanelOpen] = useState(false);
   const [displayLimit, setDisplayLimit] = useState(10);
+  
+  // ROL DEL USUARIO
   const [userRole, setUserRole] = useState('miembro');
+  const [activeUser, setActiveUser] = useState(null); // ✅ Cambiado para detectar el cambio real de login
+
   const [loadingAction, setLoadingAction] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isSupported, setIsSupported] = useState(true);
@@ -34,13 +38,31 @@ export default function TopBar({ title, subtitle }) {
   const [officialAreas, setOfficialAreas] = useState([]);
   const [prayerLinkData, setPrayerLinkData] = useState({ url: '', isLocked: true });
 
-  const currentUser = auth.currentUser;
   const isNative = Capacitor.isNativePlatform(); 
 
-  // 1. SINCRONIZAR TAGS DE ONESIGNAL (Para segmentación por áreas)
+  // ✅ 0. DETECTOR DE USUARIO (Esto arregla tu problema de Pastor)
   useEffect(() => {
-    if (isNative && currentUser) {
-      const userRef = doc(db, 'users', currentUser.uid);
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      if (user) {
+        setActiveUser(user);
+        // Una vez que tenemos al usuario, buscamos su rol real en Firestore
+        const userRef = doc(db, 'users', user.uid);
+        onSnapshot(userRef, (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            setUserRole(data.role || 'miembro');
+            setReadIds(data.readNotifications || []); 
+          }
+        });
+      }
+    });
+    return () => unsubscribeAuth();
+  }, []);
+
+  // 1. SINCRONIZAR TAGS DE ONESIGNAL
+  useEffect(() => {
+    if (isNative && activeUser) {
+      const userRef = doc(db, 'users', activeUser.uid);
       getDoc(userRef).then(snap => {
         if (snap.exists()) {
           const area = snap.data().area || 'ninguna';
@@ -48,15 +70,13 @@ export default function TopBar({ title, subtitle }) {
         }
       });
     }
-  }, [currentUser, isNative]);
+  }, [activeUser, isNative]);
 
   // 2. CARGAR METADATA (Áreas y Link de Oración)
   useEffect(() => {
-    // Cargar áreas
     const unsubAreas = onSnapshot(doc(db, 'metadata', 'areas'), (snap) => {
       if (snap.exists()) setOfficialAreas(snap.data().list || []);
     });
-    // Cargar link de oración
     const unsubLink = onSnapshot(doc(db, 'metadata', 'links'), (snap) => {
       if (snap.exists()) setPrayerLinkData(prev => ({ ...prev, url: snap.data().prayer || '' }));
     });
@@ -83,7 +103,7 @@ export default function TopBar({ title, subtitle }) {
     try {
         if (isNative) {
             await OneSignal.Notifications.requestPermission(true);
-            if (currentUser?.uid) OneSignal.login(currentUser.uid);
+            if (activeUser?.uid) OneSignal.login(activeUser.uid);
             localStorage.setItem('fcm_active', 'true');
             setIsSubscribed(true);
             toast.success("¡Activadas!");
@@ -92,7 +112,7 @@ export default function TopBar({ title, subtitle }) {
             if (result === 'granted' && messaging) {
                 const token = await getToken(messaging, { vapidKey: VAPID_KEY });
                 if (token) {
-                    await updateDoc(doc(db, 'users', currentUser.uid), { fcmTokens: arrayUnion(token) });
+                    await updateDoc(doc(db, 'users', activeUser.uid), { fcmTokens: arrayUnion(token) });
                     localStorage.setItem('fcm_active', 'true');
                     setIsSubscribed(true);
                     toast.success("¡Activadas!");
@@ -111,7 +131,7 @@ export default function TopBar({ title, subtitle }) {
         else if (messaging) {
             const token = await getToken(messaging, { vapidKey: VAPID_KEY });
             if (token) {
-                await updateDoc(doc(db, 'users', currentUser.uid), { fcmTokens: arrayRemove(token) });
+                await updateDoc(doc(db, 'users', activeUser.uid), { fcmTokens: arrayRemove(token) });
                 await deleteToken(messaging);
             }
         }
@@ -122,7 +142,7 @@ export default function TopBar({ title, subtitle }) {
     finally { setLoadingAction(false); }
   };
 
-  // --- GESTIÓN LINK DE ORACIÓN (Candado) ---
+  // --- GESTIÓN LINK DE ORACIÓN ---
   const savePrayerLink = async () => {
     try {
       await setDoc(doc(db, 'metadata', 'links'), { prayer: prayerLinkData.url }, { merge: true });
@@ -137,7 +157,7 @@ export default function TopBar({ title, subtitle }) {
       title: "🙏 ¡Estamos en Oración!",
       body: "Toca para unirte al altar virtual.",
       link: prayerLinkData.url,
-      targetPath: '/' // Por defecto al muro
+      targetPath: '/' 
     });
     toast.info("Modo Oración cargado");
   };
@@ -157,7 +177,6 @@ export default function TopBar({ title, subtitle }) {
         priority: 10
       };
 
-      // Segmentación por Área
       if (pushData.targetArea === 'todos') {
         payload.included_segments = ["Total Subscriptions"];
       } else {
@@ -176,9 +195,9 @@ export default function TopBar({ title, subtitle }) {
     finally { setLoadingAction(false); }
   };
 
-  // (Mantenemos la carga de notificaciones locales igual para no romper nada)
+  // CARGA DE NOTIFICACIONES LOCALES
   useEffect(() => {
-    if (!currentUser) return;
+    if (!activeUser) return;
     const unsubNotifs = onSnapshot(query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(15)), (snap) => {
         setNotifications(snap.docs.map(d => ({
             id: d.id,
@@ -192,7 +211,7 @@ export default function TopBar({ title, subtitle }) {
         })));
     });
     return () => unsubNotifs();
-  }, [currentUser]);
+  }, [activeUser]);
 
   useEffect(() => {
     const unread = notifications.filter(n => !readIds.includes(n.id)).length;
@@ -200,9 +219,10 @@ export default function TopBar({ title, subtitle }) {
   }, [notifications, readIds]);
 
   const markAllAsRead = async () => {
+      if (!activeUser) return;
       const allIds = notifications.map(n => n.id);
       setReadIds(allIds);
-      await updateDoc(doc(db, 'users', currentUser.uid), { readNotifications: allIds });
+      await updateDoc(doc(db, 'users', activeUser.uid), { readNotifications: allIds });
   };
 
   const formatNotifTime = (ts) => {
@@ -286,7 +306,7 @@ export default function TopBar({ title, subtitle }) {
         </div>
       )}
 
-      {/* --- PANEL DE PASTORES PRO (GRUPO 1) --- */}
+      {/* --- PANEL DE PASTORES PRO --- */}
       {isPastorPanelOpen && (
         <div className="fixed inset-0 z-[110] bg-slate-900/95 backdrop-blur-xl flex items-center justify-center p-5 font-outfit animate-fade-in text-left">
           <div className="bg-white w-full max-w-sm rounded-[40px] p-8 shadow-2xl animate-scale-in flex flex-col gap-6 max-h-[90vh] overflow-y-auto no-scrollbar">
@@ -299,7 +319,6 @@ export default function TopBar({ title, subtitle }) {
               <button onClick={() => setIsPastorPanelOpen(false)} className="p-2 bg-slate-100 rounded-full active:scale-75"><X size={20}/></button>
             </div>
 
-            {/* SECTOR 1: LINK DE ORACIÓN (Base de Datos) */}
             <div className="p-5 bg-indigo-50 border-2 border-indigo-100 rounded-[30px] space-y-4">
                 <div className="flex justify-between items-center">
                     <p className="text-[10px] font-black text-indigo-600 uppercase flex items-center gap-2 tracking-widest"><HandHeart size={16}/> Link de Oración</p>
@@ -323,7 +342,6 @@ export default function TopBar({ title, subtitle }) {
                 </button>
             </div>
 
-            {/* SECTOR 2: FORMULARIO DE ENVÍO */}
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                  <div className="space-y-1.5">
@@ -351,11 +369,7 @@ export default function TopBar({ title, subtitle }) {
 
               <input placeholder="Título del mensaje..." className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-sm outline-none focus:border-brand-500 transition-all shadow-inner" value={pushData.title} onChange={e => setPushData({...pushData, title: e.target.value})} />
               <textarea placeholder="Contenido del aviso..." className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-semibold text-sm h-24 resize-none outline-none focus:border-brand-500 transition-all shadow-inner" value={pushData.body} onChange={e => setPushData({...pushData, body: e.target.value})} />
-              
-              <div className="p-4 bg-slate-50 rounded-2xl border-dashed border-2 border-slate-200">
-                <p className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-2 mb-2"><LinkIcon size={12}/> Link Externo Adicional</p>
-                <input placeholder="https://..." className="w-full p-2 bg-white rounded-lg border border-slate-100 font-bold text-[10px] outline-none text-brand-600" value={pushData.link} onChange={e => setPushData({...pushData, link: e.target.value})} />
-              </div>
+              <input placeholder="Link Externo..." className="w-full p-2 bg-white rounded-lg border border-slate-100 font-bold text-[10px] outline-none text-brand-600" value={pushData.link} onChange={e => setPushData({...pushData, link: e.target.value})} />
             </div>
 
             <button onClick={sendManualPush} disabled={loadingAction} className="w-full py-5 bg-slate-900 text-white rounded-[24px] font-black text-xs uppercase tracking-[0.3em] flex items-center justify-center gap-3 shadow-2xl active:scale-95 disabled:opacity-50 transition-all">
@@ -368,4 +382,3 @@ export default function TopBar({ title, subtitle }) {
     </>
   );
 }
-
