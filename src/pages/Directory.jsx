@@ -8,7 +8,7 @@ import {
   Search, Shield, Briefcase, Camera, Loader2, Save, X, Phone, 
   UserPlus, MapPin, Calendar as CalendarIcon, Mail, CheckCircle, 
   AlertCircle, MessageCircle, QrCode, Trash2, Heart, Home, UserCheck, Star,
-  ArrowRightCircle, Plus, Settings, Broom, RefreshCw // ✅ Añadidos iconos de limpieza
+  ArrowRightCircle, Plus, Settings, Eraser, RefreshCw // ✅ Cambiado Broom por Eraser para evitar error de build
 } from 'lucide-react';
 import { useOutletContext } from 'react-router-dom';
 import { QRCodeCanvas } from 'qrcode.react'; 
@@ -73,6 +73,7 @@ export default function Directory() {
       if (docSnap.exists()) {
         setOfficialAreas(docSnap.data().list || ['ninguna']);
       } else {
+        // Inicializar si no existe
         setDoc(areaRef, { list: ['ninguna', 'Alabanza', 'Ujieres', 'Multimedia'] });
       }
     });
@@ -301,7 +302,7 @@ export default function Directory() {
                 className="w-full mb-6 p-4 bg-amber-50 border-2 border-amber-100 rounded-2xl flex items-center justify-between text-amber-700 active:scale-95 transition-all"
               >
                 <div className="flex items-center gap-3 text-left">
-                  {isPurging ? <RefreshCw size={24} className="animate-spin" /> : <Broom size={24}/>}
+                  {isPurging ? <RefreshCw size={24} className="animate-spin" /> : <Eraser size={24}/>}
                   <div>
                     <p className="text-[10px] font-black uppercase">Limpiar Áreas Inválidas</p>
                     <p className="text-[8px] font-bold opacity-60 uppercase mt-0.5">Resetear áreas escritas a mano</p>
@@ -364,17 +365,14 @@ export default function Directory() {
                </div>
             </div>
 
-            <div className="pt-16 px-8 pb-10 overflow-y-auto no-scrollbar">
-              <div className="text-center mb-8">
-                <input 
-                  disabled={dbUser?.role !== 'pastor'}
-                  className="text-2xl font-black text-slate-900 text-center w-full bg-transparent outline-none uppercase tracking-tighter"
-                  value={editingUser.finalName} 
-                  onChange={(e) => setEditingUser({...editingUser, finalName: e.target.value})}
-                />
-              </div>
-
-              <div className="space-y-5">
+            <div className="pt-16 px-8 pb-10 overflow-y-auto no-scrollbar text-center">
+              <input 
+                disabled={dbUser?.role !== 'pastor'}
+                className="text-2xl font-black text-slate-900 text-center w-full bg-transparent outline-none uppercase tracking-tighter"
+                value={editingUser.finalName} 
+                onChange={(e) => setEditingUser({...editingUser, finalName: e.target.value})}
+              />
+              <div className="space-y-5 text-left">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Rango</label>
@@ -413,7 +411,7 @@ export default function Directory() {
                     <button onClick={handleSaveUser} disabled={saveStatus !== 'idle'} className={`w-full font-black py-5 rounded-3xl flex items-center justify-center gap-3 text-xs uppercase tracking-[0.2em] shadow-2xl transition-all ${saveStatus === 'success' ? 'bg-green-600 text-white' : 'bg-slate-900 text-white active:scale-95'}`}>
                       {saveStatus === 'idle' ? <><Save size={20}/> Guardar Cambios</> : saveStatus === 'saving' ? <Loader2 size={20} className="animate-spin"/> : "✓ Actualizado"}
                     </button>
-                    <button onClick={() => { if(window.confirm(`¿Eliminar a ${editingUser.finalName}?`)) { deleteDoc(doc(db, 'users', editingUser.id)); setEditingUser(null); } }} className="w-full py-4 text-rose-500 font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-rose-50 rounded-2xl transition-colors">
+                    <button onClick={() => { if(window.confirm(`¿Eliminar?`)) { deleteDoc(doc(db, 'users', editingUser.id)); setEditingUser(null); } }} className="w-full py-4 text-rose-500 font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-rose-50 rounded-2xl transition-colors">
                       <Trash2 size={16}/> Baja Definitiva
                     </button>
                   </div>
@@ -430,10 +428,9 @@ export default function Directory() {
           <div className="bg-white w-full max-w-sm rounded-[45px] p-8 animate-scale-in relative shadow-2xl border-t-8 border-slate-900 overflow-y-auto no-scrollbar max-h-[90vh]">
             <button onClick={() => setIsCreating(false)} className="absolute top-6 right-6 p-2 bg-slate-50 rounded-full text-slate-400"><X size={20}/></button>
             <h2 className="text-2xl font-black text-slate-900 mb-8 uppercase tracking-tighter leading-none">Inscripción</h2>
-            
             <div className="space-y-5">
               <input placeholder="Nombre Completo" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-sm outline-none focus:border-brand-500 transition-all" value={newUser.displayName} onChange={e => setNewUser({...newUser, displayName: e.target.value})}/>
-              <div className="grid grid-cols-2 gap-4 text-left">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Rol</label>
                   <select className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-[10px] font-black uppercase" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}>
