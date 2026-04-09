@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   X, Image as ImageIcon, Send, Loader2, Link as LinkIcon, 
-  BarChart2, Plus, Trash2, Save, Archive, HandsPraying, // ✅ Corregido: HandsPraying
+  BarChart2, Plus, Trash2, Save, Archive, HandHeart, // ✅ Cambiado a HandHeart
   Anchor, Sun, CloudRain, Smile, Layers 
 } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
@@ -172,7 +172,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
             <h3 className="font-black text-slate-900 text-2xl uppercase tracking-tighter leading-none">
               {postToEdit ? 'Editar Post' : 'Crear Post'}
             </h3>
-            <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest mt-1">Gestión de Muro</p>
+            <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest mt-1 text-left">Panel de Comunicación</p>
           </div>
           <button onClick={onClose} className="p-3 bg-slate-50 rounded-full active:scale-75 transition-all text-slate-400">
             <X size={24} />
@@ -188,7 +188,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
                   type === t ? 'bg-slate-900 text-white border-slate-900 shadow-xl scale-105' : 'bg-white text-slate-300 border-slate-100'
                 }`}
               >
-                {t === 'Oración' && <HandsPraying size={12} className="inline mr-1" />}
+                {t === 'Oración' && <HandHeart size={12} className="inline mr-1" />}
                 {t}
               </button>
             ))}
@@ -212,7 +212,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
                  </div>
                  
                  <div className="p-5 bg-slate-50 rounded-[30px] border-2 border-slate-100">
-                    <p className="text-[9px] font-black text-slate-400 uppercase mb-4 ml-2">¿Ánimo del devocional?</p>
+                    <p className="text-[9px] font-black text-slate-400 uppercase mb-4 ml-2 text-left">¿Ánimo del devocional?</p>
                     <div className="grid grid-cols-4 gap-2">
                        {MOOD_OPTIONS.map(m => (
                          <button 
@@ -269,14 +269,14 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
                   />
                 ))}
                 {pollOptions.length < 5 && (
-                  <button onClick={() => setPollOptions([...pollOptions, ''])} className="w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-[9px] text-slate-400 font-black uppercase tracking-widest">+ Agregar Opción</button>
+                  <button onClick={() => setPollOptions([...pollOptions, ''])} className="w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-[9px] text-slate-400 font-black uppercase tracking-widest">+ Opción</button>
                 )}
               </div>
             )}
 
             <div className="p-6 bg-slate-50 rounded-[35px] border-2 border-slate-100 space-y-4">
-              <p className="text-[9px] font-black text-slate-400 uppercase ml-2">Link Externo</p>
-              <div className="flex gap-3">
+              <p className="text-[9px] font-black text-slate-400 uppercase ml-2">Enlace (Opcional)</p>
+              <div className="flex gap-3 text-left">
                 <input type="text" placeholder="https://..." value={link} onChange={e => setLink(e.target.value)} className="flex-1 p-4 bg-white rounded-2xl border-2 border-slate-50 text-[10px] outline-none font-bold text-brand-600 shadow-sm" />
                 <input type="text" placeholder="Botón" value={linkText} onChange={e => setLinkText(e.target.value)} className="w-1/3 p-4 bg-white rounded-2xl border-2 border-slate-50 text-[10px] outline-none font-black uppercase shadow-sm" />
               </div>

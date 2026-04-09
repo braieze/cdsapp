@@ -8,7 +8,7 @@ import {
 import { 
   X, MessageCircle, Send, Trash2, ExternalLink, 
   Link as LinkIcon, Loader2, Calendar, CheckCircle,
-  ChevronLeft, BookOpen, Heart, Flame, HandsPraying, ThumbsUp, // ✅ Corregido: HandsPraying
+  ChevronLeft, BookOpen, Heart, Flame, HandHeart, ThumbsUp, // ✅ Cambiado a HandHeart
   Anchor, Smile, Sun, CloudRain, Sparkles
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -135,9 +135,8 @@ export default function PostDetail() {
   const reactions = post.reactions || [];
 
   return (
-    <div className="fixed inset-0 z-[120] bg-white flex flex-col animate-fade-in overflow-hidden font-outfit">
+    <div className="fixed inset-0 z-[120] bg-white flex flex-col animate-fade-in overflow-hidden font-outfit text-left">
       
-      {/* HEADER CONDICIONAL */}
       {!isDevocional && (
         <header className="flex items-center justify-between p-5 border-b border-slate-50 bg-white shrink-0 z-50">
           <button onClick={() => navigate(-1)} className="p-2.5 bg-slate-50 rounded-2xl active:scale-75 transition-all text-slate-800"><ChevronLeft size={24} /></button>
@@ -151,7 +150,6 @@ export default function PostDetail() {
 
       <div className="flex-1 overflow-y-auto pb-40 no-scrollbar relative bg-slate-50/30">
         
-        {/* PORTADA NETFLIX STYLE */}
         {isDevocional && (
           <div className="relative w-full h-[55vh] shrink-0">
              <button onClick={() => navigate(-1)} className="absolute top-12 left-6 z-[60] p-3 bg-black/20 backdrop-blur-xl rounded-2xl text-white active:scale-75 transition-all border border-white/20"><ChevronLeft size={24} /></button>
@@ -173,7 +171,6 @@ export default function PostDetail() {
 
         <div className={`p-8 ${!isDevocional ? 'mt-2' : ''}`}>
             
-            {/* AUTOR (Estilo Normal) */}
             {!isDevocional && (
               <div className="flex items-center gap-4 mb-8">
                   <div className="w-14 h-14 rounded-2xl border-2 border-white shadow-xl overflow-hidden shrink-0 bg-slate-100">
@@ -186,22 +183,19 @@ export default function PostDetail() {
               </div>
             )}
 
-            {/* CONTENIDO Y ORACIÓN */}
             <div className={`text-left ${isOracion ? 'bg-purple-50 p-6 rounded-[35px] border-2 border-purple-100 mb-8 shadow-inner' : ''}`}>
-                {isOracion && <HandsPraying size={32} className="text-purple-600 mb-4 animate-pulse"/>}
+                {isOracion && <HandHeart size={32} className="text-purple-600 mb-4 animate-pulse"/>}
                 <p className="text-[16px] text-slate-800 whitespace-pre-wrap leading-relaxed font-medium tracking-tight">
                   {post.content}
                 </p>
             </div>
 
-            {/* IMAGEN CUERPO */}
             {post.image && !isDevocional && (
                 <div className="my-8 rounded-[40px] overflow-hidden border-4 border-white shadow-2xl">
                     <img src={post.image} className="w-full h-auto object-cover" alt="Imagen" referrerPolicy="no-referrer" />
                 </div>
             )}
 
-            {/* LINK */}
             {post.link && (
                 <button 
                     onClick={() => post.link.startsWith('/') ? navigate(post.link) : window.open(post.link.startsWith('http') ? post.link : `https://${post.link}`, '_blank')}
@@ -215,7 +209,6 @@ export default function PostDetail() {
                 </button>
             )}
 
-            {/* ENCUESTA */}
             {post.poll && (
                <div className="mt-10 bg-white rounded-[40px] p-8 border-2 border-slate-50 shadow-inner">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-6 px-2">📊 Encuesta</p>
@@ -226,7 +219,7 @@ export default function PostDetail() {
                     const isMyOption = myVote?.option === opt.text;
 
                     return (
-                      <button key={idx} onClick={() => handleVote(idx)} className="w-full relative mb-4 h-14 rounded-2xl overflow-hidden bg-slate-50 border-2 border-transparent active:scale-[0.98] transition-all">
+                      <button key={idx} onClick={() => handleVote(idx)} className="w-full relative mb-4 h-14 rounded-2xl overflow-hidden bg-slate-50 border-2 border-transparent active:scale-[0.98] transition-all text-left">
                         <div className={`absolute top-0 left-0 h-full transition-all duration-1000 ${isMyOption ? 'bg-brand-500/20' : 'bg-slate-200/50'}`} style={{ width: `${percent}%` }}></div>
                         <div className="absolute inset-0 flex items-center justify-between px-6 text-[11px] font-black uppercase z-10">
                             <span className={isMyOption ? 'text-brand-700' : 'text-slate-700'}>{opt.text} {isMyOption && '✓'}</span>
@@ -238,7 +231,6 @@ export default function PostDetail() {
                </div>
             )}
 
-            {/* REACCIONES ÉPICAS */}
             <div className="mt-12 bg-white p-2 rounded-[28px] border-2 border-slate-50 flex items-center justify-center gap-2 overflow-x-auto no-scrollbar shadow-sm">
                 {[ {e: '❤️'}, {e: '🔥'}, {e: '🙏'}, {e: '👍'}].map(item => {
                     const count = reactions.filter(r => r.emoji === item.e).length;
@@ -253,14 +245,13 @@ export default function PostDetail() {
                 })}
             </div>
 
-            {/* COMENTARIOS */}
-            <section className="mt-12 text-left">
+            <section className="mt-12 text-left pb-20">
               <h3 className="font-black text-[12px] text-slate-900 uppercase tracking-widest mb-8 flex items-center gap-3 px-2">
                 <MessageCircle className="text-brand-600" size={20}/> {comments.length} Comentarios
               </h3>
               <div className="space-y-6">
                 {comments.map(c => (
-                  <div key={c.id} className="flex gap-4 animate-fade-in group items-start">
+                  <div key={c.id} className="flex gap-4 animate-fade-in group items-start text-left">
                     <div className="w-11 h-11 rounded-xl border-2 border-white shadow-lg overflow-hidden shrink-0 bg-slate-100">
                         <img src={c.photo || `https://ui-avatars.com/api/?name=${c.name}&background=0f172a&color=fff`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     </div>
@@ -280,9 +271,8 @@ export default function PostDetail() {
         </div>
       </div>
 
-      {/* INPUT FOOTER */}
       <footer className="p-6 border-t border-slate-50 bg-white/80 backdrop-blur-xl absolute bottom-0 w-full flex gap-3 items-center z-50">
-        <div className="flex-1 relative">
+        <div className="flex-1 relative text-left">
            <input 
             value={commentText} 
             onChange={e => setCommentText(e.target.value)} 
