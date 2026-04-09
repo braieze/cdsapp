@@ -6,8 +6,8 @@ import { getToken, deleteToken } from 'firebase/messaging';
 import { 
   Bell, BellOff, X, Calendar, MessageCircle, ChevronRight, Briefcase, 
   ShieldAlert, Sparkles, Megaphone, BookOpen, Clock, Settings, Loader2, 
-  Send, link as LinkIcon, Activity, Heart, Users 
-} from 'lucide-react';
+  Send, Link as LinkIcon, Activity, Heart, Users 
+} from 'lucide-react'; // ✅ Corregido: "Link" con L mayúscula
 import { format, isToday, isYesterday } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -29,7 +29,7 @@ export default function TopBar({ title, subtitle }) {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isSupported, setIsSupported] = useState(true);
 
-  // Estados para el creador de notificaciones (Punto 6)
+  // Estados para el creador de notificaciones
   const [pushData, setPushData] = useState({ title: '', body: '', link: '' });
 
   const currentUser = auth.currentUser;
@@ -61,7 +61,6 @@ export default function TopBar({ title, subtitle }) {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // LÓGICA DE NOTIFICACIONES INTELIGENTES (Punto 3)
   useEffect(() => {
     if (!currentUser) return;
     const unsubscribes = [];
@@ -77,7 +76,6 @@ export default function TopBar({ title, subtitle }) {
     unsubscribes.push(onSnapshot(qPosts, (snap) => {
         sources.posts = snap.docs.map(d => {
             const data = d.data();
-            // Resumen inteligente de comentarios para Pastores
             if (['pastor', 'lider'].includes(userRole) && data.commentsCount >= 5) {
               sources.smart.push({
                 id: `smart-comm-${d.id}`,
@@ -112,7 +110,6 @@ export default function TopBar({ title, subtitle }) {
     unsubscribes.push(onSnapshot(qEvents, (snap) => {
         const evs = [];
         const asgs = [];
-        
         snap.docs.forEach(d => {
             const data = d.data();
             if (data.published === false) return; 
@@ -128,7 +125,6 @@ export default function TopBar({ title, subtitle }) {
                 evs.push({ id: `ev-${d.id}`, type: 'event', title: 'Nuevo Evento', subtitle: data.title, timestamp: creationTs, link: `/calendario/${d.id}`, icon: Calendar, color: 'bg-purple-100 text-purple-600' });
             }
 
-            // Alerta acumulada para Pastores (Bajas en equipo)
             if (['pastor', 'lider'].includes(userRole) && data.confirmations) {
                 const declines = Object.entries(data.confirmations).filter(([_, s]) => s === 'declined');
                 if (declines.length > 0) {
@@ -172,12 +168,11 @@ export default function TopBar({ title, subtitle }) {
           headings: { en: pushData.title, es: pushData.title },
           contents: { en: pushData.body, es: pushData.body },
           data: { url: pushData.link || null },
-          // Diseño premium (Punto 1)
           large_icon: "https://cdsapp.vercel.app/logo.png",
           priority: 10
         })
       });
-      toast.success("¡Notificación enviada a todos!");
+      toast.success("¡Notificación enviada!");
       setPushData({ title: '', body: '', link: '' });
       setIsPastorPanelOpen(false);
     } catch (e) { toast.error("Error al enviar"); }
@@ -226,11 +221,10 @@ export default function TopBar({ title, subtitle }) {
         </div>
       </div>
 
-      {/* --- PANEL DE NOTIFICACIONES FULL SCREEN (Punto 3) --- */}
       {isOpen && (
         <div className="fixed inset-0 z-[100] bg-white animate-fade-in flex flex-col font-outfit">
             <div className="px-6 pt-14 pb-6 border-b border-slate-50 flex justify-between items-center bg-white sticky top-0">
-                <div>
+                <div className="text-left">
                   <h3 className="font-black text-2xl text-slate-900 uppercase tracking-tighter">Notificaciones</h3>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Novedades de la iglesia</p>
                 </div>
@@ -258,7 +252,7 @@ export default function TopBar({ title, subtitle }) {
                     ))
                 )}
                 {notifications.length > displayLimit && (
-                  <button onClick={() => setDisplayLimit(prev => prev + 10)} className="w-full py-4 text-[10px] font-black text-brand-600 uppercase tracking-widest bg-brand-50 rounded-2xl">Cargar historial previo</button>
+                  <button onClick={() => setDisplayLimit(prev => prev + 10)} className="w-full py-4 text-[10px] font-black text-brand-600 uppercase tracking-widest bg-brand-50 rounded-2xl">Cargar historial</button>
                 )}
             </div>
 
@@ -269,9 +263,8 @@ export default function TopBar({ title, subtitle }) {
         </div>
       )}
 
-      {/* --- DASHBOARD DE PASTORES (Punto 6) --- */}
       {isPastorPanelOpen && (
-        <div className="fixed inset-0 z-[110] bg-slate-900/95 backdrop-blur-xl flex items-center justify-center p-5 font-outfit animate-fade-in">
+        <div className="fixed inset-0 z-[110] bg-slate-900/95 backdrop-blur-xl flex items-center justify-center p-5 font-outfit animate-fade-in text-left">
           <div className="bg-white w-full max-w-sm rounded-[40px] p-8 shadow-2xl animate-scale-in flex flex-col gap-6">
             <div className="flex justify-between items-center">
               <div>
