@@ -8,8 +8,8 @@ import {
 import { 
   X, MessageCircle, Send, Trash2, ExternalLink, 
   Link as LinkIcon, Loader2, Calendar, CheckCircle,
-  ChevronLeft, BookOpen, Heart, Flame, PrayingHand, ThumbsUp,
-  Anchor, Smile, Sun, CloudRain
+  ChevronLeft, BookOpen, Heart, Flame, HandsPraying, ThumbsUp, // ✅ Corregido: HandsPraying
+  Anchor, Smile, Sun, CloudRain, Sparkles
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -31,6 +31,7 @@ export default function PostDetail() {
   useEffect(() => {
     if (!postId) return;
     
+    // Escucha del Post en tiempo real
     const unsubPost = onSnapshot(doc(db, 'posts', postId), (docSnap) => {
       if (docSnap.exists()) {
         setPost({ id: docSnap.id, ...docSnap.data() });
@@ -40,6 +41,7 @@ export default function PostDetail() {
       setLoading(false);
     });
 
+    // Escucha de Comentarios
     const q = query(collection(db, `posts/${postId}/comments`), orderBy('createdAt', 'desc'));
     const unsubComments = onSnapshot(q, (snap) => {
       setComments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -74,11 +76,10 @@ export default function PostDetail() {
       await runTransaction(db, async (transaction) => {
         const postDoc = await transaction.get(postRef);
         const data = postDoc.data();
-        const voters = data.poll.voters || [];
         const voteIndex = data.poll.votesDetails?.findIndex(v => v.uid === currentUser.uid);
         
         let newOptions = [...data.poll.options];
-        let newVoters = [...voters];
+        let newVoters = [...(data.poll.voters || [])];
         let newVotesDetails = data.poll.votesDetails ? [...data.poll.votesDetails] : [];
 
         if (voteIndex !== -1) {
@@ -114,7 +115,6 @@ export default function PostDetail() {
           createdAt: serverTimestamp()
         };
         await addDoc(collection(db, `posts/${postId}/comments`), commentData);
-        // Actualizar contador en post
         await updateDoc(doc(db, 'posts', postId), { commentsCount: (post.commentsCount || 0) + 1 });
         setCommentText('');
     } catch (e) { console.error(e); } finally { setIsSending(false); }
@@ -127,7 +127,7 @@ export default function PostDetail() {
     }
   };
 
-  if (loading) return <div className="fixed inset-0 bg-white z-[100] flex flex-col items-center justify-center font-outfit"><Loader2 className="animate-spin text-brand-600 mb-4" size={48}/><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Cargando bendición...</p></div>;
+  if (loading) return <div className="fixed inset-0 bg-white z-[100] flex flex-col items-center justify-center font-outfit"><Loader2 className="animate-spin text-brand-600 mb-4" size={48}/><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Abriendo contenido...</p></div>;
   if (!post) return null;
 
   const isDevocional = post.type === 'Devocional';
@@ -137,7 +137,7 @@ export default function PostDetail() {
   return (
     <div className="fixed inset-0 z-[120] bg-white flex flex-col animate-fade-in overflow-hidden font-outfit">
       
-      {/* HEADER DINÁMICO */}
+      {/* HEADER CONDICIONAL */}
       {!isDevocional && (
         <header className="flex items-center justify-between p-5 border-b border-slate-50 bg-white shrink-0 z-50">
           <button onClick={() => navigate(-1)} className="p-2.5 bg-slate-50 rounded-2xl active:scale-75 transition-all text-slate-800"><ChevronLeft size={24} /></button>
@@ -151,12 +151,12 @@ export default function PostDetail() {
 
       <div className="flex-1 overflow-y-auto pb-40 no-scrollbar relative bg-slate-50/30">
         
-        {/* --- 🎬 SECCIÓN PORTADA (Netflix Style para Devocionales) --- */}
+        {/* PORTADA NETFLIX STYLE */}
         {isDevocional && (
           <div className="relative w-full h-[55vh] shrink-0">
              <button onClick={() => navigate(-1)} className="absolute top-12 left-6 z-[60] p-3 bg-black/20 backdrop-blur-xl rounded-2xl text-white active:scale-75 transition-all border border-white/20"><ChevronLeft size={24} /></button>
              {post.image ? (
-               <img src={post.image} className="w-full h-full object-cover" alt="portada" />
+               <img src={post.image} className="w-full h-full object-cover" alt="portada" referrerPolicy="no-referrer" />
              ) : (
                <div className="w-full h-full bg-gradient-to-br from-indigo-600 to-brand-900" />
              )}
@@ -173,11 +173,11 @@ export default function PostDetail() {
 
         <div className={`p-8 ${!isDevocional ? 'mt-2' : ''}`}>
             
-            {/* AUTOR Y FECHA (Si no es devocional) */}
+            {/* AUTOR (Estilo Normal) */}
             {!isDevocional && (
               <div className="flex items-center gap-4 mb-8">
                   <div className="w-14 h-14 rounded-2xl border-2 border-white shadow-xl overflow-hidden shrink-0 bg-slate-100">
-                      <img src={post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}&background=0f172a&color=fff`} className="w-full h-full object-cover" />
+                      <img src={post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}&background=0f172a&color=fff`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   </div>
                   <div className="text-left">
                       <h3 className="font-black text-slate-900 text-sm uppercase tracking-tight leading-none">{post.authorName}</h3>
@@ -186,30 +186,30 @@ export default function PostDetail() {
               </div>
             )}
 
-            {/* CONTENIDO PRINCIPAL */}
-            <div className={`text-left ${isOracion ? 'bg-purple-50 p-6 rounded-[35px] border-2 border-purple-100 mb-8' : ''}`}>
-                {isOracion && <PrayingHand size={32} className="text-purple-600 mb-4 animate-pulse"/>}
+            {/* CONTENIDO Y ORACIÓN */}
+            <div className={`text-left ${isOracion ? 'bg-purple-50 p-6 rounded-[35px] border-2 border-purple-100 mb-8 shadow-inner' : ''}`}>
+                {isOracion && <HandsPraying size={32} className="text-purple-600 mb-4 animate-pulse"/>}
                 <p className="text-[16px] text-slate-800 whitespace-pre-wrap leading-relaxed font-medium tracking-tight">
                   {post.content}
                 </p>
             </div>
 
-            {/* IMAGEN POST (Si no es portada de devocional) */}
+            {/* IMAGEN CUERPO */}
             {post.image && !isDevocional && (
                 <div className="my-8 rounded-[40px] overflow-hidden border-4 border-white shadow-2xl">
-                    <img src={post.image} className="w-full h-auto object-cover" alt="Imagen" />
+                    <img src={post.image} className="w-full h-auto object-cover" alt="Imagen" referrerPolicy="no-referrer" />
                 </div>
             )}
 
-            {/* LINK EXTERNO */}
+            {/* LINK */}
             {post.link && (
                 <button 
                     onClick={() => post.link.startsWith('/') ? navigate(post.link) : window.open(post.link.startsWith('http') ? post.link : `https://${post.link}`, '_blank')}
-                    className="flex items-center justify-between w-full bg-slate-900 text-white p-6 rounded-[30px] transition-all active:scale-95 shadow-xl shadow-slate-200 mt-4"
+                    className="flex items-center justify-between w-full bg-slate-900 text-white p-6 rounded-[30px] transition-all active:scale-95 shadow-xl mt-4"
                 >
                     <span className="text-[11px] font-black flex items-center gap-4 uppercase tracking-[0.2em]">
                         {post.link.startsWith('/') ? <Calendar size={22} className="text-brand-400" /> : <LinkIcon size={22} className="text-brand-400" />} 
-                        {post.linkText || 'Ver más detalles'}
+                        {post.linkText || 'Más información'}
                     </span>
                     <ExternalLink size={18} className="opacity-40" />
                 </button>
@@ -218,7 +218,7 @@ export default function PostDetail() {
             {/* ENCUESTA */}
             {post.poll && (
                <div className="mt-10 bg-white rounded-[40px] p-8 border-2 border-slate-50 shadow-inner">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-6 flex items-center gap-2 px-2"><CheckCircle size={14}/> Encuesta Comunitaria</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-6 px-2">📊 Encuesta</p>
                   {post.poll.options.map((opt, idx) => {
                     const total = post.poll.voters?.length || 0;
                     const percent = total > 0 ? Math.round((opt.votes / total) * 100) : 0;
@@ -235,13 +235,12 @@ export default function PostDetail() {
                       </button>
                     )
                   })}
-                  <div className="mt-4 text-[9px] font-black text-slate-300 uppercase text-center tracking-widest italic">Participación: {post.poll.voters?.length || 0} hermanos</div>
                </div>
             )}
 
-            {/* --- 🚀 BARRA DE REACCIONES ÉPICA (Responsive & Moderna) --- */}
+            {/* REACCIONES ÉPICAS */}
             <div className="mt-12 bg-white p-2 rounded-[28px] border-2 border-slate-50 flex items-center justify-center gap-2 overflow-x-auto no-scrollbar shadow-sm">
-                {[ {e: '❤️', l: 'Amor'}, {e: '🔥', l: 'Fuego'}, {e: '🙏', l: 'Amén'}, {e: '👍', l: 'Like'}].map(item => {
+                {[ {e: '❤️'}, {e: '🔥'}, {e: '🙏'}, {e: '👍'}].map(item => {
                     const count = reactions.filter(r => r.emoji === item.e).length;
                     const isSelected = reactions.some(r => r.uid === currentUser.uid && r.emoji === item.e);
                     return (
@@ -254,45 +253,41 @@ export default function PostDetail() {
                 })}
             </div>
 
-            {/* SECCIÓN COMENTARIOS */}
+            {/* COMENTARIOS */}
             <section className="mt-12 text-left">
               <h3 className="font-black text-[12px] text-slate-900 uppercase tracking-widest mb-8 flex items-center gap-3 px-2">
-                <MessageCircle className="text-brand-600" size={20}/> {comments.length} Comentarios en la charla
+                <MessageCircle className="text-brand-600" size={20}/> {comments.length} Comentarios
               </h3>
               <div className="space-y-6">
-                {comments.length === 0 ? (
-                  <div className="py-10 text-center opacity-20"><Sparkles size={40} className="mx-auto mb-3"/><p className="text-[10px] font-black uppercase">Sé el primero en comentar</p></div>
-                ) : (
-                  comments.map(c => (
-                    <div key={c.id} className="flex gap-4 animate-fade-in group items-start">
-                      <div className="w-11 h-11 rounded-xl border-2 border-white shadow-lg overflow-hidden shrink-0 bg-slate-100">
-                          <img src={c.photo || `https://ui-avatars.com/api/?name=${c.name}&background=0f172a&color=fff`} className="w-full h-full object-cover" />
-                      </div>
-                      <div className="flex-1 bg-white p-5 rounded-[28px] border border-slate-100 relative shadow-sm">
-                        <div className="flex justify-between items-start mb-2">
-                          <span className="font-black text-[10px] text-brand-600 uppercase tracking-tighter">{c.name}</span>
-                          {(c.uid === currentUser.uid || isModerator) && (
-                            <button onClick={() => deleteComment(c.id)} className="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all p-1"><Trash2 size={14}/></button>
-                          )}
-                        </div>
-                        <p className="text-[14px] text-slate-700 leading-relaxed font-semibold">{c.text}</p>
-                      </div>
+                {comments.map(c => (
+                  <div key={c.id} className="flex gap-4 animate-fade-in group items-start">
+                    <div className="w-11 h-11 rounded-xl border-2 border-white shadow-lg overflow-hidden shrink-0 bg-slate-100">
+                        <img src={c.photo || `https://ui-avatars.com/api/?name=${c.name}&background=0f172a&color=fff`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     </div>
-                  ))
-                )}
+                    <div className="flex-1 bg-white p-5 rounded-[28px] border border-slate-100 relative shadow-sm">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="font-black text-[10px] text-brand-600 uppercase">{c.name}</span>
+                        {(c.uid === currentUser.uid || isModerator) && (
+                          <button onClick={() => deleteComment(c.id)} className="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all p-1"><Trash2 size={14}/></button>
+                        )}
+                      </div>
+                      <p className="text-[14px] text-slate-700 leading-relaxed font-semibold">{c.text}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </section>
         </div>
       </div>
 
-      {/* INPUT FLOTANTE DE COMENTARIO */}
+      {/* INPUT FOOTER */}
       <footer className="p-6 border-t border-slate-50 bg-white/80 backdrop-blur-xl absolute bottom-0 w-full flex gap-3 items-center z-50">
         <div className="flex-1 relative">
            <input 
             value={commentText} 
             onChange={e => setCommentText(e.target.value)} 
-            placeholder="Aporta a la conversación..." 
-            className="w-full bg-slate-100 rounded-2xl px-6 py-5 text-sm outline-none focus:ring-4 focus:ring-brand-50 transition-all font-bold shadow-inner placeholder:text-slate-400"
+            placeholder="Escribe algo..." 
+            className="w-full bg-slate-100 rounded-2xl px-6 py-5 text-sm outline-none focus:ring-4 focus:ring-brand-50 transition-all font-bold shadow-inner"
           />
           <MessageCircle className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300" size={18}/>
         </div>

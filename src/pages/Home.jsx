@@ -4,7 +4,7 @@ import {
   Cake, BookOpen, Pin, Link as LinkIcon, ExternalLink, 
   MessageCircle, MoreVertical, X, Edit3, Trash2, 
   PlusCircle, AlertTriangle, Calendar, Heart, Send, 
-  AlertCircle, CheckCircle, Flame, PrayingHand, ThumbsUp, 
+  AlertCircle, CheckCircle, Flame, HandsPraying, ThumbsUp, // ✅ Corregido: HandsPraying
   Archive, ChevronDown, Sparkles, Smile, Frown, Sun, CloudRain, Anchor, HelpCircle
 } from 'lucide-react';
 import CreatePostModal from '../components/CreatePostModal';
@@ -26,6 +26,20 @@ const MOODS = [
   { id: 'Paz', label: 'Paz', icon: Smile, color: 'bg-emerald-500' },
 ];
 
+const PostSkeleton = () => (
+  <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm animate-pulse mb-4 mx-4">
+    <div className="flex gap-4 mb-4">
+      <div className="w-14 h-14 bg-slate-200 rounded-2xl"></div>
+      <div className="flex-1 space-y-3 py-2">
+        <div className="h-4 bg-slate-200 rounded w-1/3"></div>
+        <div className="h-3 bg-slate-200 rounded w-1/4"></div>
+      </div>
+    </div>
+    <div className="h-4 bg-slate-200 rounded w-full mb-2"></div>
+    <div className="h-4 bg-slate-200 rounded w-2/3"></div>
+  </div>
+);
+
 export default function Home() {
   const navigate = useNavigate();
   const { dbUser } = useOutletContext();
@@ -40,19 +54,18 @@ export default function Home() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('Todo');
-  const [selectedMood, setSelectedMood] = useState(null); // ✅ Nuevo: Filtro por Ánimo
+  const [selectedMood, setSelectedMood] = useState(null);
   const [visibleCount, setVisibleCount] = useState(4);
   const [birthdays, setBirthdays] = useState([]);
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [editingPost, setEditingPost] = useState(null);
 
-  // 1. CARGA DE POSTS CON PRIVACIDAD (Punto 1)
+  // 1. CARGA DE POSTS CON PRIVACIDAD
   useEffect(() => {
     const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const postsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      // ✅ PRIVACIDAD DE ARCHIVADOS: Si no es pastor, filtramos los archivados
       const finalPosts = isPastor 
         ? postsData 
         : postsData.filter(p => !p.isArchived);
@@ -94,28 +107,24 @@ export default function Home() {
   };
 
   const handleArchive = async (postId, currentStatus) => {
-    if (!isPastor) return; // ✅ Solo pastores archivan
+    if (!isPastor) return;
     try {
       await updateDoc(doc(db, 'posts', postId), { isArchived: !currentStatus });
       setMenuOpenId(null);
     } catch (e) { console.error(e); }
   };
 
-  // ✅ FILTRADO INTELIGENTE (Punto 5 + Pedido de Oración)
   const filteredPosts = useMemo(() => {
     let result = posts;
-    
     if (filter === 'Archivados') {
       result = posts.filter(p => p.isArchived === true);
     } else {
       result = posts.filter(p => p.isArchived !== true);
       if (filter !== 'Todo') result = result.filter(p => p.type === filter);
     }
-
     if (selectedMood) {
       result = result.filter(p => p.mood === selectedMood);
     }
-
     return result;
   }, [filter, posts, selectedMood]);
 
@@ -144,7 +153,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* ✅ TABS MODERNAS CON PEDIDO DE ORACIÓN (Punto 5) */}
           <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
             {['Todo', 'Devocional', 'Oración', 'Noticia', 'Archivados'].map((cat) => {
               if (cat === 'Archivados' && !isPastor) return null;
@@ -152,7 +160,7 @@ export default function Home() {
                 <button key={cat} onClick={() => { setFilter(cat); setVisibleCount(4); setSelectedMood(null); }} 
                   className={`py-3 px-6 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border-2 whitespace-nowrap ${
                     filter === cat 
-                    ? (cat === 'Oración' ? 'bg-purple-600 border-purple-600 text-white' : 'bg-slate-900 border-slate-900 text-white shadow-lg')
+                    ? (cat === 'Oración' ? 'bg-purple-600 border-purple-600 text-white shadow-lg shadow-purple-100' : 'bg-slate-900 border-slate-900 text-white shadow-lg')
                     : 'bg-white text-slate-400 border-slate-50'
                   }`}
                 >
@@ -162,7 +170,6 @@ export default function Home() {
             })}
           </div>
 
-          {/* ✅ FILTRO DE ÁNIMOS (Moods - Punto 1) */}
           <div className="flex gap-3 overflow-x-auto no-scrollbar px-1">
              {MOODS.map(m => (
                <button 
@@ -185,7 +192,7 @@ export default function Home() {
         ) : displayedPosts.length === 0 ? (
             <div className="text-center py-24 opacity-30 flex flex-col items-center">
               <Sparkles size={64} className="mb-4 text-slate-300"/>
-              <p className="font-black uppercase tracking-[0.3em] text-xs">Sin contenido por aquí</p>
+              <p className="font-black uppercase tracking-[0.3em] text-xs text-slate-400">Muro en paz</p>
             </div>
         ) : (
             displayedPosts.map(post => {
@@ -200,23 +207,19 @@ export default function Home() {
                 isDevocional 
                 ? 'h-[420px] rounded-[45px] overflow-hidden shadow-2xl' 
                 : isOracion 
-                ? 'bg-purple-50 border-2 border-purple-100 rounded-[35px] p-1'
+                ? 'bg-purple-50 border-2 border-purple-100 rounded-[35px] p-1 shadow-sm'
                 : 'bg-white border border-slate-100 rounded-[35px] shadow-sm'
               }`}>
                 
-                {/* --- 🎬 ESTILO NETFLIX PARA DEVOCIONALES (Punto 1) --- */}
                 {isDevocional ? (
                   <div className="absolute inset-0 w-full h-full" onClick={() => navigate(`/post/${post.id}`)}>
-                    {/* Imagen de fondo (Protagonista) */}
                     {post.image ? (
-                      <img src={post.image} className="w-full h-full object-cover" alt="Portada"/>
+                      <img src={post.image} className="w-full h-full object-cover" alt="Portada" referrerPolicy="no-referrer" />
                     ) : (
                       <div className="w-full h-full bg-gradient-to-br from-indigo-600 to-brand-900" />
                     )}
-                    {/* Overlay de gradiente */}
                     <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
                     
-                    {/* Contenido arriba de la imagen */}
                     <div className="absolute inset-0 p-8 flex flex-col justify-end text-left">
                        <div className="flex items-center gap-2 mb-4">
                           <div className="px-3 py-1 bg-brand-500 rounded-full text-[8px] font-black text-white uppercase tracking-widest">Devocional</div>
@@ -225,17 +228,15 @@ export default function Home() {
                        <h2 className="text-3xl font-black text-white uppercase tracking-tighter leading-none mb-3 italic">{post.title}</h2>
                        <p className="text-white/80 text-sm font-medium line-clamp-2 mb-6 leading-relaxed">{post.content}</p>
                        <button className="bg-white text-black py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all">
-                         <BookOpen size={16}/> Ver Palabra del día
+                         <BookOpen size={16}/> Ver Devocional
                        </button>
                     </div>
-                    {/* Autor flotante arriba */}
                     <div className="absolute top-6 left-6 flex items-center gap-3">
-                       <img src={profileImg} className="w-10 h-10 rounded-xl border-2 border-white/30" alt="autor"/>
+                       <img src={profileImg} className="w-10 h-10 rounded-xl border-2 border-white/30" alt="autor" referrerPolicy="no-referrer" />
                        <span className="text-white text-[10px] font-black uppercase tracking-widest">{post.authorName.split(' ')[0]}</span>
                     </div>
                   </div>
                 ) : (
-                  /* --- 📝 ESTILO NORMAL Y ORACIÓN --- */
                   <div className="p-6">
                     <div className="flex justify-between items-start mb-5">
                       <div className="flex items-center gap-3 text-left">
@@ -269,7 +270,7 @@ export default function Home() {
                     </div>
 
                     <div className="text-left mb-4" onClick={() => navigate(`/post/${post.id}`)}>
-                      {isOracion && <div className="text-purple-600 mb-2"><PrayingHand size={24}/></div>}
+                      {isOracion && <div className="text-purple-600 mb-2"><HandsPraying size={24}/></div>}
                       <h2 className={`text-xl font-black uppercase tracking-tighter leading-tight mb-2 ${isOracion ? 'text-purple-900' : 'text-slate-900'}`}>{post.title}</h2>
                       <div className="text-[14px] text-slate-700 whitespace-pre-wrap leading-relaxed font-medium line-clamp-4">{post.content}</div>
                     </div>
@@ -282,19 +283,17 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* --- 🚀 BARRA DE REACCIONES ÉPICA (Punto 5) --- */}
                 {!isDevocional && (
                   <div className="px-6 py-5 border-t border-slate-100 bg-white/50 rounded-b-[35px]">
                     <div className="flex items-center justify-between gap-2">
-                        {/* El contenedor de botones ahora es horizontal y no oculta números */}
                         <div className="flex items-center gap-1.5 flex-1 overflow-x-auto no-scrollbar">
-                           {[ {e: '❤️', l: 'Amor'}, {e: '🔥', l: 'Fuego'}, {e: '🙏', l: 'Amén'}, {e: '👍', l: 'Like'}].map(item => {
+                           {[ {e: '❤️'}, {e: '🔥'}, {e: '🙏'}, {e: '👍'}].map(item => {
                               const reactions = post.reactions || [];
                               const count = reactions.filter(r => r.emoji === item.e).length;
                               const isSelected = reactions.some(r => r.uid === currentUser.uid && r.emoji === item.e);
                               return (
                                 <button key={item.e} onClick={() => handleReaction(post.id, post.reactions, item.e)} 
-                                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all active:scale-75 shadow-sm border ${isSelected ? 'bg-slate-900 border-slate-900' : 'bg-white border-slate-100'}`}>
+                                  className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all active:scale-75 shadow-sm border ${isSelected ? 'bg-slate-900 border-slate-900' : 'bg-white border-slate-100'}`}>
                                   <span className="text-lg">{item.e}</span>
                                   {count > 0 && <span className={`text-[10px] font-black ${isSelected ? 'text-white' : 'text-slate-900'}`}>{count}</span>}
                                 </button>
@@ -318,7 +317,7 @@ export default function Home() {
             <div className="p-5 bg-white border-2 border-slate-100 rounded-full shadow-xl text-slate-300 group-hover:text-brand-600 group-hover:border-brand-100">
                <ChevronDown size={32} className="animate-bounce" />
             </div>
-            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-400">Ver más bendiciones</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-400">Ver más contenido</span>
           </button>
         )}
       </div>

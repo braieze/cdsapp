@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   X, Image as ImageIcon, Send, Loader2, Link as LinkIcon, 
-  BarChart2, Plus, Trash2, Save, Archive, PrayingHand, 
+  BarChart2, Plus, Trash2, Save, Archive, HandsPraying, // ✅ Corregido: HandsPraying
   Anchor, Sun, CloudRain, Smile, Layers 
 } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
@@ -26,8 +26,8 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
   const [loading, setLoading] = useState(false);
   const [type, setType] = useState('Noticia');
   const [isArchived, setIsArchived] = useState(false);
-  const [mood, setMood] = useState(''); // ✅ Nuevo: Estado para Ánimo
-  const [seriesName, setSeriesName] = useState(''); // ✅ Nuevo: Estado para Series
+  const [mood, setMood] = useState(''); 
+  const [seriesName, setSeriesName] = useState(''); 
 
   const [showPoll, setShowPoll] = useState(false);
   const [pollOptions, setPollOptions] = useState(['', '']); 
@@ -115,8 +115,8 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         image: imageUrl, 
         type: type,
         isArchived: isArchived,
-        mood: (type === 'Devocional' || type === 'Oración') ? mood : '', // ✅ Guardamos Ánimo
-        seriesName: type === 'Devocional' ? seriesName : '', // ✅ Guardamos Serie
+        mood: (type === 'Devocional' || type === 'Oración') ? mood : '', 
+        seriesName: type === 'Devocional' ? seriesName : '', 
       };
 
       if (postToEdit) {
@@ -169,10 +169,10 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         
         <div className="flex justify-between items-center mb-8">
           <div>
-            <h3 className="font-black text-slate-900 text-2xl uppercase tracking-tighter">
+            <h3 className="font-black text-slate-900 text-2xl uppercase tracking-tighter leading-none">
               {postToEdit ? 'Editar Post' : 'Crear Post'}
             </h3>
-            <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest mt-1">Panel de Comunicación</p>
+            <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest mt-1">Gestión de Muro</p>
           </div>
           <button onClick={onClose} className="p-3 bg-slate-50 rounded-full active:scale-75 transition-all text-slate-400">
             <X size={24} />
@@ -180,7 +180,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         </div>
 
         <div className="flex-1 space-y-6">
-          {/* SELECTOR DE TIPO (Añadido Oración) */}
           <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
             {['Noticia', 'Devocional', 'Oración', 'Urgente'].map(t => (
               <button 
@@ -189,6 +188,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
                   type === t ? 'bg-slate-900 text-white border-slate-900 shadow-xl scale-105' : 'bg-white text-slate-300 border-slate-100'
                 }`}
               >
+                {t === 'Oración' && <HandsPraying size={12} className="inline mr-1" />}
                 {t}
               </button>
             ))}
@@ -200,20 +200,19 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
               className="w-full p-5 bg-slate-50 rounded-[24px] border-2 border-slate-50 font-black text-slate-800 focus:outline-none focus:border-brand-500 uppercase text-sm"
             />
 
-            {/* ✅ OPCIONES EXTRA PARA DEVOCIONALES (Mood & Series) */}
             {type === 'Devocional' && (
               <div className="space-y-4 animate-fade-in">
                  <div className="p-5 bg-indigo-50/50 rounded-[30px] border-2 border-indigo-100/50">
-                    <p className="text-[9px] font-black text-indigo-600 uppercase mb-4 ml-2 flex items-center gap-2"><Layers size={12}/> Nombre de la Serie (Opcional)</p>
+                    <p className="text-[9px] font-black text-indigo-600 uppercase mb-4 ml-2 flex items-center gap-2"><Layers size={12}/> Serie (Opcional)</p>
                     <input 
-                      placeholder="Ej: Caminando en fe..."
-                      className="w-full p-3 bg-white border border-indigo-100 rounded-xl text-xs font-bold outline-none text-indigo-900"
+                      placeholder="Ej: El Sermón del Monte"
+                      className="w-full p-3 bg-white border border-indigo-100 rounded-xl text-xs font-bold outline-none"
                       value={seriesName} onChange={e => setSeriesName(e.target.value)}
                     />
                  </div>
                  
                  <div className="p-5 bg-slate-50 rounded-[30px] border-2 border-slate-100">
-                    <p className="text-[9px] font-black text-slate-400 uppercase mb-4 ml-2">¿Cómo nutre este devocional?</p>
+                    <p className="text-[9px] font-black text-slate-400 uppercase mb-4 ml-2">¿Ánimo del devocional?</p>
                     <div className="grid grid-cols-4 gap-2">
                        {MOOD_OPTIONS.map(m => (
                          <button 
@@ -235,21 +234,19 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
               className="w-full h-48 p-6 bg-slate-50 rounded-[30px] border-2 border-slate-50 focus:outline-none focus:border-brand-500 resize-none text-base font-medium text-slate-700 leading-relaxed shadow-inner"
             />
 
-            {/* BOTÓN ARCHIVAR */}
             <button 
                 onClick={() => setIsArchived(!isArchived)}
                 className={`w-full flex items-center justify-between p-5 rounded-3xl border-2 transition-all ${isArchived ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-slate-50 border-slate-100 text-slate-400'}`}
             >
                 <div className="flex items-center gap-3">
                     <Archive size={20}/>
-                    <span className="text-[11px] font-black uppercase tracking-widest">Archivar para más tarde</span>
+                    <span className="text-[11px] font-black uppercase tracking-widest">Archivar Publicación</span>
                 </div>
                 <div className={`w-12 h-6 rounded-full relative transition-all ${isArchived ? 'bg-amber-500' : 'bg-slate-200'}`}>
                     <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${isArchived ? 'right-1' : 'left-1'}`}></div>
                 </div>
             </button>
 
-            {/* ENCUESTAS (Oculto para Pedidos de Oración) */}
             {type !== 'Oración' && !postToEdit && (
               <button 
                 onClick={() => setShowPoll(!showPoll)} 
@@ -263,7 +260,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
               <div className="bg-slate-50 p-6 rounded-[35px] border-2 border-slate-100 space-y-3 animate-slide-up">
                 {pollOptions.map((opt, idx) => (
                   <input 
-                    key={idx} type="text" placeholder={`Respuesta ${idx + 1}`} value={opt} onChange={(e) => {
+                    key={idx} type="text" placeholder={`Opción ${idx + 1}`} value={opt} onChange={(e) => {
                         const newOptions = [...pollOptions];
                         newOptions[idx] = e.target.value;
                         setPollOptions(newOptions);
@@ -272,13 +269,13 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
                   />
                 ))}
                 {pollOptions.length < 5 && (
-                  <button onClick={() => setPollOptions([...pollOptions, ''])} className="w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-[9px] text-slate-400 font-black uppercase">+ Opción</button>
+                  <button onClick={() => setPollOptions([...pollOptions, ''])} className="w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-[9px] text-slate-400 font-black uppercase tracking-widest">+ Agregar Opción</button>
                 )}
               </div>
             )}
 
             <div className="p-6 bg-slate-50 rounded-[35px] border-2 border-slate-100 space-y-4">
-              <p className="text-[9px] font-black text-slate-400 uppercase ml-2">Vínculo (Link)</p>
+              <p className="text-[9px] font-black text-slate-400 uppercase ml-2">Link Externo</p>
               <div className="flex gap-3">
                 <input type="text" placeholder="https://..." value={link} onChange={e => setLink(e.target.value)} className="flex-1 p-4 bg-white rounded-2xl border-2 border-slate-50 text-[10px] outline-none font-bold text-brand-600 shadow-sm" />
                 <input type="text" placeholder="Botón" value={linkText} onChange={e => setLinkText(e.target.value)} className="w-1/3 p-4 bg-white rounded-2xl border-2 border-slate-50 text-[10px] outline-none font-black uppercase shadow-sm" />
@@ -286,7 +283,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
             </div>
 
             {preview && (
-              <div className="relative rounded-[35px] overflow-hidden border-4 border-white shadow-2xl">
+              <div className="relative rounded-[35px] overflow-hidden border-4 border-white shadow-2xl animate-scale-in">
                 <img src={preview} alt="Preview" className="w-full h-56 object-cover" />
                 <button onClick={() => { setImage(null); setPreview(null); }} className="absolute top-4 right-4 bg-slate-900/90 text-white p-3 rounded-full backdrop-blur-md active:scale-75 transition-all"><X size={20} /></button>
               </div>
@@ -297,7 +294,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         <div className="flex gap-4 pt-8 mt-8 border-t border-slate-50 shrink-0">
           <label className="flex-1 flex items-center justify-center gap-3 bg-slate-50 p-5 rounded-[24px] text-slate-500 cursor-pointer active:scale-95 transition-all border-2 border-slate-100">
             {loading ? <Loader2 size={22} className="animate-spin text-brand-600" /> : <ImageIcon size={22} />}
-            <span className="text-[11px] font-black uppercase tracking-widest text-center">Foto</span>
+            <span className="text-[11px] font-black uppercase tracking-widest">Foto</span>
             <input type="file" className="hidden" accept="image/*" onChange={handleImageChange} disabled={loading} />
           </label>
 
