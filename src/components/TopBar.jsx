@@ -6,8 +6,8 @@ import { getToken, deleteToken } from 'firebase/messaging';
 import { 
   Bell, BellOff, X, Calendar, MessageCircle, ChevronRight, Briefcase, 
   ShieldAlert, Sparkles, Megaphone, BookOpen, Clock, Settings, Loader2, 
-  Send, Link as LinkIcon, Activity, Heart, Users, PrayingHand 
-} from 'lucide-react';
+  Send, Link as LinkIcon, Activity, Heart, Users, HandHeart 
+} from 'lucide-react'; // ✅ HandHeart reemplaza a PrayingHand para evitar error de build
 import { format, isToday, isYesterday } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -93,12 +93,12 @@ export default function TopBar({ title, subtitle }) {
     finally { setLoadingAction(false); }
   };
 
-  // --- PLANTILLA DE ORACIÓN (Punto 3) ---
+  // --- PLANTILLA DE ORACIÓN (Ajustado) ---
   const setPrayerTemplate = () => {
     setPushData({
       title: "🙏 ¡Estamos en Oración!",
       body: "Hacé clic acá para unirte a la oración virtual por Google Meet.",
-      link: "https://meet.google.com/your-fixed-link" // Sustituir por el link real
+      link: "https://meet.google.com/tu-link-de-oracion" 
     });
     toast.info("Plantilla de oración cargada");
   };
@@ -131,19 +131,6 @@ export default function TopBar({ title, subtitle }) {
     unsubscribes.push(onSnapshot(qPosts, (snap) => {
         sources.posts = snap.docs.map(d => {
             const data = d.data();
-            if (['pastor', 'lider'].includes(userRole) && data.commentsCount >= 5) {
-              sources.smart.push({
-                id: `smart-comm-${d.id}`,
-                type: 'smart',
-                title: 'Tendencia en el Muro',
-                subtitle: `Más de ${data.commentsCount} personas comentaron: "${data.title}"`,
-                timestamp: Date.now(),
-                link: `/post/${d.id}`,
-                icon: Activity,
-                color: 'bg-indigo-100 text-indigo-600',
-                isUrgent: true
-              });
-            }
             return {
                 id: d.id,
                 type: 'post',
@@ -161,7 +148,6 @@ export default function TopBar({ title, subtitle }) {
 
     const todayStr = new Date().toISOString().split('T')[0];
     const qEvents = query(collection(db, 'events'), where('date', '>=', todayStr)); 
-    
     unsubscribes.push(onSnapshot(qEvents, (snap) => {
         const evs = [];
         const asgs = [];
@@ -176,12 +162,6 @@ export default function TopBar({ title, subtitle }) {
             }
             if (!isMyTask) {
                 evs.push({ id: `ev-${d.id}`, type: 'event', title: 'Nuevo Evento', subtitle: data.title, timestamp: creationTs, link: `/calendario/${d.id}`, icon: Calendar, color: 'bg-purple-100 text-purple-600' });
-            }
-            if (['pastor', 'lider'].includes(userRole) && data.confirmations) {
-                const declines = Object.entries(data.confirmations).filter(([_, s]) => s === 'declined');
-                if (declines.length > 0) {
-                  asgs.push({ id: `dec-group-${d.id}`, type: 'alert', title: 'Bajas en el Equipo', subtitle: `Hay ${declines.length} servidores que no asisten a: ${data.title}`, timestamp: Date.now(), link: `/calendario/${d.id}`, icon: ShieldAlert, color: 'bg-red-50 text-red-500', isUrgent: true });
-                }
             }
         });
         sources.events = evs;
@@ -273,16 +253,16 @@ export default function TopBar({ title, subtitle }) {
                 <button onClick={() => setIsOpen(false)} className="p-3 bg-slate-50 rounded-full text-slate-400 active:scale-75 transition-all"><X size={24}/></button>
             </div>
 
-            {/* 🔥 BOTÓN RECUPERADO: ACTIVAR / DESACTIVAR NOTIS 🔥 */}
+            {/* BOTÓN RECUPERADO: ACTIVAR / DESACTIVAR NOTIFICACIONES */}
             <div className="px-5 py-4 bg-slate-50/50 border-b border-slate-100">
                 {!isSupported ? (
-                    <div className="p-3 bg-amber-50 text-amber-600 rounded-xl text-[10px] text-center font-black uppercase tracking-widest">Dispositivo no compatible</div>
+                    <div className="p-3 bg-amber-50 text-amber-600 rounded-xl text-[10px] text-center font-black uppercase tracking-widest">Avisos no soportados en este navegador</div>
                 ) : isSubscribed ? (
-                    <button onClick={disableNotifications} disabled={loadingAction} className={`w-full py-3 px-4 rounded-2xl flex items-center justify-center gap-2 transition-all font-black text-[10px] uppercase tracking-widest ${loadingAction ? 'bg-slate-100 text-slate-400' : 'bg-white border border-slate-200 text-slate-500 hover:text-red-500'}`}>
-                        {loadingAction ? <Loader2 size={16} className="animate-spin"/> : <BellOff size={16} />} Silenciar notificaciones
+                    <button onClick={disableNotifications} disabled={loadingAction} className="w-full py-3 px-4 rounded-2xl flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-500 font-black text-[10px] uppercase tracking-widest transition-all">
+                        {loadingAction ? <Loader2 size={16} className="animate-spin"/> : <BellOff size={16} />} Silenciar avisos en este equipo
                     </button>
                 ) : (
-                    <button onClick={enableNotifications} disabled={loadingAction} className={`w-full py-3 px-4 rounded-2xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all font-black text-[10px] uppercase tracking-widest ${loadingAction ? 'bg-slate-200 text-slate-400' : 'bg-slate-900 text-white'}`}>
+                    <button onClick={enableNotifications} disabled={loadingAction} className="w-full py-3 px-4 rounded-2xl flex items-center justify-center gap-2 bg-slate-900 text-white shadow-xl active:scale-95 transition-all font-black text-[10px] uppercase tracking-widest">
                         {loadingAction ? <Loader2 size={16} className="animate-spin"/> : <Bell size={16} className="animate-pulse"/>} ACTIVAR NOTIFICACIONES 🔔
                     </button>
                 )}
@@ -328,13 +308,13 @@ export default function TopBar({ title, subtitle }) {
               <button onClick={() => setIsPastorPanelOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-400"><X size={20}/></button>
             </div>
 
-            {/* 🔥 BOTÓN MODO ORACIÓN 🔥 */}
+            {/* BOTÓN MODO ORACIÓN */}
             <button 
               onClick={setPrayerTemplate}
               className="w-full flex items-center justify-between p-4 bg-indigo-50 border-2 border-indigo-100 rounded-2xl text-indigo-700 active:scale-95 transition-all group"
             >
               <div className="flex items-center gap-3">
-                <PrayingHand size={24} className="group-hover:animate-bounce" />
+                <HandHeart size={24} className="group-hover:animate-bounce" />
                 <span className="text-[11px] font-black uppercase tracking-widest">Activar Modo Oración</span>
               </div>
               <ChevronRight size={18} />
@@ -342,12 +322,12 @@ export default function TopBar({ title, subtitle }) {
 
             <div className="space-y-4">
               <input 
-                placeholder="Título..." 
+                placeholder="Título del mensaje..." 
                 className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-sm outline-none focus:border-brand-500 transition-all"
                 value={pushData.title} onChange={e => setPushData({...pushData, title: e.target.value})}
               />
               <textarea 
-                placeholder="Contenido..." 
+                placeholder="Contenido del aviso..." 
                 className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-semibold text-sm h-24 resize-none outline-none focus:border-brand-500 transition-all"
                 value={pushData.body} onChange={e => setPushData({...pushData, body: e.target.value})}
               />
