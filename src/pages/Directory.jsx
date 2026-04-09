@@ -1,21 +1,15 @@
 import { useState, useEffect, useMemo } from 'react'; 
 import { db, auth } from '../firebase';
-import { collection, query, onSnapshot, doc, setDoc, serverTimestamp, deleteDoc, updateDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, setDoc, serverTimestamp, deleteDoc, updateDoc, getDoc } from 'firebase/firestore';
 import { 
   Search, Shield, Briefcase, Camera, Loader2, Save, X, Phone, 
   UserPlus, MapPin, Calendar as CalendarIcon, Mail, CheckCircle, 
-  AlertCircle, MessageCircle, QrCode, Trash2, Heart, Home, UserCheck, Star
+  AlertCircle, MessageCircle, QrCode, Trash2, Heart, Home, UserCheck, Star,
+  ArrowRightCircle, Plus, Settings // ✅ Agregados iconos faltantes
 } from 'lucide-react';
 import { useOutletContext } from 'react-router-dom';
 import { QRCodeCanvas } from 'qrcode.react'; 
 import imageCompression from 'browser-image-compression';
-
-// 🛠️ PUNTO 7: ÁREAS OFICIALES (Importadas o definidas aquí para consistencia)
-const AREAS_OFICIALES = [
-  'ninguna', 'Bienvenida / Puerta', 'Pasillo / Acomodadores', 'Seguridad Autos', 
-  'Control Baños', 'Ministración Altar', 'Alabanza', 'Sonido', 'Multimedia', 
-  'Niños', 'Recepción', 'Limpieza', 'Intercesión', 'Predicación'
-];
 
 export default function Directory() {
   const { dbUser } = useOutletContext();
@@ -24,12 +18,16 @@ export default function Directory() {
   const [activeFilter, setActiveFilter] = useState('Todos');
   const [loading, setLoading] = useState(true);
   
+  // Estados para Áreas Dinámicas (Gestor de Áreas)
+  const [officialAreas, setOfficialAreas] = useState(['ninguna']);
+  const [isManagingAreas, setIsManagingAreas] = useState(false);
+  const [newAreaInput, setNewAreaInput] = useState('');
+
   const [editingUser, setEditingUser] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [saveStatus, setSaveStatus] = useState('idle'); 
 
-  // 🎯 PUNTO 9: NUEVO FORMULARIO DE INSCRIPCIÓN
   const [newUser, setNewUser] = useState({ 
     displayName: '', 
     role: 'miembro', 
@@ -43,21 +41,9 @@ export default function Directory() {
   const CLOUD_NAME = "djmkggzjp"; 
   const UPLOAD_PRESET = "ml_default"; 
 
-  // 🛡️ Lógica de Permiso Especial (Punto 9)
   const canAddPeople = dbUser?.role === 'pastor' || dbUser?.canAddMembers === true;
 
-  const formatWhatsApp = (phone) => {
-    if (!phone) return '';
-    let cleaned = phone.replace(/\D/g, ''); 
-    if (cleaned.length === 10 && (cleaned.startsWith('11') || cleaned.startsWith('15'))) {
-      cleaned = '549' + cleaned;
-    }
-    if (cleaned.startsWith('5411') && cleaned.length === 12) {
-      cleaned = '549' + cleaned.slice(2);
-    }
-    return cleaned;
-  };
-
+  // 1. CARGAR USUARIOS
   useEffect(() => {
     const q = query(collection(db, 'users'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -76,6 +62,45 @@ export default function Directory() {
     return () => unsubscribe();
   }, []);
 
+  // 2. CARGAR ÁREAS DESDE FIREBASE (Gestor de Áreas)
+  useEffect(() => {
+    const areaRef = doc(db, 'metadata', 'areas');
+    const unsubscribe = onSnapshot(areaRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setOfficialAreas(docSnap.data().list || ['ninguna']);
+      } else {
+        // Inicializar si no existe
+        setDoc(areaRef, { list: ['ninguna', 'Alabanza', 'Ujieres', 'Multimedia'] });
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleAddArea = async () => {
+    if (!newAreaInput.trim()) return;
+    const newList = [...officialAreas, newAreaInput.trim()];
+    await setDoc(doc(db, 'metadata', 'areas'), { list: newList });
+    setNewAreaInput('');
+  };
+
+  const handleRemoveArea = async (areaToRemove) => {
+    if (areaToRemove === 'ninguna') return;
+    const newList = officialAreas.filter(a => a !== areaToRemove);
+    await setDoc(doc(db, 'metadata', 'areas'), { list: newList });
+  };
+
+  const formatWhatsApp = (phone) => {
+    if (!phone) return '';
+    let cleaned = phone.replace(/\D/g, ''); 
+    if (cleaned.length === 10 && (cleaned.startsWith('11') || cleaned.startsWith('15'))) {
+      cleaned = '549' + cleaned;
+    }
+    if (cleaned.startsWith('5411') && cleaned.length === 12) {
+      cleaned = '549' + cleaned.slice(2);
+    }
+    return cleaned;
+  };
+
   const handleSaveUser = async () => {
     if (!editingUser || dbUser?.role !== 'pastor') return;
     setSaveStatus('saving');
@@ -86,7 +111,6 @@ export default function Directory() {
         displayName: editingUser.finalName,
         updatedAt: serverTimestamp()
       }, { merge: true });
-      
       setSaveStatus('success');
       setTimeout(() => { setEditingUser(null); setSaveStatus('idle'); }, 1000);
     } catch (error) {
@@ -100,7 +124,7 @@ export default function Directory() {
     try {
         await updateDoc(doc(db, 'users', targetUserId), { canAddMembers: !currentVal });
         setEditingUser(prev => ({...prev, canAddMembers: !currentVal}));
-    } catch (e) { alert("Error de permisos"); }
+    } catch (e) { alert("Error"); }
   };
 
   const handleCreateUser = async () => {
@@ -114,7 +138,7 @@ export default function Directory() {
       });
       setIsCreating(false);
       setNewUser({ displayName: '', role: 'miembro', area: 'ninguna', phone: '', address: '', needsVisit: false });
-    } catch (error) { alert("Error al registrar"); }
+    } catch (error) { alert("Error"); }
   };
 
   const handlePhotoUpload = async (e) => {
@@ -155,11 +179,18 @@ export default function Directory() {
   const alphabet = Object.keys(groupedUsers).sort();
 
   return (
-    <div className="pb-32 bg-slate-50 min-h-screen animate-fade-in p-4 font-outfit text-left">
+    <div className="pb-40 bg-slate-50 min-h-screen animate-fade-in p-4 font-outfit text-left overflow-y-auto">
       
-      <div className="mb-6 px-2">
-        <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Directorio</h1>
-        <p className="text-[10px] text-brand-600 uppercase font-black tracking-[0.2em] mt-1">Base de datos unificada ({users.length})</p>
+      <div className="mb-6 px-2 flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter leading-none">Directorio</h1>
+          <p className="text-[10px] text-brand-600 uppercase font-black tracking-[0.2em] mt-1">Base de datos unificada ({users.length})</p>
+        </div>
+        {dbUser?.role === 'pastor' && (
+          <button onClick={() => setIsManagingAreas(true)} className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-400 active:scale-90 transition-all shadow-sm">
+            <Settings size={20}/>
+          </button>
+        )}
       </div>
 
       {/* FILTROS MODERNOS */}
@@ -183,7 +214,8 @@ export default function Directory() {
         />
       </div>
 
-      <div className="space-y-8">
+      {/* LISTADO DE USUARIOS */}
+      <div className="space-y-8 pb-20">
         {loading && <div className="text-center py-20"><Loader2 className="animate-spin mx-auto text-brand-600" size={40}/></div>}
         
         {alphabet.map(letter => (
@@ -199,7 +231,6 @@ export default function Directory() {
                   onClick={() => { setEditingUser(user); setSaveStatus('idle'); }}
                   className="bg-white p-4 rounded-[25px] border-2 border-white shadow-sm flex items-center gap-4 active:scale-95 transition-all cursor-pointer relative"
                 >
-                  {/* ✅ PUNTO 8: FIX IMÁGENES ANDROID */}
                   <div className="w-14 h-14 min-w-[56px] rounded-2xl overflow-hidden shrink-0 bg-slate-100 border-2 border-white shadow-md">
                     <img 
                        src={user.photoURL || `https://ui-avatars.com/api/?name=${user.finalName}&background=0f172a&color=fff`} 
@@ -223,7 +254,37 @@ export default function Directory() {
         ))}
       </div>
 
-      {/* BOTÓN REGISTRAR (Con permiso especial) */}
+      {/* GESTOR DE ÁREAS (MODAL EXCLUSIVO PASTOR) */}
+      {isManagingAreas && (
+        <div className="fixed inset-0 z-[150] bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+           <div className="bg-white w-full max-w-sm rounded-[40px] p-8 shadow-2xl animate-scale-in flex flex-col max-h-[80vh]">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Gestor de Áreas</h2>
+                <button onClick={() => setIsManagingAreas(false)} className="p-2 bg-slate-100 rounded-full text-slate-400"><X size={20}/></button>
+              </div>
+              <div className="flex gap-2 mb-6">
+                 <input 
+                    placeholder="Nueva área..." 
+                    className="flex-1 p-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-xs outline-none"
+                    value={newAreaInput} onChange={e => setNewAreaInput(e.target.value)}
+                 />
+                 <button onClick={handleAddArea} className="bg-slate-900 text-white p-3 rounded-xl active:scale-90 transition-all"><Plus size={20}/></button>
+              </div>
+              <div className="flex-1 overflow-y-auto space-y-2 no-scrollbar">
+                  {officialAreas.map(area => (
+                    <div key={area} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                       <span className="text-xs font-black uppercase text-slate-700">{area}</span>
+                       {area !== 'ninguna' && (
+                         <button onClick={() => handleRemoveArea(area)} className="text-rose-500 p-1"><Trash2 size={16}/></button>
+                       )}
+                    </div>
+                  ))}
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* BOTÓN REGISTRAR */}
       {canAddPeople && (
         <button 
           onClick={() => setIsCreating(true)}
@@ -233,7 +294,7 @@ export default function Directory() {
         </button>
       )}
 
-      {/* MODAL FICHA TÉCNICA (Punto 9) */}
+      {/* MODAL FICHA TÉCNICA */}
       {editingUser && (
         <div className="fixed inset-0 z-[100] bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in text-left">
           <div className="bg-white w-full max-w-sm rounded-[45px] animate-slide-up relative flex flex-col max-h-[90vh] shadow-2xl overflow-hidden">
@@ -270,11 +331,11 @@ export default function Directory() {
               </div>
 
               <div className="grid grid-cols-2 gap-4 mb-8">
-                <a href={`https://wa.me/${formatWhatsApp(editingUser.phone)}`} target="_blank" className="flex flex-col items-center gap-2 p-5 bg-emerald-50 text-emerald-700 rounded-[30px] border-2 border-emerald-100 active:scale-95 transition-all shadow-sm">
-                  <MessageCircle size={24}/><span className="text-[10px] font-black uppercase tracking-widest">WhatsApp</span>
+                <a href={`https://wa.me/${formatWhatsApp(editingUser.phone)}`} target="_blank" className="flex flex-col items-center gap-2 p-5 bg-emerald-50 text-emerald-700 rounded-[30px] border-2 border-emerald-100 active:scale-95 transition-all shadow-sm text-center">
+                  <MessageCircle size={24}/><span className="text-[10px] font-black uppercase tracking-widest text-center">WhatsApp</span>
                 </a>
-                <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(editingUser.address || '')}`} target="_blank" className="flex flex-col items-center gap-2 p-5 bg-blue-50 text-blue-700 rounded-[30px] border-2 border-blue-100 active:scale-95 transition-all shadow-sm">
-                  <MapPin size={24}/><span className="text-[10px] font-black uppercase tracking-widest">Ver Mapa</span>
+                <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(editingUser.address || '')}`} target="_blank" className="flex flex-col items-center gap-2 p-5 bg-blue-50 text-blue-700 rounded-[30px] border-2 border-blue-100 active:scale-95 transition-all shadow-sm text-center">
+                  <MapPin size={24}/><span className="text-[10px] font-black uppercase tracking-widest text-center">Ver Mapa</span>
                 </a>
               </div>
 
@@ -288,15 +349,14 @@ export default function Directory() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Área de Servicio</label>
-                    {/* ✅ PUNTO 7: SELECT DE ÁREAS FIJAS */}
                     <select disabled={dbUser?.role !== 'pastor'} value={editingUser.area} onChange={e => setEditingUser({...editingUser, area: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-xs font-black uppercase outline-none">
-                        {AREAS_OFICIALES.map(area => <option key={area} value={area.toLowerCase()}>{area}</option>)}
+                        {officialAreas.map(area => <option key={area} value={area.toLowerCase()}>{area}</option>)}
                     </select>
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2 flex items-center gap-1.5"><Phone size={10}/> Teléfono de contacto</label>
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2 flex items-center gap-1.5"><Phone size={10}/> Teléfono</label>
                   <input disabled={dbUser?.role !== 'pastor'} value={editingUser.phone || ''} onChange={e => setEditingUser({...editingUser, phone: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-sm font-bold outline-none" placeholder="Sin número" />
                 </div>
                 
@@ -305,7 +365,6 @@ export default function Directory() {
                   <input disabled={dbUser?.role !== 'pastor'} value={editingUser.address || ''} onChange={e => setEditingUser({...editingUser, address: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-sm font-bold outline-none" placeholder="No registrada" />
                 </div>
 
-                {/* ✅ SWITCH DESEA SER VISITADO */}
                 <button 
                     disabled={dbUser?.role !== 'pastor'}
                     onClick={() => setEditingUser({...editingUser, needsVisit: !editingUser.needsVisit})}
@@ -318,20 +377,19 @@ export default function Directory() {
                     {editingUser.needsVisit ? <CheckCircle size={20}/> : <div className="w-5 h-5 rounded-full border-2 border-slate-200"></div>}
                 </button>
 
-                {/* 🛡️ ASIGNAR PERMISO DE INSCRIPCIÓN (Punto 9) */}
                 {dbUser?.role === 'pastor' && editingUser.role === 'servidor' && (
                     <button 
                         onClick={() => handleGrantPermission(editingUser.id, editingUser.canAddMembers)}
                         className={`w-full flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${editingUser.canAddMembers ? 'bg-amber-50 border-amber-100 text-amber-600' : 'bg-slate-50 border-slate-100 text-slate-400'}`}
                     >
                         <Star size={18} fill={editingUser.canAddMembers ? "currentColor" : "none"}/>
-                        <span className="text-[9px] font-black uppercase tracking-widest">Permiso para inscribir nuevos</span>
+                        <span className="text-[9px] font-black uppercase tracking-widest">Permiso para inscribir</span>
                     </button>
                 )}
 
                 <div className="flex flex-col items-center pt-8 opacity-20">
                   <QRCodeCanvas value={editingUser.id} size={50} />
-                  <p className="text-[7px] font-mono mt-2 tracking-widest uppercase">Member ID: {editingUser.id}</p>
+                  <p className="text-[7px] font-mono mt-2 tracking-widest uppercase">ID: {editingUser.id}</p>
                 </div>
 
                 {dbUser?.role === 'pastor' && (
@@ -339,7 +397,7 @@ export default function Directory() {
                     <button onClick={handleSaveUser} disabled={saveStatus !== 'idle'} className={`w-full font-black py-5 rounded-3xl flex items-center justify-center gap-3 text-xs uppercase tracking-[0.2em] shadow-2xl transition-all ${saveStatus === 'success' ? 'bg-green-600 text-white' : 'bg-slate-900 text-white active:scale-95'}`}>
                       {saveStatus === 'idle' ? <><Save size={20}/> Guardar Cambios</> : saveStatus === 'saving' ? <Loader2 size={20} className="animate-spin"/> : "✓ Actualizado"}
                     </button>
-                    <button onClick={() => { if(window.confirm(`Eliminar a ${editingUser.finalName}?`)) { deleteDoc(doc(db, 'users', editingUser.id)); setEditingUser(null); } }} className="w-full py-4 text-rose-500 font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-rose-50 rounded-2xl transition-colors">
+                    <button onClick={() => { if(window.confirm(`¿Eliminar a ${editingUser.finalName}?`)) { deleteDoc(doc(db, 'users', editingUser.id)); setEditingUser(null); } }} className="w-full py-4 text-rose-500 font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-rose-50 rounded-2xl transition-colors">
                       <Trash2 size={16}/> Baja Definitiva
                     </button>
                   </div>
@@ -350,41 +408,41 @@ export default function Directory() {
         </div>
       )}
 
-      {/* MODAL CREAR MIEMBRO (Punto 9) */}
+      {/* MODAL CREAR MIEMBRO */}
       {isCreating && (
         <div className="fixed inset-0 z-[120] bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in text-left">
-          <div className="bg-white w-full max-w-sm rounded-[45px] p-8 animate-scale-in relative shadow-2xl border-t-8 border-slate-900">
+          <div className="bg-white w-full max-w-sm rounded-[45px] p-8 animate-scale-in relative shadow-2xl border-t-8 border-slate-900 overflow-y-auto no-scrollbar max-h-[90vh]">
             <button onClick={() => setIsCreating(false)} className="absolute top-6 right-6 p-2 bg-slate-50 rounded-full text-slate-400"><X size={20}/></button>
             <h2 className="text-2xl font-black text-slate-900 mb-2 uppercase tracking-tighter leading-none">Nueva Persona</h2>
             <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest mb-8">Inscripción al padrón</p>
             
             <div className="space-y-5">
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 text-left">
                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Nombre Completo</label>
                 <input placeholder="Ej: Juan Perez" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-sm outline-none focus:border-brand-500 transition-all" value={newUser.displayName} onChange={e => setNewUser({...newUser, displayName: e.target.value})}/>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 text-left">
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Rol</label>
                   <select className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-[10px] font-black uppercase outline-none" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}>
                     <option value="miembro">Miembro</option><option value="servidor">Servidor</option><option value="lider">Líder</option><option value="pastor">Pastor</option>
                   </select>
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 text-left">
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Área Inicial</label>
                   <select className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-[10px] font-black uppercase outline-none" value={newUser.area} onChange={e => setNewUser({...newUser, area: e.target.value})}>
-                    {AREAS_OFICIALES.map(area => <option key={area} value={area.toLowerCase()}>{area}</option>)}
+                    {officialAreas.map(area => <option key={area} value={area.toLowerCase()}>{area}</option>)}
                   </select>
                 </div>
               </div>
 
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 text-left">
                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Teléfono WhatsApp</label>
                 <input placeholder="11..." className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold outline-none" value={newUser.phone} onChange={e => setNewUser({...newUser, phone: e.target.value})}/>
               </div>
 
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 text-left">
                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Dirección</label>
                 <input placeholder="Calle, Altura, Localidad" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold outline-none" value={newUser.address} onChange={e => setNewUser({...newUser, address: e.target.value})}/>
               </div>
@@ -398,7 +456,7 @@ export default function Directory() {
               </button>
 
               <button onClick={handleCreateUser} className="w-full bg-slate-900 text-white font-black py-5 rounded-[25px] mt-4 shadow-2xl uppercase text-xs tracking-[0.3em] flex items-center justify-center gap-2 active:scale-95 transition-all">
-                <UserCheck size={20}/> Confirmar Registro
+                <UserCheck size={20}/> Registrar Miembro
               </button>
             </div>
           </div>
