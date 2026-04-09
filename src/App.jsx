@@ -5,7 +5,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'; 
 import { Toaster } from 'sonner';
 import { Capacitor } from '@capacitor/core'; 
-import { App as CapApp } from '@capacitor/app'; // ✅ Importar plugin de App nativa
+import { App as CapApp } from '@capacitor/app'; 
 import OneSignalWeb from 'react-onesignal'; 
 
 // ✅ ONESIGNAL VERSIÓN 5
@@ -27,24 +27,48 @@ import Directory from './pages/Directory';
 import Ofrendar from './pages/Ofrendar'; 
 import Tesoreria from './pages/Tesoreria';
 
-// --- MANEJADOR DE NAVEGACIÓN Y EVENTOS NATIVOS ---
+// --- MANEJADOR DE NAVEGACIÓN (Puntos 1 y 6) ---
 function NavigationHandler() {
   const navigate = useNavigate();
-  const location = useLocation(); // Para saber dónde estamos parados
+  const location = useLocation();
   const isNative = Capacitor.isNativePlatform();
 
   useEffect(() => {
-    // 1. Lógica de Notificaciones (Deep Linking)
+    // 🛡️ FIX GLOBAL PARA IMÁGENES EN ANDROID (Punto 8)
+    // Inyectamos un estilo global para asegurar que el WebView de Android renderice bien las fotos
+    if (isNative && Capacitor.getPlatform() === 'android') {
+      const style = document.createElement('style');
+      style.innerHTML = `
+        img { 
+          display: block; 
+          max-width: 100%; 
+          content-visibility: auto; 
+        }
+        .mini-avatar { image-rendering: -webkit-optimize-contrast; }
+      `;
+      document.head.appendChild(style);
+    }
+
+    // 1. Lógica para NATIVO (Deep Linking & Oración Meet - Punto 6)
     if (isNative) {
       const handleNotificationClick = (event) => {
-        const route = event.notification.additionalData?.route;
+        const data = event.notification.additionalData;
+        
+        // Si la noti trae una URL externa (Ej: Meet para Oración)
+        if (data?.url) {
+          window.open(data.url, '_blank');
+          return;
+        }
+
+        // Navegación interna normal
+        const route = data?.route;
         if (route) navigate(route);
       };
+
       OneSignal.Notifications.addEventListener("click", handleNotificationClick);
 
-      // 🎯 2. ARREGLO BOTÓN ATRÁS ANDROID
-      const backListener = CapApp.addListener('backButton', ({ canGoBack }) => {
-        // Si estamos en el Home (raíz), cerramos la app. Si no, vamos atrás.
+      // 🎯 ARREGLO BOTÓN ATRÁS ANDROID
+      const backListener = CapApp.addListener('backButton', () => {
         if (location.pathname === '/') {
           CapApp.exitApp();
         } else {
@@ -54,12 +78,18 @@ function NavigationHandler() {
 
       return () => {
         OneSignal.Notifications.removeEventListener("click", handleNotificationClick);
-        backListener.remove(); // Limpiar el listener al desmontar
+        backListener.remove();
       };
-    } else {
-      // Lógica WEB
+    } 
+    // 2. Lógica para WEB
+    else {
       const handleWebClick = (event) => {
-        const route = event.notification.data?.route;
+        const data = event.notification.data;
+        if (data?.url) {
+          window.open(data.url, '_blank');
+          return;
+        }
+        const route = data?.route;
         if (route) navigate(route);
       };
       OneSignalWeb.Notifications.addEventListener("click", handleWebClick);
@@ -79,8 +109,14 @@ export default function App() {
     const initNotifications = async () => {
       try {
         if (isNative) {
+          // Robustez para iPhone (Punto 1)
           OneSignal.initialize("742a62cd-6d15-427f-8bab-5b8759fabd0a");
-          OneSignal.Notifications.requestPermission(true);
+          
+          // Pedimos permiso explícito (crucial para iOS)
+          OneSignal.Notifications.requestPermission(true).then((success) => {
+            console.log("Notificaciones habilitadas:", success);
+          });
+
         } else {
           await OneSignalWeb.init({
             appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",

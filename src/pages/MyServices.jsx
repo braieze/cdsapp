@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase';
 import { 
@@ -8,9 +8,9 @@ import {
 import { 
   Calendar, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, 
   History, ChevronRight, Loader2, RefreshCcw, Users, ShieldAlert, 
-  MessageSquare, HelpCircle, User, X, ArrowRightCircle, Check, Info
+  MessageSquare, HelpCircle, User, X, ArrowRightCircle, Check, Info, Lock
 } from 'lucide-react';
-import { format, isSameMonth, isPast, isFuture } from 'date-fns';
+import { format, isSameMonth, isPast, isFuture, subDays, startOfDay, isAfter } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 export default function MyServices() {
@@ -33,6 +33,9 @@ export default function MyServices() {
 
   const currentUser = auth.currentUser;
 
+  // 🎯 PUNTO 2: REFERENCIA DE TIEMPO (Para que no se borre hoy)
+  const ayer = useMemo(() => subDays(startOfDay(new Date()), 1), []);
+
   useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => setToast(null), 3000);
@@ -43,8 +46,6 @@ export default function MyServices() {
   // ✅ ESCUCHA ACTIVA DE CHATS PARA BADGES
   useEffect(() => {
     if (!currentUser || myEvents.length === 0) return;
-
-    // Creamos listeners para cada chat de mis eventos confirmados
     const unsubscribes = myEvents.map(event => {
       const notesRef = collection(db, `events/${event.id}/notes`);
       return onSnapshot(notesRef, (snapshot) => {
@@ -52,14 +53,9 @@ export default function MyServices() {
           const data = d.data();
           return !data.readBy?.includes(currentUser.uid);
         }).length;
-
-        setUnreadCounts(prev => ({
-          ...prev,
-          [event.id]: unread
-        }));
+        setUnreadCounts(prev => ({ ...prev, [event.id]: unread }));
       });
     });
-
     return () => unsubscribes.forEach(unsub => unsub());
   }, [myEvents, currentUser]);
 
@@ -97,21 +93,27 @@ export default function MyServices() {
             const q = query(collection(db, 'events'), orderBy('date', 'asc'));
             const unsubscribe = onSnapshot(q, (snapshot) => {
                 const eventsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                
+                // 🎯 PUNTO 2: Filtrar mis asignaciones que NO han pasado (Incluye hoy)
                 const myAssignments = eventsData.filter(event => {
                     if (!event.assignments) return false;
-                    return Object.values(event.assignments).some(p => Array.isArray(p) && p.includes(currentUser.displayName));
+                    const eventDate = new Date(event.date + 'T00:00:00');
+                    const belongs = Object.values(event.assignments).some(p => Array.isArray(p) && p.includes(currentUser.displayName));
+                    return belongs && isAfter(eventDate, ayer);
                 });
+
                 setMyEvents(myAssignments);
                 calculateStats(myAssignments, currentUser.displayName);
 
                 let futureEvents = [];
                 if (role === 'pastor' || role === 'lider') {
-                    futureEvents = eventsData.filter(event => isFuture(new Date(event.date + 'T00:00:00')));
+                    // Equipo ve eventos desde hoy en adelante
+                    futureEvents = eventsData.filter(event => isAfter(new Date(event.date + 'T00:00:00'), ayer));
                     setTeamEvents(futureEvents);
                 }
 
-                // ✅ SUMA TOTAL DE ALERTAS (Pendientes + Chats)
-                const myPendingCount = myAssignments.filter(e => !isPast(new Date(e.date + 'T00:00:00')) && (!e.confirmations || !e.confirmations[currentUser.displayName])).length;
+                // ✅ SUMA TOTAL DE ALERTAS
+                const myPendingCount = myAssignments.filter(e => (!e.confirmations || !e.confirmations[currentUser.displayName])).length;
                 const totalUnreadMessages = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
 
                 let teamIssuesCount = 0;
@@ -127,19 +129,28 @@ export default function MyServices() {
         } catch (error) { setLoading(false); }
     };
     fetchData();
-  }, [currentUser, activeTab, unreadCounts]); // Re-ejecutar cuando cambien los conteos de chat
+  }, [currentUser, activeTab, unreadCounts, ayer]);
 
   const calculateStats = (events, myName) => {
     const now = new Date();
     const active = events.filter(e => e.confirmations?.[myName] !== 'declined');
     const thisMonth = active.filter(e => isSameMonth(new Date(e.date + 'T00:00:00'), now));
-    const past = active.filter(e => isPast(new Date(e.date + 'T00:00:00')));
-    const last = past.length > 0 ? past[past.length - 1] : null;
-    const future = active.filter(e => isFuture(new Date(e.date + 'T00:00:00')));
+    
+    // El "Próximo" ahora detecta correctamente si es hoy
+    const future = active.filter(e => isAfter(new Date(e.date + 'T00:00:00'), subDays(now, 1)));
     const next = future.length > 0 ? future[0] : null;
+    
     let days = null;
-    if (next) days = Math.ceil(Math.abs(new Date(next.date + 'T00:00:00') - now) / (1000 * 60 * 60 * 24));
-    setStats({ monthCount: thisMonth.length, lastServiceDate: last ? format(new Date(last.date + 'T00:00:00'), 'd MMM', { locale: es }) : '-', nextServiceDays: days });
+    if (next) {
+      const diff = Math.ceil((new Date(next.date + 'T00:00:00') - startOfDay(now)) / (1000 * 60 * 60 * 24));
+      days = diff === 0 ? "HOY" : diff;
+    }
+
+    setStats({ 
+      monthCount: thisMonth.length, 
+      lastServiceDate: '-', // Calculado en historial si fuera necesario
+      nextServiceDays: days 
+    });
   };
 
   const executeResponse = async () => {
@@ -200,16 +211,16 @@ export default function MyServices() {
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-brand-600" size={32}/></div>;
 
   return (
-    <div className="pb-24 pt-6 px-4 bg-slate-50 min-h-screen animate-fade-in relative">
+    <div className="pb-24 pt-6 px-4 bg-slate-50 min-h-screen animate-fade-in relative font-outfit text-left">
       <div className="mb-6">
-        <h1 className="text-2xl font-black text-slate-800 mb-1">Hola, {currentUser?.displayName?.split(' ')[0]} 👋</h1>
+        <h1 className="text-2xl font-black text-slate-900 mb-1">Hola, {currentUser?.displayName?.split(' ')[0]} 👋</h1>
         {(userRole === 'pastor' || userRole === 'lider') && (
             <div className="flex p-1 bg-white border border-slate-200 rounded-xl mt-4 shadow-sm relative">
-                <button onClick={() => setActiveTab('me')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all relative ${activeTab === 'me' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500'}`}>
-                    Mis Turnos {alerts.me > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white flex items-center justify-center rounded-full text-[9px] border-2 border-white animate-pulse">{alerts.me}</span>}
+                <button onClick={() => setActiveTab('me')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all relative ${activeTab === 'me' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500'}`}>
+                    Mis Turnos {alerts.me > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white flex items-center justify-center rounded-full text-[9px] border-2 border-white animate-pulse font-black">{alerts.me}</span>}
                 </button>
-                <button onClick={() => setActiveTab('team')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 relative ${activeTab === 'team' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500'}`}>
-                    <Users size={14}/> Mi Equipo {alerts.team > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 text-white flex items-center justify-center rounded-full text-[9px] border-2 border-white">{alerts.team}</span>}
+                <button onClick={() => setActiveTab('team')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 relative ${activeTab === 'team' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500'}`}>
+                    <Users size={14}/> Mi Equipo {alerts.team > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 text-white flex items-center justify-center rounded-full text-[9px] border-2 border-white font-black">{alerts.team}</span>}
                 </button>
             </div>
         )}
@@ -218,41 +229,47 @@ export default function MyServices() {
       {activeTab === 'me' && (
           <div className="animate-fade-in">
               <div className="grid grid-cols-2 gap-3 mb-8">
-                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-28 relative overflow-hidden"><div className="absolute top-0 right-0 p-3 opacity-10 text-brand-600"><TrendingUp size={60}/></div><span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Este Mes</span><div className="flex items-baseline gap-1"><span className="text-4xl font-black text-slate-800">{stats.monthCount}</span><span className="text-xs font-medium text-slate-500">servicios</span></div></div>
-                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-28 relative overflow-hidden"><div className="absolute top-0 right-0 p-3 opacity-10 text-purple-600"><Clock size={60}/></div><span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{stats.nextServiceDays ? 'Próximo' : 'Último'}</span><div>{stats.nextServiceDays ? <><span className="text-4xl font-black text-slate-800">{stats.nextServiceDays}</span><span className="text-xs font-medium text-slate-500"> días</span></> : <span className="text-lg font-bold text-slate-700">{stats.lastServiceDate || '-'}</span>}</div></div>
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-28 relative overflow-hidden"><div className="absolute top-0 right-0 p-3 opacity-10 text-brand-600"><TrendingUp size={60}/></div><span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Este Mes</span><div className="flex items-baseline gap-1"><span className="text-4xl font-black text-slate-800">{stats.monthCount}</span><span className="text-xs font-medium text-slate-500 uppercase">servicios</span></div></div>
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-28 relative overflow-hidden"><div className="absolute top-0 right-0 p-3 opacity-10 text-purple-600"><Clock size={60}/></div><span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{stats.nextServiceDays === 'HOY' ? 'Atención' : 'Faltan'}</span><div><span className="text-4xl font-black text-slate-800">{stats.nextServiceDays || '-'}</span>{stats.nextServiceDays !== 'HOY' && <span className="text-xs font-medium text-slate-500 uppercase"> días</span>}</div></div>
               </div>
 
-              {myEvents.filter(e => !isPast(new Date(e.date + 'T00:00:00')) && (!e.confirmations || !e.confirmations[currentUser.displayName])).map(event => (
-                  <div key={event.id} className="bg-slate-900 rounded-3xl p-6 text-white shadow-xl mb-6 relative overflow-hidden">
+              {/* SERVICIOS PENDIENTES DE RESPUESTA */}
+              {myEvents.filter(e => (!e.confirmations || !e.confirmations[currentUser.displayName])).map(event => (
+                  <div key={event.id} className="bg-slate-900 rounded-[35px] p-7 text-white shadow-xl mb-6 relative overflow-hidden">
                       <div className="relative z-10">
-                          <span className="inline-block px-2 py-1 rounded bg-white/10 text-[10px] font-black uppercase mb-3 border border-white/10">{getMyRole(event)}</span>
-                          <h3 className="text-2xl font-black mb-1">{event.title}</h3>
-                          <div className="flex flex-col gap-1 text-sm text-slate-300 mb-6 font-bold">
+                          <span className="inline-block px-3 py-1 rounded-full bg-white/10 text-[9px] font-black uppercase mb-4 border border-white/10 tracking-widest">{getMyRole(event)}</span>
+                          <h3 className="text-2xl font-black mb-2 tracking-tighter uppercase">{event.title}</h3>
+                          <div className="flex flex-col gap-2 text-sm text-slate-300 mb-8 font-bold">
                               <div className="flex items-center gap-2"><Calendar size={14} className="text-brand-400"/> {format(new Date(event.date + 'T00:00:00'), 'EEEE d MMMM', { locale: es })}</div>
                               <div className="flex items-center gap-2"><Clock size={14} className="text-brand-400"/> {event.time} hs</div>
                           </div>
                           <div className="flex gap-3">
-                              <button onClick={() => setConfirmAction({ eventId: event.id, status: 'confirmed', title: event.title })} className="flex-1 bg-brand-500 text-white py-3 rounded-2xl text-xs font-black uppercase shadow-lg active:scale-95">Confirmar ✓</button>
-                              <button onClick={() => setConfirmAction({ eventId: event.id, status: 'declined', title: event.title })} className="flex-1 bg-white/10 text-white py-3 rounded-2xl text-xs font-black uppercase border border-white/10">No puedo</button>
+                              <button onClick={() => setConfirmAction({ eventId: event.id, status: 'confirmed', title: event.title })} className="flex-1 bg-brand-500 text-white py-4 rounded-2xl text-[10px] font-black uppercase shadow-lg active:scale-95 transition-transform tracking-widest">Confirmar ✓</button>
+                              <button onClick={() => setConfirmAction({ eventId: event.id, status: 'declined', title: event.title })} className="flex-1 bg-white/10 text-white py-4 rounded-2xl text-[10px] font-black uppercase border border-white/10 active:scale-95 transition-transform tracking-widest">No puedo</button>
                           </div>
                       </div>
                   </div>
               ))}
 
-              <h2 className="text-sm font-black text-slate-800 uppercase tracking-wide mb-3">Agenda Confirmada</h2>
-              <div className="space-y-4 mb-8">
-                {myEvents.filter(e => !isPast(new Date(e.date + 'T00:00:00')) && e.confirmations && e.confirmations[currentUser.displayName] === 'confirmed').map(event => (
-                    <div key={event.id} className="bg-white p-5 rounded-[32px] border border-slate-100 shadow-sm flex flex-col gap-4">
+              <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 px-2">Agenda Confirmada</h2>
+              <div className="space-y-4 mb-10">
+                {myEvents.filter(e => e.confirmations && e.confirmations[currentUser.displayName] === 'confirmed').map(event => (
+                    <div key={event.id} className="bg-white p-6 rounded-[35px] border border-slate-100 shadow-sm flex flex-col gap-5">
                         <div className="flex items-center gap-4">
-                            <div className="flex flex-col items-center justify-center w-12 h-12 bg-green-50 rounded-xl text-green-600 border border-green-100"><span className="text-[10px] font-bold uppercase">{format(new Date(event.date + 'T00:00:00'), 'MMM', { locale: es })}</span><span className="text-lg font-black">{format(new Date(event.date + 'T00:00:00'), 'dd')}</span></div>
-                            <div className="flex-1"><h4 className="font-bold text-slate-800 text-sm">{event.title}</h4><p className="text-xs text-slate-500 font-medium">{getMyRole(event)}</p><div className="flex items-center gap-1 mt-1 text-[10px] text-green-600 font-black uppercase"><CheckCircle size={12}/> Confirmado</div></div>
+                            <div className="flex flex-col items-center justify-center w-14 h-14 bg-green-50 rounded-2xl text-green-600 border border-green-100"><span className="text-[10px] font-black uppercase">{format(new Date(event.date + 'T00:00:00'), 'MMM', { locale: es })}</span><span className="text-xl font-black">{format(new Date(event.date + 'T00:00:00'), 'dd')}</span></div>
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-black text-slate-900 text-sm truncate uppercase tracking-tight">{event.title}</h4>
+                              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{getMyRole(event)}</p>
+                              <div className="flex items-center gap-1 mt-1 text-[9px] text-green-600 font-black uppercase tracking-widest"><CheckCircle size={10}/> Servicio Confirmado</div>
+                            </div>
                         </div>
-                        {/* ✅ BOTÓN DE CHAT CON BADGE PERSONALIZADO */}
-                        <button onClick={() => navigate(`/servicios/${event.id}`)} className="w-full bg-brand-600 hover:bg-brand-700 text-white font-black py-2.5 rounded-xl text-[10px] uppercase flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 relative">
-                            <MessageSquare size={14}/> 
-                            IR AL CHAT DEL SERVICIO
+                        
+                        {/* ✅ ACCESO AL CHAT (Punto 2) */}
+                        <button onClick={() => navigate(`/servicios/${event.id}`)} className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl text-[10px] uppercase flex items-center justify-center gap-3 shadow-xl transition-all active:scale-95 relative tracking-widest">
+                            <MessageSquare size={16}/> 
+                            CHAT DE SERVICIO
                             {unreadCounts[event.id] > 0 && (
-                                <span className="absolute -top-2 -right-2 bg-red-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] border-2 border-white shadow-md animate-bounce">
+                                <span className="absolute -top-2 -right-2 bg-red-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-[10px] border-2 border-white shadow-md animate-bounce font-black">
                                     {unreadCounts[event.id]}
                                 </span>
                             )}
@@ -261,17 +278,17 @@ export default function MyServices() {
                 ))}
               </div>
 
-              {myEvents.filter(e => !isPast(new Date(e.date + 'T00:00:00')) && e.confirmations && e.confirmations[currentUser.displayName] === 'declined').length > 0 && (
+              {myEvents.filter(e => e.confirmations && e.confirmations[currentUser.displayName] === 'declined').length > 0 && (
                   <div className="mb-6">
-                      <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Servicios Rechazados</h2>
+                      <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 px-2">Bajas Notificadas</h2>
                       <div className="space-y-3">
-                        {myEvents.filter(e => !isPast(new Date(e.date + 'T00:00:00')) && e.confirmations && e.confirmations[currentUser.displayName] === 'declined').map(event => (
-                            <div key={event.id} className="bg-white/40 p-4 rounded-2xl border border-slate-100 flex items-center justify-between opacity-70 grayscale-[0.5]">
-                                <div className="flex items-center gap-3">
-                                    <div className="bg-slate-100 p-2 rounded-lg text-slate-400"><XCircle size={18}/></div>
-                                    <div><h4 className="font-bold text-slate-500 text-xs line-through">{event.title}</h4><p className="text-[10px] text-slate-400 font-bold uppercase">{format(new Date(event.date + 'T00:00:00'), 'dd MMM', { locale: es })}</p></div>
+                        {myEvents.filter(e => e.confirmations && e.confirmations[currentUser.displayName] === 'declined').map(event => (
+                            <div key={event.id} className="bg-white/50 p-5 rounded-[28px] border border-slate-100 flex items-center justify-between opacity-60 grayscale-[0.5]">
+                                <div className="flex items-center gap-4 min-w-0">
+                                    <div className="bg-slate-100 p-3 rounded-xl text-slate-400 shrink-0"><XCircle size={20}/></div>
+                                    <div className="min-w-0"><h4 className="font-black text-slate-600 text-xs truncate uppercase">{event.title}</h4><p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">{format(new Date(event.date + 'T00:00:00'), 'dd MMM', { locale: es })}</p></div>
                                 </div>
-                                <button onClick={() => handleUndo(event.id)} className="text-[9px] font-black text-brand-600 flex items-center gap-1 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm active:scale-90 transition-all uppercase"><RefreshCcw size={10}/> Reconsiderar</button>
+                                <button onClick={() => handleUndo(event.id)} className="text-[9px] font-black text-brand-600 flex items-center gap-2 bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm active:scale-90 transition-all uppercase shrink-0"><RefreshCcw size={12}/> Reconsiderar</button>
                             </div>
                         ))}
                       </div>
@@ -282,9 +299,9 @@ export default function MyServices() {
 
       {activeTab === 'team' && (
           <div className="animate-slide-up">
-              <div className="bg-slate-900 text-white p-6 rounded-[35px] mb-8 shadow-xl">
-                  <h3 className="font-black text-xl mb-1">Panel de Liderazgo</h3>
-                  <p className="text-sm text-slate-400 font-medium">Supervisión técnica de asistencia.</p>
+              <div className="bg-slate-900 text-white p-7 rounded-[40px] mb-8 shadow-2xl flex flex-col gap-1">
+                  <h3 className="font-black text-2xl uppercase tracking-tighter leading-none">Supervisión</h3>
+                  <p className="text-[10px] text-brand-400 font-black uppercase tracking-[0.2em]">Panel de Control de Liderazgo</p>
               </div>
               <div className="space-y-5">
                   {teamEvents.map(event => {
@@ -293,18 +310,20 @@ export default function MyServices() {
                       const hasIssues = status.declined > 0;
                       const progress = Math.round(((status.confirmed + status.declined) / status.total) * 100);
                       return (
-                          <div key={event.id} className={`bg-white p-6 rounded-[35px] border shadow-sm transition-all ${hasIssues ? 'border-red-100 bg-red-50/20' : 'border-slate-50'}`}>
-                              <div className="flex justify-between items-start mb-4">
-                                  <div><h4 className="font-black text-slate-800 text-base">{event.title}</h4><p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{format(new Date(event.date + 'T00:00:00'), 'EEEE d MMMM', { locale: es })}</p></div>
-                                  {hasIssues && <div className="bg-red-100 text-red-600 px-2 py-1 rounded-lg text-[9px] font-black flex items-center gap-1 uppercase"><ShieldAlert size={12}/> {status.declined} Baja(s)</div>}
+                          <div key={event.id} className={`bg-white p-6 rounded-[35px] border-2 shadow-sm transition-all ${hasIssues ? 'border-red-100 bg-red-50/10' : 'border-slate-50'}`}>
+                              <div className="flex justify-between items-start mb-5">
+                                  <div className="min-w-0 flex-1"><h4 className="font-black text-slate-900 text-base uppercase tracking-tight truncate leading-tight">{event.title}</h4><p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">{format(new Date(event.date + 'T00:00:00'), 'EEEE d MMMM', { locale: es })}</p></div>
+                                  {hasIssues && <div className="bg-red-500 text-white px-3 py-1.5 rounded-full text-[9px] font-black flex items-center gap-1.5 uppercase shadow-lg shadow-red-100 shrink-0"><ShieldAlert size={12}/> {status.declined} Baja(s)</div>}
                               </div>
-                              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mb-4"><div className={`h-full rounded-full transition-all duration-700 ${hasIssues ? 'bg-amber-400' : 'bg-brand-500'}`} style={{ width: `${progress}%` }}></div></div>
-                              <div className="flex gap-2 mt-4">
-                                <button onClick={() => setShowAttendanceEvent(event)} className="flex-1 bg-slate-50 hover:bg-slate-100 text-slate-600 py-3 rounded-2xl text-[10px] font-black uppercase flex items-center justify-center gap-2 border border-slate-100 transition-all active:scale-95"><Users size={14}/> DETALLE ASISTENCIA</button>
-                                <button onClick={() => navigate(`/servicios/${event.id}`)} className="p-3 bg-brand-50 text-brand-600 rounded-2xl hover:bg-brand-100 transition-colors relative">
-                                    <MessageSquare size={18}/>
+                              <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden mb-6 shadow-inner"><div className={`h-full rounded-full transition-all duration-1000 ${hasIssues ? 'bg-amber-400' : 'bg-emerald-500'}`} style={{ width: `${progress}%` }}></div></div>
+                              <div className="flex gap-2">
+                                <button onClick={() => setShowAttendanceEvent(event)} className="flex-1 bg-slate-50 hover:bg-slate-100 text-slate-600 py-4 rounded-2xl text-[10px] font-black uppercase flex items-center justify-center gap-2 border border-slate-100 transition-all active:scale-95 tracking-widest">DETALLES</button>
+                                
+                                {/* ✅ PUNTO 2: ACCESO AL CHAT PARA LÍDERES */}
+                                <button onClick={() => navigate(`/servicios/${event.id}`)} className="p-4 bg-brand-50 text-brand-600 rounded-2xl hover:bg-brand-100 transition-colors relative active:scale-90">
+                                    <MessageSquare size={20}/>
                                     {unreadCounts[event.id] > 0 && (
-                                        <span className="absolute -top-1 -right-1 bg-red-500 w-4 h-4 rounded-full flex items-center justify-center text-[8px] text-white border border-white">
+                                        <span className="absolute -top-1.5 -right-1.5 bg-red-500 w-5 h-5 rounded-full flex items-center justify-center text-[9px] text-white border-2 border-white font-black shadow-md">
                                             {unreadCounts[event.id]}
                                         </span>
                                     )}
@@ -317,21 +336,22 @@ export default function MyServices() {
           </div>
       )}
 
+      {/* CONFIRMACIÓN DE ACCIÓN */}
       {confirmAction && (
-        <div className="fixed inset-0 z-[300] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6 animate-fade-in">
-          <div className="bg-white w-full max-w-xs rounded-[35px] p-8 shadow-2xl animate-scale-in text-center">
-            <div className={`w-16 h-16 rounded-full mx-auto mb-6 flex items-center justify-center ${confirmAction.status === 'confirmed' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
-              {confirmAction.status === 'confirmed' ? <CheckCircle size={32}/> : <AlertCircle size={32}/>}
+        <div className="fixed inset-0 z-[500] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-8 animate-fade-in">
+          <div className="bg-white w-full max-w-xs rounded-[45px] p-10 shadow-2xl animate-scale-in text-center">
+            <div className={`w-20 h-20 rounded-[28px] mx-auto mb-6 flex items-center justify-center ${confirmAction.status === 'confirmed' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
+              {confirmAction.status === 'confirmed' ? <CheckCircle size={40} strokeWidth={3}/> : <AlertCircle size={40} strokeWidth={3}/>}
             </div>
-            <h4 className="font-black text-slate-800 text-lg mb-2">
-              {confirmAction.status === 'confirmed' ? '¿Confirmar asistencia?' : '¿Informar ausencia?'}
+            <h4 className="font-black text-slate-900 text-xl mb-2 tracking-tighter uppercase leading-tight">
+              {confirmAction.status === 'confirmed' ? 'Confirmar Asistencia' : 'Informar Ausencia'}
             </h4>
-            <p className="text-xs text-slate-500 font-bold mb-8 uppercase tracking-widest">{confirmAction.title}</p>
+            <p className="text-[10px] text-slate-400 font-black mb-10 uppercase tracking-widest leading-relaxed px-2">{confirmAction.title}</p>
             <div className="flex flex-col gap-3">
-              <button onClick={executeResponse} className={`w-full py-3.5 rounded-2xl font-black text-xs uppercase shadow-lg ${confirmAction.status === 'confirmed' ? 'bg-emerald-500 text-white shadow-emerald-200' : 'bg-rose-500 text-white shadow-rose-200'}`}>
-                Confirmar Acción
+              <button onClick={executeResponse} className={`w-full py-5 rounded-[22px] font-black text-xs uppercase shadow-xl ${confirmAction.status === 'confirmed' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}`}>
+                Sí, Confirmar
               </button>
-              <button onClick={() => setConfirmAction(null)} className="w-full py-3.5 rounded-2xl font-black text-xs uppercase text-slate-400 bg-slate-50 hover:bg-slate-100 transition-colors">
+              <button onClick={() => setConfirmAction(null)} className="w-full py-5 rounded-[22px] font-black text-xs uppercase text-slate-400 bg-slate-50 active:scale-95 transition-transform">
                 Cancelar
               </button>
             </div>
@@ -339,48 +359,56 @@ export default function MyServices() {
         </div>
       )}
 
-      {toast && (
-        <div className="fixed bottom-24 left-6 right-6 z-[400] animate-slide-up">
-          <div className={`flex items-center gap-3 px-6 py-4 rounded-[22px] shadow-2xl border ${toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-400' : toast.type === 'error' ? 'bg-rose-600 text-white border-rose-400' : 'bg-slate-800 text-white border-slate-600'}`}>
-            {toast.type === 'success' ? <Check size={18}/> : <Info size={18}/>}
-            <span className="text-[11px] font-black uppercase tracking-widest">{toast.message}</span>
-          </div>
-        </div>
-      )}
-
+      {/* MODAL DETALLE ASISTENCIA (PUNTO 8: FIX IMÁGENES) */}
       {showAttendanceEvent && (() => {
         const grouped = getGroupedAttendance(showAttendanceEvent);
         return (
-          <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in" onClick={() => setShowAttendanceEvent(null)}>
-            <div className="bg-white w-full sm:max-w-md rounded-t-[40px] sm:rounded-[40px] max-h-[85vh] overflow-hidden flex flex-col shadow-2xl animate-slide-up" onClick={e => e.stopPropagation()}>
-              <div className="p-6 border-b border-slate-50 flex justify-between items-center bg-slate-50/50 flex-shrink-0">
-                <div><h3 className="font-black text-slate-800 text-lg leading-tight">{showAttendanceEvent.title}</h3><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{format(new Date(showAttendanceEvent.date + 'T00:00:00'), 'd MMMM yyyy', {locale: es})}</p></div>
-                <button onClick={() => setShowAttendanceEvent(null)} className="p-2 bg-white rounded-full shadow-sm text-slate-400"><X size={20}/></button>
+          <div className="fixed inset-0 z-[600] bg-slate-900/90 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in" onClick={() => setShowAttendanceEvent(null)}>
+            <div className="bg-white w-full sm:max-w-md rounded-t-[50px] sm:rounded-[45px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-slide-up" onClick={e => e.stopPropagation()}>
+              <div className="p-8 border-b border-slate-50 flex justify-between items-center bg-white flex-shrink-0">
+                <div className="text-left">
+                  <h3 className="font-black text-slate-900 text-xl leading-none uppercase tracking-tighter">{showAttendanceEvent.title}</h3>
+                  <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest mt-2">{format(new Date(showAttendanceEvent.date + 'T00:00:00'), 'd MMMM yyyy', {locale: es})}</p>
+                </div>
+                <button onClick={() => setShowAttendanceEvent(null)} className="p-3 bg-slate-50 rounded-full text-slate-400 active:scale-75 transition-all"><X size={24}/></button>
               </div>
-              <div className="flex-1 overflow-y-auto p-6 space-y-8 pb-10">
+              <div className="flex-1 overflow-y-auto p-8 space-y-10 pb-12 no-scrollbar">
                 {grouped.confirmed.length > 0 && (
-                  <div><h4 className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em] mb-4 flex items-center gap-2 px-1"><CheckCircle size={14}/> Listos para servir ({grouped.confirmed.length})</h4><div className="space-y-3">{grouped.confirmed.map((item, idx) => (
-                        <div key={idx} className="flex items-center gap-4 bg-emerald-50/30 p-3 rounded-2xl border border-emerald-100/50"><img src={item.photo || `https://ui-avatars.com/api/?name=${item.name}&background=10b981&color=fff`} className="w-10 h-10 rounded-xl object-cover shadow-sm border border-white"/><div className="flex-1 min-w-0"><h4 className="font-black text-slate-800 text-xs truncate">{item.name}</h4><p className="text-[9px] font-bold text-emerald-600 uppercase tracking-tighter truncate">{item.role}</p></div><CheckCircle size={16} className="text-emerald-500" /></div>
+                  <div className="text-left"><h4 className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em] mb-5 flex items-center gap-2 px-1"><CheckCircle size={16}/> Listos para servir ({grouped.confirmed.length})</h4><div className="space-y-4">{grouped.confirmed.map((item, idx) => (
+                        <div key={idx} className="flex items-center gap-4 bg-emerald-50/20 p-4 rounded-[24px] border border-emerald-100/50"><div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white shadow-md bg-emerald-100"><img src={item.photo || `https://ui-avatars.com/api/?name=${item.name}&background=10b981&color=fff`} className="w-full h-full object-cover" referrerPolicy="no-referrer"/></div><div className="flex-1 min-w-0"><h4 className="font-black text-slate-800 text-xs truncate uppercase">{item.name}</h4><p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest truncate">{item.role}</p></div><CheckCircle size={18} className="text-emerald-500 shrink-0" /></div>
                       ))}</div></div>
                 )}
                 {grouped.declined.length > 0 && (
-                  <div><h4 className="text-[10px] font-black text-rose-600 uppercase tracking-[0.2em] mb-4 flex items-center gap-2 px-1"><XCircle size={14}/> Bajas confirmadas ({grouped.declined.length})</h4><div className="space-y-3">{grouped.declined.map((item, idx) => (
-                        <div key={idx} className="flex items-center gap-4 bg-rose-50/30 p-3 rounded-2xl border border-rose-100/50"><img src={item.photo || `https://ui-avatars.com/api/?name=${item.name}&background=ef4444&color=fff`} className="w-10 h-10 rounded-xl object-cover grayscale-[0.5]"/><div className="flex-1 min-w-0"><h4 className="font-black text-slate-500 text-xs truncate line-through">{item.name}</h4><p className="text-[9px] font-bold text-rose-600 uppercase tracking-tighter truncate">{item.role}</p></div><button onClick={() => navigate(`/calendario/${showAttendanceEvent.id}`)} className="bg-white text-rose-600 p-2 rounded-lg border border-rose-200 shadow-sm"><ArrowRightCircle size={16}/></button></div>
+                  <div className="text-left"><h4 className="text-[10px] font-black text-rose-600 uppercase tracking-[0.2em] mb-5 flex items-center gap-2 px-1"><XCircle size={16}/> Bajas confirmadas ({grouped.declined.length})</h4><div className="space-y-4">{grouped.declined.map((item, idx) => (
+                        <div key={idx} className="flex items-center gap-4 bg-rose-50/20 p-4 rounded-[24px] border border-rose-100/50 grayscale-[0.3]"><div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white shadow-md bg-rose-100"><img src={item.photo || `https://ui-avatars.com/api/?name=${item.name}&background=ef4444&color=fff`} className="w-full h-full object-cover" referrerPolicy="no-referrer"/></div><div className="flex-1 min-w-0"><h4 className="font-black text-slate-500 text-xs truncate uppercase line-through">{item.name}</h4><p className="text-[9px] font-black text-rose-600 uppercase tracking-widest truncate">{item.role}</p></div></div>
                       ))}</div></div>
                 )}
                 {grouped.pending.length > 0 && (
-                  <div><h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2 px-1"><HelpCircle size={14}/> Pendientes ({grouped.pending.length})</h4><div className="space-y-3">{grouped.pending.map((item, idx) => (
-                        <div key={idx} className="flex items-center gap-4 bg-slate-50 p-3 rounded-2xl border border-slate-100"><img src={item.photo || `https://ui-avatars.com/api/?name=${item.name}&background=94a3b8&color=fff`} className="w-10 h-10 rounded-xl object-cover opacity-50"/><div className="flex-1 min-w-0"><h4 className="font-black text-slate-600 text-xs truncate">{item.name}</h4><p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter truncate">{item.role}</p></div><HelpCircle size={16} className="text-slate-200 animate-pulse" /></div>
+                  <div className="text-left"><h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-5 flex items-center gap-2 px-1"><HelpCircle size={16}/> Pendientes ({grouped.pending.length})</h4><div className="space-y-4">{grouped.pending.map((item, idx) => (
+                        <div key={idx} className="flex items-center gap-4 bg-slate-50 p-4 rounded-[24px] border border-slate-100"><div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white shadow-md bg-slate-200"><img src={item.photo || `https://ui-avatars.com/api/?name=${item.name}&background=94a3b8&color=fff`} className="w-full h-full object-cover opacity-50" referrerPolicy="no-referrer"/></div><div className="flex-1 min-w-0"><h4 className="font-black text-slate-700 text-xs truncate uppercase">{item.name}</h4><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">{item.role}</p></div><HelpCircle size={18} className="text-slate-200 animate-pulse" /></div>
                       ))}</div></div>
                 )}
               </div>
-              <div className="p-6 bg-slate-900 text-white flex justify-between items-center flex-shrink-0 rounded-t-[30px]"><p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60">Resumen</p><p className="text-sm font-black">{grouped.confirmed.length} / {grouped.confirmed.length + grouped.declined.length + grouped.pending.length}</p></div>
+              <div className="p-8 bg-slate-900 text-white flex justify-between items-center flex-shrink-0 rounded-t-[40px] shadow-2xl">
+                  <div className="text-left"><p className="text-[9px] font-black uppercase tracking-[0.2em] opacity-50">Estado General</p><p className="text-lg font-black tracking-widest">{grouped.confirmed.length} / {grouped.confirmed.length + grouped.declined.length + grouped.pending.length}</p></div>
+                  <button onClick={() => setShowAttendanceEvent(null)} className="px-8 py-3 bg-white/10 rounded-2xl text-[10px] font-black uppercase border border-white/10 active:scale-95 transition-transform">Entendido</button>
+              </div>
             </div>
           </div>
         );
       })()}
 
-      <button onClick={() => navigate('/historial')} className="w-full py-6 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-brand-600 flex items-center justify-center gap-2"><History size={14}/> Ver historial completo</button>
+      {/* TOASTS */}
+      {toast && (
+        <div className="fixed bottom-28 left-6 right-6 z-[1000] animate-slide-up">
+          <div className={`flex items-center gap-4 px-8 py-5 rounded-[28px] shadow-2xl border-2 ${toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-400' : toast.type === 'error' ? 'bg-rose-600 text-white border-rose-400' : 'bg-slate-900 text-white border-slate-700'}`}>
+            {toast.type === 'success' ? <CheckCircle size={24}/> : <AlertCircle size={24}/>}
+            <span className="text-[11px] font-black uppercase tracking-widest leading-none">{toast.message}</span>
+          </div>
+        </div>
+      )}
+
+      <button onClick={() => navigate('/historial')} className="w-full py-8 text-center text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] hover:text-brand-600 flex items-center justify-center gap-3 transition-all active:scale-95"><History size={16}/> Ver mi historial completo</button>
     </div>
   );
 }
