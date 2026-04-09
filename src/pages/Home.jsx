@@ -5,7 +5,7 @@ import {
   MessageCircle, MoreVertical, X, Edit3, Trash2, 
   PlusCircle, AlertTriangle, Calendar, Heart, Send, 
   AlertCircle, CheckCircle, Flame, PrayingHand, ThumbsUp, 
-  Archive, ChevronDown, Sparkles
+  Archive, ChevronDown, Sparkles, Smile, Frown, Sun, CloudRain, Anchor, HelpCircle
 } from 'lucide-react';
 import CreatePostModal from '../components/CreatePostModal';
 import TopBar from '../components/TopBar';
@@ -18,53 +18,21 @@ import {
 import { Capacitor } from '@capacitor/core'; 
 import { format } from 'date-fns';
 
-// --- SUBCOMPONENTES REFINADOS ---
-
-const PostSkeleton = () => (
-  <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm animate-pulse mb-4">
-    <div className="flex gap-4 mb-4">
-      <div className="w-14 h-14 bg-slate-200 rounded-2xl"></div>
-      <div className="flex-1 space-y-3 py-2">
-        <div className="h-4 bg-slate-200 rounded w-1/3"></div>
-        <div className="h-3 bg-slate-200 rounded w-1/4"></div>
-      </div>
-    </div>
-    <div className="h-4 bg-slate-200 rounded w-full mb-2"></div>
-    <div className="h-4 bg-slate-200 rounded w-2/3"></div>
-  </div>
-);
-
-function CommentPreview({ postId, onClick }) {
-  const [previewComments, setPreviewComments] = useState([]);
-  useEffect(() => {
-    if (!postId) return;
-    const q = query(collection(db, `posts/${postId}/comments`), orderBy('createdAt', 'desc'), limit(2));
-    const unsubscribe = onSnapshot(q, (snap) => setPreviewComments(snap.docs.map(d => d.data())));
-    return () => unsubscribe();
-  }, [postId]);
-
-  if (previewComments.length === 0) return null;
-  return (
-    <div className="bg-slate-50/80 rounded-2xl p-4 cursor-pointer hover:bg-slate-100 transition-colors mt-3 border border-slate-100" onClick={(e) => { e.stopPropagation(); onClick(); }}>
-      {previewComments.map((c, idx) => (
-        <div key={idx} className="flex gap-2 mb-2 last:mb-0 text-left items-start">
-          <span className="font-black text-[10px] text-slate-800 uppercase mt-0.5 whitespace-nowrap">{c.name?.split(' ')[0]}:</span>
-          <span className="text-xs text-slate-600 line-clamp-1 font-medium">{c.text}</span>
-        </div>
-      ))}
-      <div className="mt-2 text-[9px] font-black text-brand-600 uppercase tracking-widest flex items-center gap-1">
-        <MessageCircle size={10}/> Ver conversación completa
-      </div>
-    </div>
-  );
-}
+// --- CONFIGURACIÓN DE ÁNIMOS (Moods) ---
+const MOODS = [
+  { id: 'Fortaleza', label: 'Fortaleza', icon: Anchor, color: 'bg-blue-500' },
+  { id: 'Gozo', label: 'Gozo', icon: Sun, color: 'bg-amber-500' },
+  { id: 'Necesidad', label: 'Necesidad', icon: CloudRain, color: 'bg-slate-500' },
+  { id: 'Paz', label: 'Paz', icon: Smile, color: 'bg-emerald-500' },
+];
 
 export default function Home() {
   const navigate = useNavigate();
   const { dbUser } = useOutletContext();
   const currentUser = auth.currentUser;
   
-  const isModerator = dbUser?.role === 'pastor' || dbUser?.role === 'lider';
+  const isPastor = dbUser?.role === 'pastor';
+  const isModerator = isPastor || dbUser?.role === 'lider';
   const canCreatePost = isModerator || dbUser?.area === 'recepcion';
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -72,25 +40,30 @@ export default function Home() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('Todo');
-  const [visibleCount, setVisibleCount] = useState(4); // ✅ Paginación (Punto 5)
+  const [selectedMood, setSelectedMood] = useState(null); // ✅ Nuevo: Filtro por Ánimo
+  const [visibleCount, setVisibleCount] = useState(4);
   const [birthdays, setBirthdays] = useState([]);
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [editingPost, setEditingPost] = useState(null);
 
-  // 1. CARGA DE POSTS (Excluyendo Archivados por defecto)
+  // 1. CARGA DE POSTS CON PRIVACIDAD (Punto 1)
   useEffect(() => {
     const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const postsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // Orden: Fijados arriba, luego por fecha
-      postsData.sort((a, b) => (a.isPinned === b.isPinned ? 0 : a.isPinned ? -1 : 1));
-      setPosts(postsData);
+      
+      // ✅ PRIVACIDAD DE ARCHIVADOS: Si no es pastor, filtramos los archivados
+      const finalPosts = isPastor 
+        ? postsData 
+        : postsData.filter(p => !p.isArchived);
+
+      finalPosts.sort((a, b) => (a.isPinned === b.isPinned ? 0 : a.isPinned ? -1 : 1));
+      setPosts(finalPosts);
       setLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [isPastor]);
 
-  // 2. CARGA DE CUMPLEAÑOS
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
       const today = new Date();
@@ -104,45 +77,6 @@ export default function Home() {
     });
     return () => unsubscribe();
   }, []);
-
-  const handleArchive = async (postId, currentStatus) => {
-    try {
-      await updateDoc(doc(db, 'posts', postId), { isArchived: !currentStatus });
-      setMenuOpenId(null);
-    } catch (e) { console.error(e); }
-  };
-
-  const handleVote = async (post, optionIdx) => {
-    if (!currentUser) return;
-    const postRef = doc(db, 'posts', post.id);
-    try {
-      await runTransaction(db, async (transaction) => {
-        const postDoc = await transaction.get(postRef);
-        const data = postDoc.data();
-        const voteRecord = data.poll.votesDetails?.find(v => v.uid === currentUser.uid);
-        let newOptions = [...data.poll.options];
-        let newVoters = [...(data.poll.voters || [])];
-        let newVotesDetails = [...(data.poll.votesDetails || [])];
-
-        if (voteRecord) {
-            const prevOptIdx = newOptions.findIndex(o => o.text === voteRecord.option);
-            if (prevOptIdx !== -1) newOptions[prevOptIdx].votes = Math.max(0, newOptions[prevOptIdx].votes - 1);
-            newVoters = newVoters.filter(id => id !== currentUser.uid);
-            newVotesDetails = newVotesDetails.filter(v => v.uid !== currentUser.uid);
-            if (data.poll.options[optionIdx].text !== voteRecord.option) {
-                newOptions[optionIdx].votes += 1;
-                newVoters.push(currentUser.uid);
-                newVotesDetails.push({ uid: currentUser.uid, name: currentUser.displayName, option: data.poll.options[optionIdx].text });
-            }
-        } else {
-            newOptions[optionIdx].votes += 1;
-            newVoters.push(currentUser.uid);
-            newVotesDetails.push({ uid: currentUser.uid, name: currentUser.displayName, option: data.poll.options[optionIdx].text });
-        }
-        transaction.update(postRef, { 'poll.options': newOptions, 'poll.voters': newVoters, 'poll.votesDetails': newVotesDetails });
-      });
-    } catch (e) { /* silent */ }
-  };
 
   const handleReaction = async (postId, reactions, emoji) => {
     if (!currentUser) return;
@@ -159,17 +93,31 @@ export default function Home() {
     await updateDoc(postRef, { reactions: newReactions });
   };
 
-  // ✅ FILTRADO INTELIGENTE (Punto 5)
+  const handleArchive = async (postId, currentStatus) => {
+    if (!isPastor) return; // ✅ Solo pastores archivan
+    try {
+      await updateDoc(doc(db, 'posts', postId), { isArchived: !currentStatus });
+      setMenuOpenId(null);
+    } catch (e) { console.error(e); }
+  };
+
+  // ✅ FILTRADO INTELIGENTE (Punto 5 + Pedido de Oración)
   const filteredPosts = useMemo(() => {
     let result = posts;
+    
     if (filter === 'Archivados') {
       result = posts.filter(p => p.isArchived === true);
     } else {
       result = posts.filter(p => p.isArchived !== true);
       if (filter !== 'Todo') result = result.filter(p => p.type === filter);
     }
+
+    if (selectedMood) {
+      result = result.filter(p => p.mood === selectedMood);
+    }
+
     return result;
-  }, [filter, posts]);
+  }, [filter, posts, selectedMood]);
 
   const displayedPosts = filteredPosts.slice(0, visibleCount);
 
@@ -177,206 +125,200 @@ export default function Home() {
     <div className="pb-36 animate-fade-in min-h-screen bg-slate-50 font-outfit relative">
       <TopBar />
 
-      <div className="px-5 mt-6 space-y-5">
-          {/* CUMPLEÑOS (Punto 1) */}
+      <div className="px-5 mt-6 space-y-6">
+          {/* CUMPLEÑOS */}
           <div onClick={() => birthdays.length > 0 && setIsBirthdayModalOpen(true)} 
-               className={`p-1 rounded-[35px] transition-all active:scale-95 ${birthdays.length > 0 ? 'bg-gradient-to-r from-brand-500 to-indigo-500 shadow-xl shadow-brand-100' : 'bg-white border border-slate-100'}`}>
+               className={`p-1 rounded-[35px] transition-all active:scale-95 ${birthdays.length > 0 ? 'bg-gradient-to-r from-brand-500 to-indigo-500 shadow-xl' : 'bg-white border border-slate-100'}`}>
             <div className={`flex items-center justify-between p-4 rounded-[30px] ${birthdays.length > 0 ? 'bg-white/90 backdrop-blur-sm' : 'bg-white'}`}>
-              <div className="flex items-center gap-4">
-                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white ${birthdays.length > 0 ? 'bg-brand-600 animate-pulse' : 'bg-slate-100 text-slate-300'}`}>
-                  <Cake size={28} />
+              <div className="flex items-center gap-4 text-left">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white ${birthdays.length > 0 ? 'bg-brand-600 animate-pulse' : 'bg-slate-100 text-slate-300'}`}>
+                  <Cake size={24} />
                 </div>
-                <div className="text-left">
-                  <p className="text-sm font-black text-slate-900 uppercase tracking-tighter">Cumpleaños</p>
-                  <p className={`text-[10px] font-bold uppercase tracking-widest ${birthdays.length > 0 ? 'text-brand-600' : 'text-slate-400'}`}>
+                <div>
+                  <p className="text-sm font-black text-slate-900 uppercase leading-none">Cumpleaños</p>
+                  <p className={`text-[9px] font-bold uppercase tracking-widest mt-1 ${birthdays.length > 0 ? 'text-brand-600' : 'text-slate-400'}`}>
                     {birthdays.length > 0 ? `${birthdays.length} celebraciones hoy 🎂` : "Sin festejos hoy"}
                   </p>
                 </div>
               </div>
-              {birthdays.length > 0 && <div className="p-2 bg-brand-50 rounded-full text-brand-600"><ChevronDown size={20}/></div>}
             </div>
           </div>
 
-          {/* TABS CUADRADAS Y SÓLIDAS (Punto 5) */}
-          <div className="grid grid-cols-4 gap-2">
-            {['Todo', 'Devocional', 'Noticia', 'Archivados'].map((cat) => (
-              <button key={cat} onClick={() => { setFilter(cat); setVisibleCount(4); }} 
-                className={`py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all border-2 ${
-                  filter === cat 
-                  ? 'bg-slate-900 text-white border-slate-900 shadow-lg scale-95' 
-                  : 'bg-white text-slate-400 border-slate-50 shadow-sm'
-                }`}
-              >
-                {cat === 'Archivados' ? <Archive size={14} className="mx-auto mb-1"/> : null}
-                {cat}
-              </button>
-            ))}
+          {/* ✅ TABS MODERNAS CON PEDIDO DE ORACIÓN (Punto 5) */}
+          <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+            {['Todo', 'Devocional', 'Oración', 'Noticia', 'Archivados'].map((cat) => {
+              if (cat === 'Archivados' && !isPastor) return null;
+              return (
+                <button key={cat} onClick={() => { setFilter(cat); setVisibleCount(4); setSelectedMood(null); }} 
+                  className={`py-3 px-6 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border-2 whitespace-nowrap ${
+                    filter === cat 
+                    ? (cat === 'Oración' ? 'bg-purple-600 border-purple-600 text-white' : 'bg-slate-900 border-slate-900 text-white shadow-lg')
+                    : 'bg-white text-slate-400 border-slate-50'
+                  }`}
+                >
+                  {cat}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* ✅ FILTRO DE ÁNIMOS (Moods - Punto 1) */}
+          <div className="flex gap-3 overflow-x-auto no-scrollbar px-1">
+             {MOODS.map(m => (
+               <button 
+                key={m.id} 
+                onClick={() => setSelectedMood(selectedMood === m.id ? null : m.id)}
+                className={`flex flex-col items-center gap-2 transition-all active:scale-90 min-w-[70px] ${selectedMood === m.id ? 'scale-110' : 'opacity-50 grayscale'}`}
+               >
+                 <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white shadow-lg ${m.color}`}>
+                    <m.icon size={20} />
+                 </div>
+                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-600">{m.label}</span>
+               </button>
+             ))}
           </div>
       </div>
 
-      <div className="space-y-8 px-0 sm:px-5 mt-8">
+      <div className="space-y-10 px-0 sm:px-5 mt-10">
         {loading ? (
             <div className="px-5"><PostSkeleton /><PostSkeleton /></div>
         ) : displayedPosts.length === 0 ? (
             <div className="text-center py-24 opacity-30 flex flex-col items-center">
-              <Sparkles size={64} className="mb-4"/>
-              <p className="font-black uppercase tracking-[0.3em] text-xs">Muro en paz</p>
+              <Sparkles size={64} className="mb-4 text-slate-300"/>
+              <p className="font-black uppercase tracking-[0.3em] text-xs">Sin contenido por aquí</p>
             </div>
         ) : (
             displayedPosts.map(post => {
               const isDevocional = post.type === 'Devocional';
-              const myVote = post.poll?.votesDetails?.find(v => v.uid === currentUser.uid);
+              const isOracion = post.type === 'Oración';
               const profileImg = (post.authorPhoto && post.authorPhoto.trim() !== "") 
                 ? post.authorPhoto 
                 : `https://ui-avatars.com/api/?name=${post.authorName}&background=0f172a&color=fff`;
 
               return (
-              <div key={post.id} className={`relative transition-all ${
+              <div key={post.id} className={`relative mx-4 transition-all group ${
                 isDevocional 
-                ? 'bg-gradient-to-b from-indigo-50/50 to-white border-x-4 border-indigo-200 rounded-[45px] mx-4 p-1 shadow-2xl shadow-indigo-100/50' 
-                : 'bg-white border-y sm:border border-slate-100 sm:rounded-[35px]'
+                ? 'h-[420px] rounded-[45px] overflow-hidden shadow-2xl' 
+                : isOracion 
+                ? 'bg-purple-50 border-2 border-purple-100 rounded-[35px] p-1'
+                : 'bg-white border border-slate-100 rounded-[35px] shadow-sm'
               }`}>
                 
-                {post.isPinned && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-brand-600 text-white px-4 py-1 rounded-full text-[8px] font-black tracking-widest shadow-xl z-10 flex items-center gap-1.5"><Pin size={10} fill="white"/> CONTENIDO FIJADO</div>}
-
-                <div className="p-6">
-                  {/* HEADER POST */}
-                  <div className="flex justify-between items-start mb-5">
-                    <div className="flex items-center gap-4 text-left">
-                        {/* ✅ FIX ANDROID: CONTENEDOR RÍGIDO (Punto 8) */}
-                        <div className="w-14 h-14 min-w-[56px] rounded-2xl border-2 border-white shadow-xl overflow-hidden bg-slate-100 shrink-0">
-                          <img src={profileImg} className="w-full h-full object-cover" loading="lazy" referrerPolicy="no-referrer" alt="Avatar"/>
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-black text-slate-900 uppercase tracking-tighter leading-none">{post.authorName}</h3>
-                          <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md mt-1.5 inline-block ${isDevocional ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                            {isDevocional ? 'Palabra de Vida' : post.role}
-                          </span>
-                        </div>
-                    </div>
+                {/* --- 🎬 ESTILO NETFLIX PARA DEVOCIONALES (Punto 1) --- */}
+                {isDevocional ? (
+                  <div className="absolute inset-0 w-full h-full" onClick={() => navigate(`/post/${post.id}`)}>
+                    {/* Imagen de fondo (Protagonista) */}
+                    {post.image ? (
+                      <img src={post.image} className="w-full h-full object-cover" alt="Portada"/>
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-indigo-600 to-brand-900" />
+                    )}
+                    {/* Overlay de gradiente */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
                     
-                    {(isModerator || post.authorId === currentUser?.uid) && (
-                      <div className="relative">
-                        <button onClick={() => setMenuOpenId(menuOpenId === post.id ? null : post.id)} className="p-2 text-slate-300 active:text-slate-900 bg-slate-50 rounded-xl"><MoreVertical size={20}/></button>
-                        {menuOpenId === post.id && (
-                          <div className="absolute right-0 top-12 bg-white shadow-2xl rounded-2xl border border-slate-100 py-2 w-52 z-50 animate-scale-in origin-top-right overflow-hidden">
-                            {isModerator && (
-                              <button onClick={async () => { await updateDoc(doc(db, 'posts', post.id), { isPinned: !post.isPinned }); setMenuOpenId(null); }} className="w-full text-left px-5 py-4 text-[9px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50">
-                                <Pin size={14} className={post.isPinned ? "text-brand-600" : ""}/> {post.isPinned ? 'Quitar de arriba' : 'Fijar al inicio'}
-                              </button>
-                            )}
-                            <button onClick={() => { setEditingPost(post); setIsModalOpen(true); setMenuOpenId(null); }} className="w-full text-left px-5 py-4 text-[9px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50">
-                              <Edit3 size={14}/> Editar contenido
-                            </button>
-                            <button onClick={() => handleArchive(post.id, post.isArchived)} className="w-full text-left px-5 py-4 text-[9px] font-black uppercase tracking-widest text-amber-600 hover:bg-amber-50 flex items-center gap-3 border-b border-slate-50">
-                              <Archive size={14}/> {post.isArchived ? 'Desarchivar' : 'Archivar post'}
-                            </button>
-                            <button onClick={async () => { if(window.confirm('¿Eliminar para siempre?')){ await deleteDoc(doc(db, 'posts', post.id)); } setMenuOpenId(null); }} className="w-full text-left px-5 py-4 text-[9px] font-black uppercase tracking-widest text-rose-500 hover:bg-rose-50 flex items-center gap-3">
-                              <Trash2 size={14}/> Borrar definitivamente
-                            </button>
+                    {/* Contenido arriba de la imagen */}
+                    <div className="absolute inset-0 p-8 flex flex-col justify-end text-left">
+                       <div className="flex items-center gap-2 mb-4">
+                          <div className="px-3 py-1 bg-brand-500 rounded-full text-[8px] font-black text-white uppercase tracking-widest">Devocional</div>
+                          {post.mood && <div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-[8px] font-black text-white uppercase tracking-widest">{post.mood}</div>}
+                       </div>
+                       <h2 className="text-3xl font-black text-white uppercase tracking-tighter leading-none mb-3 italic">{post.title}</h2>
+                       <p className="text-white/80 text-sm font-medium line-clamp-2 mb-6 leading-relaxed">{post.content}</p>
+                       <button className="bg-white text-black py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all">
+                         <BookOpen size={16}/> Ver Palabra del día
+                       </button>
+                    </div>
+                    {/* Autor flotante arriba */}
+                    <div className="absolute top-6 left-6 flex items-center gap-3">
+                       <img src={profileImg} className="w-10 h-10 rounded-xl border-2 border-white/30" alt="autor"/>
+                       <span className="text-white text-[10px] font-black uppercase tracking-widest">{post.authorName.split(' ')[0]}</span>
+                    </div>
+                  </div>
+                ) : (
+                  /* --- 📝 ESTILO NORMAL Y ORACIÓN --- */
+                  <div className="p-6">
+                    <div className="flex justify-between items-start mb-5">
+                      <div className="flex items-center gap-3 text-left">
+                          <div className="w-12 h-12 rounded-2xl border-2 border-white shadow-md overflow-hidden shrink-0 bg-slate-100">
+                            <img src={profileImg} className="w-full h-full object-cover" loading="lazy" referrerPolicy="no-referrer" alt="Avatar"/>
                           </div>
-                        )}
+                          <div>
+                            <h3 className="text-xs font-black text-slate-900 uppercase tracking-tighter leading-none">{post.authorName}</h3>
+                            <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md mt-1.5 inline-block ${isOracion ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                              {isOracion ? 'Pedido de Oración' : post.role}
+                            </span>
+                          </div>
+                      </div>
+                      {isModerator && (
+                        <div className="relative">
+                          <button onClick={() => setMenuOpenId(menuOpenId === post.id ? null : post.id)} className="p-2 text-slate-300 bg-slate-50 rounded-xl active:text-slate-900"><MoreVertical size={20}/></button>
+                          {menuOpenId === post.id && (
+                            <div className="absolute right-0 top-12 bg-white shadow-2xl rounded-2xl border border-slate-100 py-2 w-52 z-50 animate-scale-in origin-top-right">
+                              {isPastor && (
+                                <button onClick={() => handleArchive(post.id, post.isArchived)} className="w-full text-left px-5 py-4 text-[9px] font-black uppercase tracking-widest text-amber-600 hover:bg-amber-50 flex items-center gap-3 border-b border-slate-50">
+                                  <Archive size={14}/> {post.isArchived ? 'Desarchivar' : 'Archivar post'}
+                                </button>
+                              )}
+                              <button onClick={() => { setEditingPost(post); setIsModalOpen(true); setMenuOpenId(null); }} className="w-full text-left px-5 py-4 text-[9px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50 flex items-center gap-3">
+                                <Edit3 size={14}/> Editar
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="text-left mb-4" onClick={() => navigate(`/post/${post.id}`)}>
+                      {isOracion && <div className="text-purple-600 mb-2"><PrayingHand size={24}/></div>}
+                      <h2 className={`text-xl font-black uppercase tracking-tighter leading-tight mb-2 ${isOracion ? 'text-purple-900' : 'text-slate-900'}`}>{post.title}</h2>
+                      <div className="text-[14px] text-slate-700 whitespace-pre-wrap leading-relaxed font-medium line-clamp-4">{post.content}</div>
+                    </div>
+
+                    {post.image && !isDevocional && (
+                      <div className="mt-4 -mx-6 bg-slate-100 cursor-pointer overflow-hidden shadow-inner" onClick={() => navigate(`/post/${post.id}`)}>
+                        <img src={post.image} className="w-full h-auto max-h-[400px] object-cover block" loading="lazy" referrerPolicy="no-referrer"/>
                       </div>
                     )}
                   </div>
+                )}
 
-                  {/* CUERPO POST */}
-                  <div className="cursor-pointer text-left group" onClick={() => navigate(`/post/${post.id}`)}>
-                    {isDevocional && (
-                      <div className="flex items-center gap-2 mb-3 text-indigo-600">
-                        <BookOpen size={20} />
-                        <h2 className="text-2xl font-black uppercase tracking-tighter leading-tight italic">{post.title}</h2>
-                      </div>
-                    )}
-                    <div className={`text-[15px] text-slate-800 whitespace-pre-wrap leading-relaxed font-medium tracking-tight ${!isDevocional ? 'line-clamp-6' : ''}`}>
-                      {post.content}
-                    </div>
-                  </div>
-
-                  {post.image && (
-                    <div className="mt-5 -mx-6 bg-slate-100 cursor-pointer min-h-[220px] flex items-center justify-center overflow-hidden relative shadow-inner" onClick={() => navigate(`/post/${post.id}`)}>
-                      <img src={post.image} className="w-full h-auto max-h-[550px] object-cover block" loading="lazy" referrerPolicy="no-referrer" alt="Imagen Post"/>
-                    </div>
-                  )}
-                  
-                  {post.link && (
-                    <button onClick={(e) => { e.stopPropagation(); window.open(post.link.startsWith('http') ? post.link : `https://${post.link}`, '_blank'); }} 
-                            className="mt-4 flex items-center justify-between w-full bg-slate-900 text-white p-5 rounded-2xl active:scale-95 transition-all shadow-xl shadow-slate-200">
-                      <span className="text-[10px] font-black uppercase tracking-widest flex items-center gap-3">
-                        <LinkIcon size={16} className="text-brand-400" /> {post.linkText || 'Seguir leyendo'}
-                      </span>
-                      <ExternalLink size={14} className="opacity-50" />
-                    </button>
-                  )}
-
-                  {/* ENCUESTAS */}
-                  {post.poll && (
-                    <div className="mt-5 bg-slate-50 rounded-[28px] p-5 border-2 border-slate-100 shadow-inner">
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">📊 Encuesta de la iglesia</p>
-                      <div className="space-y-3">
-                        {post.poll.options.map((opt, idx) => {
-                          const total = post.poll.voters?.length || 0;
-                          const percent = total > 0 ? Math.round((opt.votes / total) * 100) : 0;
-                          const isMyOption = myVote?.option === opt.text;
-                          return (
-                            <button key={idx} onClick={() => handleVote(post, idx)} className="w-full relative h-12 rounded-xl overflow-hidden bg-white border border-slate-200 active:scale-98 transition-all">
-                              <div className={`absolute top-0 left-0 h-full transition-all duration-1000 ${isMyOption ? 'bg-brand-500/20' : 'bg-slate-100'}`} style={{ width: `${percent}%` }}></div>
-                              <div className="absolute inset-0 flex items-center justify-between px-4 text-xs font-black uppercase z-10 text-slate-700">
-                                <span className="flex items-center gap-2">{opt.text} {isMyOption && <CheckCircle size={14} className="text-brand-600"/>}</span>
-                                <span className="opacity-40">{percent}%</span>
-                              </div>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* REACCIONES FIJAS (Punto 5) */}
-                  <div className="mt-6 pt-5 border-t border-slate-100 flex flex-col gap-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
-                          {/* Botones de Reacción Directos */}
-                          <div className="flex bg-slate-50 p-1 rounded-2xl border border-slate-100 gap-1 shrink-0">
-                            {[ {e: '❤️', l: 'Amor'}, {e: '🔥', l: 'Fuego'}, {e: '🙏', l: 'Amén'}, {e: '👍', l: 'Like'}].map(item => {
+                {/* --- 🚀 BARRA DE REACCIONES ÉPICA (Punto 5) --- */}
+                {!isDevocional && (
+                  <div className="px-6 py-5 border-t border-slate-100 bg-white/50 rounded-b-[35px]">
+                    <div className="flex items-center justify-between gap-2">
+                        {/* El contenedor de botones ahora es horizontal y no oculta números */}
+                        <div className="flex items-center gap-1.5 flex-1 overflow-x-auto no-scrollbar">
+                           {[ {e: '❤️', l: 'Amor'}, {e: '🔥', l: 'Fuego'}, {e: '🙏', l: 'Amén'}, {e: '👍', l: 'Like'}].map(item => {
                               const reactions = post.reactions || [];
+                              const count = reactions.filter(r => r.emoji === item.e).length;
                               const isSelected = reactions.some(r => r.uid === currentUser.uid && r.emoji === item.e);
                               return (
                                 <button key={item.e} onClick={() => handleReaction(post.id, post.reactions, item.e)} 
-                                  className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all active:scale-75 ${isSelected ? 'bg-white shadow-md scale-110' : 'grayscale opacity-60 hover:grayscale-0'}`}>
-                                  <span className="text-xl">{item.e}</span>
+                                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all active:scale-75 shadow-sm border ${isSelected ? 'bg-slate-900 border-slate-900' : 'bg-white border-slate-100'}`}>
+                                  <span className="text-lg">{item.e}</span>
+                                  {count > 0 && <span className={`text-[10px] font-black ${isSelected ? 'text-white' : 'text-slate-900'}`}>{count}</span>}
                                 </button>
                               )
-                            })}
-                          </div>
-                          
-                          {/* Contadores */}
-                          {Object.entries(post.reactions?.reduce((acc, r) => ({...acc, [r.emoji]: (acc[r.emoji] || 0) + 1}), {}) || {}).map(([emoji, count]) => (
-                              <div key={emoji} className="bg-white border border-brand-50 px-2.5 py-1.5 rounded-xl text-[11px] font-black text-slate-700 flex items-center gap-1 shadow-sm shrink-0">
-                                {emoji} <span className="text-brand-600">{count}</span>
-                              </div>
-                          ))}
-                      </div>
-
-                      <button onClick={() => navigate(`/post/${post.id}`)} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-brand-600 bg-brand-50 px-4 py-2.5 rounded-xl active:scale-95 transition-all">
-                        <MessageCircle size={16} /> {post.commentsCount > 0 ? post.commentsCount : ''} Comentar
-                      </button>
+                           })}
+                        </div>
+                        
+                        <button onClick={() => navigate(`/post/${post.id}`)} className="p-3 bg-brand-50 text-brand-600 rounded-2xl active:scale-95 transition-all relative">
+                          <MessageCircle size={22} />
+                          {post.commentsCount > 0 && <span className="absolute -top-1 -right-1 bg-brand-600 text-white text-[8px] font-black w-5 h-5 flex items-center justify-center rounded-full border-2 border-white">{post.commentsCount}</span>}
+                        </button>
                     </div>
-                    
-                    <CommentPreview postId={post.id} onClick={() => navigate(`/post/${post.id}`)} />
                   </div>
-                </div>
+                )}
               </div>
             )})
         )}
 
-        {/* BOTÓN CARGAR MÁS (Punto 5) */}
         {filteredPosts.length > visibleCount && !loading && (
-          <button onClick={() => setVisibleCount(prev => prev + 4)} className="w-full py-6 flex flex-col items-center gap-2 group active:scale-95 transition-all">
-            <div className="p-4 bg-white border border-slate-200 rounded-full shadow-lg text-slate-400 group-hover:text-brand-600">
-               <ChevronDown size={28} className="animate-bounce" />
+          <button onClick={() => setVisibleCount(prev => prev + 4)} className="w-full py-8 flex flex-col items-center gap-2 group active:scale-95 transition-all">
+            <div className="p-5 bg-white border-2 border-slate-100 rounded-full shadow-xl text-slate-300 group-hover:text-brand-600 group-hover:border-brand-100">
+               <ChevronDown size={32} className="animate-bounce" />
             </div>
-            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Cargar más bendiciones</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-400">Ver más bendiciones</span>
           </button>
         )}
       </div>

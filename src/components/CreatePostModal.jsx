@@ -1,8 +1,20 @@
 import { useState, useEffect } from 'react';
-import { X, Image as ImageIcon, Send, Loader2, Link as LinkIcon, Tag, BarChart2, Plus, Trash2, Save, Archive } from 'lucide-react';
+import { 
+  X, Image as ImageIcon, Send, Loader2, Link as LinkIcon, 
+  BarChart2, Plus, Trash2, Save, Archive, PrayingHand, 
+  Anchor, Sun, CloudRain, Smile, Layers 
+} from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { db, auth } from '../firebase'; 
 import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
+
+// Opciones de ánimo para devocionales
+const MOOD_OPTIONS = [
+  { id: 'Fortaleza', icon: Anchor, color: 'text-blue-500', bg: 'bg-blue-50' },
+  { id: 'Gozo', icon: Sun, color: 'text-amber-500', bg: 'bg-amber-50' },
+  { id: 'Necesidad', icon: CloudRain, color: 'text-slate-500', bg: 'bg-slate-50' },
+  { id: 'Paz', icon: Smile, color: 'text-emerald-500', bg: 'bg-emerald-50' },
+];
 
 export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
   const [text, setText] = useState('');
@@ -13,8 +25,10 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [type, setType] = useState('Noticia');
-  const [isArchived, setIsArchived] = useState(false); // ✅ Estado para archivado (Punto 5)
-  
+  const [isArchived, setIsArchived] = useState(false);
+  const [mood, setMood] = useState(''); // ✅ Nuevo: Estado para Ánimo
+  const [seriesName, setSeriesName] = useState(''); // ✅ Nuevo: Estado para Series
+
   const [showPoll, setShowPoll] = useState(false);
   const [pollOptions, setPollOptions] = useState(['', '']); 
 
@@ -30,6 +44,8 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
       setType(postToEdit.type || 'Noticia');
       setPreview(postToEdit.image || null);
       setIsArchived(postToEdit.isArchived || false);
+      setMood(postToEdit.mood || '');
+      setSeriesName(postToEdit.seriesName || '');
       setShowPoll(false);
     } else {
       resetForm();
@@ -39,8 +55,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
   const resetForm = () => {
     setText(''); setTitle(''); setLink(''); setLinkText('');
     setImage(null); setPreview(null); setShowPoll(false); setPollOptions(['', '']);
-    setIsArchived(false);
-    setType('Noticia');
+    setIsArchived(false); setType('Noticia'); setMood(''); setSeriesName('');
   };
 
   const sendPushNotification = async (notifTitle, notifContent, postUrl) => {
@@ -94,25 +109,23 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
 
       const commonData = {
         content: text,
-        title: title || (type === 'Devocional' ? 'Palabra del día' : 'Nueva Noticia'), 
+        title: title || (type === 'Devocional' ? 'Palabra del día' : type === 'Oración' ? 'Pedido de Oración' : 'Nueva Noticia'), 
         link: link,   
         linkText: linkText || 'Ver más', 
         image: imageUrl, 
         type: type,
-        isArchived: isArchived, // ✅ Guardamos estado de archivado
+        isArchived: isArchived,
+        mood: (type === 'Devocional' || type === 'Oración') ? mood : '', // ✅ Guardamos Ánimo
+        seriesName: type === 'Devocional' ? seriesName : '', // ✅ Guardamos Serie
       };
 
       if (postToEdit) {
         const postRef = doc(db, 'posts', postToEdit.id);
         await updateDoc(postRef, { ...commonData, updatedAt: serverTimestamp() });
-        
-        // 🎯 LÓGICA DE RE-NOTIFICACIÓN (Punto 5): 
-        // Si el post estaba archivado y ahora NO lo está, mandamos noti como si fuera nuevo.
         if (postToEdit.isArchived && !isArchived) {
             const cleanContent = text.length > 80 ? text.substring(0, 80) + "..." : text;
             await sendPushNotification(commonData.title, cleanContent, `/post/${postToEdit.id}`);
         }
-
       } else {
         let finalPoll = null;
         if (showPoll) {
@@ -139,35 +152,27 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           commentsCount: 0
         });
 
-        // Solo notificar si se crea como PÚBLICO (No archivado)
         if (!isArchived) {
             const cleanContent = text.length > 80 ? text.substring(0, 80) + "..." : text;
             await sendPushNotification(commonData.title, cleanContent, `/post/${docRef.id}`);
         }
       }
-
-      resetForm();
-      setLoading(false);
-      onClose();
-
-    } catch (error) {
-      console.error("Error:", error);
-      setLoading(false);
-    }
+      resetForm(); setLoading(false); onClose();
+    } catch (error) { console.error("Error:", error); setLoading(false); }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-md font-outfit">
-      <div className="bg-white w-full max-w-md rounded-[40px] p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto flex flex-col no-scrollbar border-t-8 border-brand-600">
+    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-md font-outfit text-left">
+      <div className="bg-white w-full max-w-md rounded-[45px] p-8 shadow-2xl relative max-h-[92vh] overflow-y-auto flex flex-col no-scrollbar border-t-8 border-brand-600">
         
         <div className="flex justify-between items-center mb-8">
           <div>
             <h3 className="font-black text-slate-900 text-2xl uppercase tracking-tighter">
-              {postToEdit ? 'Editar Contenido' : 'Crear Bendición'}
+              {postToEdit ? 'Editar Post' : 'Crear Post'}
             </h3>
-            <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest mt-1">Muro de la Iglesia CDS</p>
+            <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest mt-1">Panel de Comunicación</p>
           </div>
           <button onClick={onClose} className="p-3 bg-slate-50 rounded-full active:scale-75 transition-all text-slate-400">
             <X size={24} />
@@ -175,11 +180,12 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         </div>
 
         <div className="flex-1 space-y-6">
+          {/* SELECTOR DE TIPO (Añadido Oración) */}
           <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-            {['Noticia', 'Devocional', 'Urgente'].map(t => (
+            {['Noticia', 'Devocional', 'Oración', 'Urgente'].map(t => (
               <button 
-                key={t} onClick={() => setType(t)}
-                className={`px-6 py-3 text-[10px] font-black uppercase tracking-widest rounded-2xl border-2 transition-all ${
+                key={t} onClick={() => { setType(t); if(t !== 'Devocional') setMood(''); }}
+                className={`px-5 py-3 text-[9px] font-black uppercase tracking-widest rounded-2xl border-2 transition-all shrink-0 ${
                   type === t ? 'bg-slate-900 text-white border-slate-900 shadow-xl scale-105' : 'bg-white text-slate-300 border-slate-100'
                 }`}
               >
@@ -189,35 +195,62 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           </div>
 
           <div className="space-y-4">
-            {/* TÍTULO */}
             <input 
-              type="text" placeholder="Título (Opcional)" value={title} onChange={(e) => setTitle(e.target.value)}
+              type="text" placeholder="Título impactante..." value={title} onChange={(e) => setTitle(e.target.value)}
               className="w-full p-5 bg-slate-50 rounded-[24px] border-2 border-slate-50 font-black text-slate-800 focus:outline-none focus:border-brand-500 uppercase text-sm"
             />
 
-            {/* CONTENIDO */}
+            {/* ✅ OPCIONES EXTRA PARA DEVOCIONALES (Mood & Series) */}
+            {type === 'Devocional' && (
+              <div className="space-y-4 animate-fade-in">
+                 <div className="p-5 bg-indigo-50/50 rounded-[30px] border-2 border-indigo-100/50">
+                    <p className="text-[9px] font-black text-indigo-600 uppercase mb-4 ml-2 flex items-center gap-2"><Layers size={12}/> Nombre de la Serie (Opcional)</p>
+                    <input 
+                      placeholder="Ej: Caminando en fe..."
+                      className="w-full p-3 bg-white border border-indigo-100 rounded-xl text-xs font-bold outline-none text-indigo-900"
+                      value={seriesName} onChange={e => setSeriesName(e.target.value)}
+                    />
+                 </div>
+                 
+                 <div className="p-5 bg-slate-50 rounded-[30px] border-2 border-slate-100">
+                    <p className="text-[9px] font-black text-slate-400 uppercase mb-4 ml-2">¿Cómo nutre este devocional?</p>
+                    <div className="grid grid-cols-4 gap-2">
+                       {MOOD_OPTIONS.map(m => (
+                         <button 
+                           key={m.id} onClick={() => setMood(m.id)}
+                           className={`flex flex-col items-center gap-2 p-2 rounded-xl border-2 transition-all ${mood === m.id ? 'border-brand-500 bg-white shadow-md' : 'border-transparent opacity-40 grayscale'}`}
+                         >
+                           <m.icon size={20} className={m.color} />
+                           <span className="text-[8px] font-black uppercase">{m.id}</span>
+                         </button>
+                       ))}
+                    </div>
+                 </div>
+              </div>
+            )}
+
             <textarea
               value={text} onChange={(e) => setText(e.target.value)}
-              placeholder={type === 'Devocional' ? "Escribe la palabra de Dios hoy..." : "¿Qué quieres compartir?"}
+              placeholder={type === 'Devocional' ? "Escribe la palabra de Dios hoy..." : type === 'Oración' ? "¿Por qué necesitamos orar?" : "¿Qué quieres compartir?"}
               className="w-full h-48 p-6 bg-slate-50 rounded-[30px] border-2 border-slate-50 focus:outline-none focus:border-brand-500 resize-none text-base font-medium text-slate-700 leading-relaxed shadow-inner"
             />
 
-            {/* BOTÓN ARCHIVAR (Punto 5) */}
+            {/* BOTÓN ARCHIVAR */}
             <button 
                 onClick={() => setIsArchived(!isArchived)}
                 className={`w-full flex items-center justify-between p-5 rounded-3xl border-2 transition-all ${isArchived ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-slate-50 border-slate-100 text-slate-400'}`}
             >
                 <div className="flex items-center gap-3">
                     <Archive size={20}/>
-                    <span className="text-[11px] font-black uppercase tracking-widest">Archivar Publicación</span>
+                    <span className="text-[11px] font-black uppercase tracking-widest">Archivar para más tarde</span>
                 </div>
                 <div className={`w-12 h-6 rounded-full relative transition-all ${isArchived ? 'bg-amber-500' : 'bg-slate-200'}`}>
                     <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${isArchived ? 'right-1' : 'left-1'}`}></div>
                 </div>
             </button>
 
-            {/* ENCUESTAS */}
-            {!postToEdit && (
+            {/* ENCUESTAS (Oculto para Pedidos de Oración) */}
+            {type !== 'Oración' && !postToEdit && (
               <button 
                 onClick={() => setShowPoll(!showPoll)} 
                 className={`flex items-center gap-3 px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${showPoll ? 'bg-brand-600 text-white shadow-lg' : 'bg-slate-50 text-slate-400 border border-slate-100'}`}
@@ -226,9 +259,8 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
               </button>
             )}
 
-            {showPoll && !postToEdit && (
+            {showPoll && (
               <div className="bg-slate-50 p-6 rounded-[35px] border-2 border-slate-100 space-y-3 animate-slide-up">
-                <p className="text-[9px] font-black text-slate-400 uppercase ml-2 mb-2">Opciones de respuesta</p>
                 {pollOptions.map((opt, idx) => (
                   <input 
                     key={idx} type="text" placeholder={`Respuesta ${idx + 1}`} value={opt} onChange={(e) => {
@@ -236,26 +268,25 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
                         newOptions[idx] = e.target.value;
                         setPollOptions(newOptions);
                     }}
-                    className="w-full p-4 bg-white rounded-xl border-2 border-slate-50 text-xs font-black uppercase outline-none focus:border-brand-200 shadow-sm"
+                    className="w-full p-4 bg-white rounded-xl border-2 border-slate-50 text-xs font-black uppercase outline-none"
                   />
                 ))}
                 {pollOptions.length < 5 && (
-                  <button onClick={() => setPollOptions([...pollOptions, ''])} className="w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-[9px] text-slate-400 font-black uppercase tracking-widest">+ Agregar otra opción</button>
+                  <button onClick={() => setPollOptions([...pollOptions, ''])} className="w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-[9px] text-slate-400 font-black uppercase">+ Opción</button>
                 )}
               </div>
             )}
 
-            {/* LINK EXTERNO */}
             <div className="p-6 bg-slate-50 rounded-[35px] border-2 border-slate-100 space-y-4">
-              <p className="text-[9px] font-black text-slate-400 uppercase ml-2">Vínculo externo (Link)</p>
+              <p className="text-[9px] font-black text-slate-400 uppercase ml-2">Vínculo (Link)</p>
               <div className="flex gap-3">
                 <input type="text" placeholder="https://..." value={link} onChange={e => setLink(e.target.value)} className="flex-1 p-4 bg-white rounded-2xl border-2 border-slate-50 text-[10px] outline-none font-bold text-brand-600 shadow-sm" />
-                <input type="text" placeholder="Texto botón" value={linkText} onChange={e => setLinkText(e.target.value)} className="w-1/3 p-4 bg-white rounded-2xl border-2 border-slate-50 text-[10px] outline-none font-black uppercase shadow-sm" />
+                <input type="text" placeholder="Botón" value={linkText} onChange={e => setLinkText(e.target.value)} className="w-1/3 p-4 bg-white rounded-2xl border-2 border-slate-50 text-[10px] outline-none font-black uppercase shadow-sm" />
               </div>
             </div>
 
             {preview && (
-              <div className="relative rounded-[35px] overflow-hidden border-4 border-white shadow-2xl animate-scale-in">
+              <div className="relative rounded-[35px] overflow-hidden border-4 border-white shadow-2xl">
                 <img src={preview} alt="Preview" className="w-full h-56 object-cover" />
                 <button onClick={() => { setImage(null); setPreview(null); }} className="absolute top-4 right-4 bg-slate-900/90 text-white p-3 rounded-full backdrop-blur-md active:scale-75 transition-all"><X size={20} /></button>
               </div>
@@ -266,7 +297,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         <div className="flex gap-4 pt-8 mt-8 border-t border-slate-50 shrink-0">
           <label className="flex-1 flex items-center justify-center gap-3 bg-slate-50 p-5 rounded-[24px] text-slate-500 cursor-pointer active:scale-95 transition-all border-2 border-slate-100">
             {loading ? <Loader2 size={22} className="animate-spin text-brand-600" /> : <ImageIcon size={22} />}
-            <span className="text-[11px] font-black uppercase tracking-widest">Foto</span>
+            <span className="text-[11px] font-black uppercase tracking-widest text-center">Foto</span>
             <input type="file" className="hidden" accept="image/*" onChange={handleImageChange} disabled={loading} />
           </label>
 
@@ -275,7 +306,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
             disabled={loading || (!text && !image && !preview && !title)} 
             className="flex-[2] bg-brand-600 text-white p-5 rounded-[24px] font-black text-xs uppercase tracking-[0.3em] shadow-xl shadow-brand-100 flex items-center justify-center gap-3 active:scale-95 transition-all disabled:opacity-30"
           >
-            {loading ? <Loader2 size={22} className="animate-spin" /> : (postToEdit ? <Save size={22}/> : <Send size={22} />)} 
+            {loading ? <Loader2 size={22} className="animate-spin" /> : <Send size={22} />} 
             {postToEdit ? 'Guardar' : 'Lanzar'}
           </button>
         </div>
