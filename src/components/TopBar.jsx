@@ -31,14 +31,13 @@ export default function TopBar({ title, subtitle }) {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isSupported, setIsSupported] = useState(true);
 
-  // --- ESTADOS NOTIFICACIONES PRO ---
   const [pushData, setPushData] = useState({ title: '', body: '', link: '', targetArea: 'todos', targetPath: '/' });
   const [officialAreas, setOfficialAreas] = useState([]);
   const [prayerLinkData, setPrayerLinkData] = useState({ url: '', isLocked: true });
 
   const isNative = Capacitor.isNativePlatform(); 
 
-  // ✅ 0. DETECTOR DE USUARIO Y ROL
+  // ✅ 0. DETECTOR DE USUARIO, ROL Y DEEP LINKING
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged((user) => {
       if (user) {
@@ -50,18 +49,30 @@ export default function TopBar({ title, subtitle }) {
             setUserRole(data.role || 'miembro');
             setReadIds(data.readNotifications || []); 
             
-            // ✅ CORRECCIÓN ÁREAS: Sincronizar TAG con OneSignal inmediatamente
+            // ✅ FIX ÁREAS: Sincronización de Tag con OneSignal
             if (isNative) {
                 const areaTag = (data.area || 'ninguna').toLowerCase();
-                OneSignal.User.addTag("area", areaTag);
-                console.log("Tag sincronizado:", areaTag);
+                // Usamos la sintaxis universal para asegurar compatibilidad
+                OneSignal.sendTag("area", areaTag);
+                console.log("Tag Enviado:", areaTag);
             }
           }
         });
       }
     });
+
+    // ✅ FIX DEEP LINKING: Listener para cuando tocan la notificación
+    if (isNative) {
+      OneSignal.Notifications.addEventListener('click', (event) => {
+        const data = event.notification.additionalData;
+        if (data && data.route) {
+          navigate(data.route);
+        }
+      });
+    }
+
     return () => unsubscribeAuth();
-  }, [isNative]);
+  }, [isNative, navigate]);
 
   // CARGAR METADATA
   useEffect(() => {
@@ -74,7 +85,7 @@ export default function TopBar({ title, subtitle }) {
     return () => { unsubAreas(); unsubLink(); };
   }, []);
 
-  // --- LÓGICA DE SUSCRIPCIÓN ---
+  // LÓGICA DE SUSCRIPCIÓN
   useEffect(() => {
     if (isNative) {
       setIsSupported(true);
@@ -99,7 +110,7 @@ export default function TopBar({ title, subtitle }) {
             setIsSubscribed(true);
             toast.success("¡Activadas!");
         } else {
-            const result = await Notification.requestPermission();
+            const result = await Notification.permission;
             if (result === 'granted' && messaging) {
                 const token = await getToken(messaging, { vapidKey: VAPID_KEY });
                 if (token) {
@@ -119,13 +130,6 @@ export default function TopBar({ title, subtitle }) {
     setLoadingAction(true);
     try {
         if (isNative) OneSignal.logout();
-        else if (messaging) {
-            const token = await getToken(messaging, { vapidKey: VAPID_KEY });
-            if (token) {
-                await updateDoc(doc(db, 'users', activeUser.uid), { fcmTokens: arrayRemove(token) });
-                await deleteToken(messaging);
-            }
-        }
         localStorage.removeItem('fcm_active');
         setIsSubscribed(false);
         toast.success("Desactivadas.");
@@ -133,7 +137,6 @@ export default function TopBar({ title, subtitle }) {
     finally { setLoadingAction(false); }
   };
 
-  // --- GESTIÓN LINK DE ORACIÓN ---
   const savePrayerLink = async () => {
     try {
       await setDoc(doc(db, 'metadata', 'links'), { prayer: prayerLinkData.url }, { merge: true });
@@ -146,14 +149,14 @@ export default function TopBar({ title, subtitle }) {
     setPushData({
       ...pushData,
       title: "🙏 ¡Estamos en Oración!",
-      body: "Toca aquí para entrar ahora al Google Meet.",
-      link: prayerLinkData.url, // ✅ Link externo
+      body: "Toca aquí para entrar directo al Google Meet.",
+      link: prayerLinkData.url, 
       targetPath: '/' 
     });
     toast.info("Plantilla cargada");
   };
 
-  // --- ENVÍO DE NOTIFICACIÓN SEGMENTADA ---
+  // ✅ ENVÍO DE NOTIFICACIÓN SEGMENTADA MEJORADO
   const sendManualPush = async () => {
     if (!pushData.title || !pushData.body) return toast.error("Completa título y mensaje");
     setLoadingAction(true);
@@ -164,20 +167,20 @@ export default function TopBar({ title, subtitle }) {
         app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
         headings: { en: pushData.title, es: pushData.title },
         contents: { en: pushData.body, es: pushData.body },
-        // ✅ CORRECCIÓN LINK: 'url' fuera de 'data' hace que el SO abra el navegador
+        // ✅ FIX LINK EXTERNO: Si hay link, se pone en 'url' para que el SO abra la App (Meet/IG)
         url: pushData.link || null, 
-        data: { route: pushData.targetPath },
+        data: { route: pushData.targetPath }, // ✅ Ruta interna
         large_icon: "https://cdsapp.vercel.app/logo.png",
-        priority: 10
+        priority: 10,
+        android_accent_color: "FF0000",
+        android_visibility: 1
       };
 
-      // ✅ CORRECCIÓN SEGMENTACIÓN: Usar filtros por TAG
       if (pushData.targetArea === 'todos') {
         payload.included_segments = ["Total Subscriptions"];
       } else {
-        payload.filters = [
-            { field: "tag", key: "area", relation: "=", value: pushData.targetArea.toLowerCase() }
-        ];
+        // Usamos tags en minúsculas para evitar errores de coincidencia
+        payload.filters = [{ field: "tag", key: "area", relation: "=", value: pushData.targetArea.toLowerCase() }];
       }
 
       const response = await fetch("https://onesignal.com/api/v1/notifications", {
@@ -190,8 +193,6 @@ export default function TopBar({ title, subtitle }) {
           toast.success("¡Notificación enviada!");
           setIsPastorPanelOpen(false);
           setPushData({ title: '', body: '', link: '', targetArea: 'todos', targetPath: '/' });
-      } else {
-          throw new Error("Error en la API");
       }
     } catch (e) { toast.error("Error al enviar"); }
     finally { setLoadingAction(false); }
@@ -249,7 +250,7 @@ export default function TopBar({ title, subtitle }) {
         </div>
         
         <div className="flex items-center gap-2">
-          {userRole === 'pastor' && (activeUser) && (
+          {userRole === 'pastor' && activeUser && (
             <button onClick={() => setIsPastorPanelOpen(true)} className="p-2.5 bg-brand-50 text-brand-600 rounded-xl active:scale-90 border border-brand-100 shadow-sm">
               <Megaphone size={22} />
             </button>
@@ -272,9 +273,9 @@ export default function TopBar({ title, subtitle }) {
                 <button onClick={() => setIsOpen(false)} className="p-3 bg-slate-50 rounded-full text-slate-400 active:scale-75 transition-all"><X size={24}/></button>
             </div>
 
-            <div className="px-5 py-4 bg-slate-50/50 border-b border-slate-100">
+            <div className="px-5 py-4 bg-slate-50/50 border-b border-slate-100 text-left">
                 {isSubscribed ? (
-                    <button onClick={disableNotifications} disabled={loadingAction} className="w-full py-3 bg-white border border-slate-200 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest">Silenciar avisos en este equipo</button>
+                    <button onClick={disableNotifications} disabled={loadingAction} className="w-full py-3 bg-white border border-slate-200 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">Silenciar avisos en este equipo</button>
                 ) : (
                     <button onClick={enableNotifications} disabled={loadingAction} className="w-full py-3 bg-slate-900 text-white rounded-2xl shadow-xl font-black text-[10px] uppercase tracking-widest animate-pulse">🔔 ACTIVAR NOTIFICACIONES</button>
                 )}
@@ -315,13 +316,13 @@ export default function TopBar({ title, subtitle }) {
             
             <div className="flex justify-between items-center border-b pb-4">
               <div>
-                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Comunicación Push</h3>
+                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter leading-none">Comunicación Push</h3>
                 <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest mt-1">Lanzamiento segmentado</p>
               </div>
-              <button onClick={() => setIsPastorPanelOpen(false)} className="p-2 bg-slate-100 rounded-full active:scale-75"><X size={20}/></button>
+              <button onClick={() => setIsPastorPanelOpen(false)} className="p-2 bg-slate-100 rounded-full active:scale-75 transition-all text-slate-400"><X size={20}/></button>
             </div>
 
-            <div className="p-5 bg-indigo-50 border-2 border-indigo-100 rounded-[30px] space-y-4">
+            <div className="p-5 bg-indigo-50 border-2 border-indigo-100 rounded-[30px] space-y-4 text-left">
                 <div className="flex justify-between items-center">
                     <p className="text-[10px] font-black text-indigo-600 uppercase flex items-center gap-2 tracking-widest"><HandHeart size={16}/> Link de Oración</p>
                     <button onClick={() => setPrayerLinkData({...prayerLinkData, isLocked: !prayerLinkData.isLocked})} className="text-indigo-400">
@@ -336,35 +337,29 @@ export default function TopBar({ title, subtitle }) {
                       value={prayerLinkData.url} onChange={e => setPrayerLinkData({...prayerLinkData, url: e.target.value})}
                     />
                     {!prayerLinkData.isLocked && (
-                        <button onClick={savePrayerLink} className="bg-brand-600 text-white p-3 rounded-xl shadow-lg active:scale-90"><Save size={16}/></button>
+                        <button onClick={savePrayerLink} className="bg-brand-600 text-white p-3 rounded-xl shadow-lg active:scale-90 transition-all"><Save size={16}/></button>
                     )}
                 </div>
-                <button onClick={setPrayerTemplate} className="w-full py-3 bg-indigo-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md active:scale-95 transition-all">
-                    Cargar en Formulario
-                </button>
+                <button onClick={setPrayerTemplate} className="w-full py-3 bg-indigo-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md active:scale-95 transition-all">Cargar en Formulario</button>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-4 text-left">
               <div className="grid grid-cols-2 gap-3">
-                 <div className="space-y-1.5 text-left">
+                 <div className="space-y-1.5">
                     <label className="text-[9px] font-black text-slate-400 uppercase ml-2 tracking-widest flex items-center gap-1.5"><Globe size={10}/> Enviar a:</label>
-                    <select 
-                      className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-black uppercase outline-none"
-                      value={pushData.targetArea} onChange={e => setPushData({...pushData, targetArea: e.target.value})}
-                    >
+                    <select className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-black uppercase outline-none" value={pushData.targetArea} onChange={e => setPushData({...pushData, targetArea: e.target.value})}>
                        <option value="todos">Toda la Iglesia</option>
                        {officialAreas.map(a => <option key={a} value={a.toLowerCase()}>{a}</option>)}
                     </select>
                  </div>
-                 <div className="space-y-1.5 text-left">
+                 <div className="space-y-1.5">
                     <label className="text-[9px] font-black text-slate-400 uppercase ml-2 tracking-widest flex items-center gap-1.5"><ChevronRight size={10}/> Destino:</label>
-                    <select 
-                      className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-black uppercase outline-none"
-                      value={pushData.targetPath} onChange={e => setPushData({...pushData, targetPath: e.target.value})}
-                    >
+                    <select className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-black uppercase outline-none" value={pushData.targetPath} onChange={e => setPushData({...pushData, targetPath: e.target.value})}>
                        <option value="/">Muro de Inicio</option>
-                       <option value="/calendario">Agenda General</option>
+                       <option value="/calendario">Agenda Global</option>
                        <option value="/servicios">Mis Servicios</option>
+                       <option value="/directorio">Directorio</option>
+                       <option value="/perfil">Perfil</option>
                     </select>
                  </div>
               </div>
@@ -373,14 +368,13 @@ export default function TopBar({ title, subtitle }) {
               <textarea placeholder="Contenido del aviso..." className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-semibold text-sm h-24 resize-none outline-none focus:border-brand-500 transition-all shadow-inner" value={pushData.body} onChange={e => setPushData({...pushData, body: e.target.value})} />
               
               <div className="p-4 bg-slate-50 rounded-2xl border-dashed border-2 border-slate-200">
-                <p className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-2 mb-2"><LinkIcon size={12}/> Link Externo (Meet/Video)</p>
+                <p className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-2 mb-2"><LinkIcon size={12}/> Link Externo (Meet/IG)</p>
                 <input placeholder="https://..." className="w-full p-2 bg-white rounded-lg border border-slate-100 font-bold text-[10px] outline-none text-brand-600" value={pushData.link} onChange={e => setPushData({...pushData, link: e.target.value})} />
               </div>
             </div>
 
-            <button onClick={sendManualPush} disabled={loadingAction} className="w-full py-5 bg-slate-900 text-white rounded-[24px] font-black text-xs uppercase tracking-[0.3em] flex items-center justify-center gap-3 shadow-2xl active:scale-95 disabled:opacity-50 transition-all">
-              {loadingAction ? <Loader2 className="animate-spin" size={20}/> : <Send size={20}/>} 
-              Enviar Aviso Push
+            <button onClick={sendManualPush} disabled={loadingAction} className="w-full py-5 bg-slate-900 text-white rounded-[24px] font-black text-xs uppercase tracking-[0.3em] flex items-center justify-center gap-3 shadow-2xl active:scale-95 transition-all disabled:opacity-50">
+              {loadingAction ? <Loader2 className="animate-spin" size={20}/> : <Send size={20}/>} Enviar Aviso Push
             </button>
           </div>
         </div>
