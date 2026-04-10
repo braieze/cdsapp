@@ -10,7 +10,7 @@ import {
   CheckCircle, Download, Loader2, Search, HelpCircle,
   AlertCircle, Check, ExternalLink, ArrowRight, UserPlus, UserMinus, Heart,
   Music, Eraser, Wrench, Flame, Church, Lock, ShieldAlert, MessageSquare, 
-  Edit3, PlusCircle, CheckSquare, Square, Car, Shield, Monitor, Camera, Send
+  Edit3, PlusCircle, CheckSquare, Square, Car, Shield, Monitor, Camera, Send, Globe
 } from 'lucide-react';
 import { format, eachDayOfInterval, parseISO, isSameDay } from 'date-fns';
 import { es } from 'date-fns/locale';
