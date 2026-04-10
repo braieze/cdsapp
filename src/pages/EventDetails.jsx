@@ -53,7 +53,6 @@ export default function EventDetails() {
         const eSnap = await getDoc(eRef);
         
         const usSnap = await getDocs(collection(db, 'users'));
-        // ✅ LISTA EN ORDEN ALFABÉTICO
         const sortedUsers = usSnap.docs
           .map(d => ({ id: d.id, ...d.data() }))
           .sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''));
@@ -61,7 +60,6 @@ export default function EventDetails() {
 
         if (eSnap.exists()) {
           const data = { id: eSnap.id, ...eSnap.data() };
-          // ✅ PRIVACIDAD ENSAYO ALABANZA
           const isAlabanza = currentDbUser?.area?.toLowerCase() === 'alabanza';
           const isLeader = ['pastor', 'lider'].includes(currentDbUser?.role);
           if (data.type === 'ensayo' && !isAlabanza && !isLeader) {
@@ -76,7 +74,6 @@ export default function EventDetails() {
     fetchData();
   }, [id, currentUser, navigate]);
 
-  // --- 4. NOTIFICACIONES REST API ---
   const sendPush = async (userNames, eventTitle) => {
     const KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
     if (!KEY) return;
@@ -119,7 +116,6 @@ export default function EventDetails() {
     } catch (e) { toast.error("Error al guardar"); } finally { setIsSaving(false); }
   };
 
-  // ✅ ASIGNAR GRUPO COMPLETO (Ministerios)
   const assignGroup = (areaName) => {
     const ministry = users.filter(u => u.area?.toLowerCase() === areaName.toLowerCase()).map(u => u.displayName);
     const current = assignments[activeRoleKey] || [];
@@ -128,7 +124,6 @@ export default function EventDetails() {
     toast.info(`Grupo ${areaName} añadido`);
   };
 
-  // ✅ AYUNO: ANOTARSE POR DÍA
   const toggleFast = async (dateStr) => {
     const currentList = event.fastingSignups?.[dateStr] || [];
     const isSigned = currentList.includes(dbUser.displayName);
@@ -141,7 +136,6 @@ export default function EventDetails() {
     } catch (e) { toast.error("Error"); }
   };
 
-  // ✅ CHECKLIST LIMPIEZA CON COMENTARIOS
   const toggleCheck = async (sector) => {
     const currentChecklist = event.checklist || {};
     const newState = !currentChecklist[sector]?.done;
@@ -160,65 +154,59 @@ export default function EventDetails() {
 
   if (loading || !event) return <div className="fixed inset-0 flex items-center justify-center bg-white z-[200]"><Loader2 className="animate-spin text-brand-600" size={40}/></div>;
 
-  // ✅ PRIVACIDAD ENSAYO
   if (event.restricted) return (
     <div className="fixed inset-0 bg-white z-[200] flex flex-col items-center justify-center p-10 text-center font-outfit">
       <Lock size={60} className="text-slate-200 mb-6"/><h2 className="text-2xl font-black text-slate-900 uppercase">Ensayo Privado</h2>
       <p className="text-slate-500 font-bold text-xs uppercase mt-4 leading-loose">Solo el ministerio de Alabanza puede ver el detalle.</p>
-      <button onClick={() => navigate(-1)} className="mt-12 py-4 px-10 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase">Volver</button>
+      <button onClick={() => navigate('/calendario')} className="mt-12 py-4 px-10 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase">Volver</button>
     </div>
   );
 
   const Config = OPERATIVE_EVENT_TYPES[event.type] || OPERATIVE_EVENT_TYPES.culto;
-  
-  // ✅ LÓGICA PULSE
   const myStatus = event.confirmations?.[dbUser?.displayName] || 'pending';
   const amIAssigned = Object.values(event.assignments || {}).flat().includes(dbUser?.displayName);
   const shouldPulse = amIAssigned && myStatus === 'pending';
 
-  // ✅ ESTRUCTURAS OPERATIVAS (RECUPERADAS)
   const getStructure = () => {
     if (event.type === 'limpieza' || event.type === 'mantenimiento') {
-      return [
-        { section: 'SECTORES Y TRABAJO', roles: [
-          { key: 'salon', label: 'Salón Principal', icon: Church, type: 'multi' },
-          { key: 'banos', label: 'Baños y Pasillos', icon: Eraser, type: 'multi' },
-          { key: 'vereda', label: 'Vereda y Entrada', icon: ArrowRight, type: 'multi' },
-          { key: 'cocina', label: 'Cocina / Anexo', icon: Flame, type: 'multi' }
-        ]}
-      ];
+      return [{ section: 'SECTORES Y TRABAJO', roles: [
+        { key: 'salon', label: 'Salón Principal', icon: Church, type: 'multi' },
+        { key: 'banos', label: 'Baños y Pasillos', icon: Eraser, type: 'multi' },
+        { key: 'vereda', label: 'Vereda y Entrada', icon: ArrowRight, type: 'multi' },
+        { key: 'cocina', label: 'Cocina / Anexo', icon: Flame, type: 'multi' }
+      ]}];
     }
     return [
       { section: 'LIDERAZGO', roles: [
-          { key: 'predicador', label: 'Predicador', icon: MessageSquare, type: 'single' },
-          { key: 'oracion_inicio', label: 'Oración de Inicio', icon: Heart, type: 'single' },
-          { key: 'palabra_ofrenda', label: 'Palabra de Ofrenda', icon: Globe, type: 'single' }
+        { key: 'predicador', label: 'Predicador', icon: MessageSquare, type: 'single' },
+        { key: 'oracion_inicio', label: 'Oración de Inicio', icon: Heart, type: 'single' },
+        { key: 'palabra_ofrenda', label: 'Palabra de Ofrenda', icon: Globe, type: 'single' }
       ]},
       { section: 'MINISTERIO DE ALABANZA', roles: [
-          { key: 'vocalistas', label: 'Vocalistas', icon: Music, type: 'multi' },
-          { key: 'g_electrica', label: 'Guitarra Eléctrica', icon: Music, type: 'single' },
-          { key: 'g_acustica', label: 'Guitarra Acústica', icon: Music, type: 'single' },
-          { key: 'bateria', label: 'Batería', icon: Music, type: 'single' },
-          { key: 'bajo', label: 'Bajo', icon: Music, type: 'single' },
-          { key: 'teclado', label: 'Teclado', icon: Music, type: 'single' }
+        { key: 'vocalistas', label: 'Vocalistas', icon: Music, type: 'multi' },
+        { key: 'g_electrica', label: 'Guitarra Eléctrica', icon: Music, type: 'single' },
+        { key: 'g_acustica', label: 'Guitarra Acústica', icon: Music, type: 'single' },
+        { key: 'bateria', label: 'Batería', icon: Music, type: 'single' },
+        { key: 'bajo', label: 'Bajo', icon: Music, type: 'single' },
+        { key: 'teclado', label: 'Teclado', icon: Music, type: 'single' }
       ]},
       { section: 'OPERATIVO / UJERES', roles: [
-          { key: 'bienvenida', label: 'Bienvenida', icon: Users, type: 'multi' },
-          { key: 'porteria', label: 'Portero (cerrar iglesia)', icon: Lock, type: 'single' },
-          { key: 'pasillos', label: 'Pasillos', icon: ArrowRight, type: 'multi' },
-          { key: 'seguridad_autos', label: 'Seguridad Autos', icon: Car, type: 'multi' },
-          { key: 'control_banos', label: 'Control de Baños', icon: Eraser, type: 'multi' },
-          { key: 'servicio_altar', label: 'Servicio Altar', icon: Shield, type: 'multi' }
+        { key: 'bienvenida', label: 'Bienvenida', icon: Users, type: 'multi' },
+        { key: 'porteria', label: 'Portero (cerrar iglesia)', icon: Lock, type: 'single' },
+        { key: 'pasillos', label: 'Pasillos', icon: ArrowRight, type: 'multi' },
+        { key: 'seguridad_autos', label: 'Seguridad Autos', icon: Car, type: 'multi' },
+        { key: 'control_banos', label: 'Control de Baños', icon: Eraser, type: 'multi' },
+        { key: 'servicio_altar', label: 'Servicio Altar', icon: Shield, type: 'multi' }
       ]},
       { section: 'TÉCNICA', roles: [
-          { key: 'proyeccion', label: 'Proyección', icon: Monitor, type: 'single' },
-          { key: 'transmision', label: 'Transmisión Cámaras', icon: Camera, type: 'single' },
-          { key: 'sonido', label: 'Sonido', icon: Wrench, type: 'single' }
+        { key: 'proyeccion', label: 'Proyección', icon: Monitor, type: 'single' },
+        { key: 'transmision', label: 'Transmisión Cámaras', icon: Camera, type: 'single' },
+        { key: 'sonido', label: 'Sonido', icon: Wrench, type: 'single' }
       ]}
     ];
   };
 
-  // ✅ CORRECCIÓN DE NOMBRE: fastingDays
+  // ✅ CORRECCIÓN UNIFICADA: fastingDays
   const fastingDays = (event.type === 'ayuno' && event.endDate) ? eachDayOfInterval({ start: parseISO(event.date), end: parseISO(event.endDate) }) : [];
 
   return (
@@ -285,20 +273,29 @@ export default function EventDetails() {
                    )}
                 </div>
                 {isEditingMeta && (
-                  <div className="w-full grid grid-cols-2 gap-3 mt-4">
-                     <button onClick={() => setEvent({...event, isCena: !event.isCena})} className={`py-4 rounded-2xl font-black text-[10px] uppercase border-2 transition-all ${event.isCena ? 'bg-rose-50 border-rose-500 text-rose-600' : 'bg-slate-50 border-slate-100 text-slate-300'}`}>Cena del Señor</button>
-                     <button onClick={saveAll} className="bg-slate-900 text-white py-4 rounded-2xl font-black text-[10px] uppercase shadow-xl flex items-center justify-center gap-2"><Save size={16}/> Guardar Info</button>
+                  <div className="w-full space-y-3">
+                     {event.type === 'ayuno' && (
+                       <div className="grid gap-2">
+                          <input placeholder="Versículo Clave..." className="w-full bg-slate-50 border rounded-xl p-3 text-[10px] font-bold" value={event.versicle || ''} onChange={e => setEvent({...event, versicle: e.target.value})} />
+                          <textarea placeholder="Descripción / Cosas importantes..." className="w-full bg-slate-50 border rounded-xl p-3 text-[10px] font-bold h-20" value={event.description || ''} onChange={e => setEvent({...event, description: e.target.value})} />
+                       </div>
+                     )}
+                     <div className="grid grid-cols-2 gap-3">
+                        <button onClick={() => setEvent({...event, isCena: !event.isCena})} className={`py-4 rounded-2xl font-black text-[10px] uppercase border-2 transition-all ${event.isCena ? 'bg-rose-50 border-rose-500 text-rose-600' : 'bg-slate-50 border-slate-100 text-slate-300'}`}>Cena del Señor</button>
+                        <button onClick={saveAll} className="bg-slate-900 text-white py-4 rounded-2xl font-black text-[10px] uppercase shadow-xl flex items-center justify-center gap-2"><Save size={16}/> Guardar Info</button>
+                     </div>
                   </div>
                 )}
             </div>
 
-            {/* ✅ CASO AYUNO: USO DE fastingDays */}
             {event.type === 'ayuno' ? (
               <div className="space-y-6">
-                <div className="bg-amber-50 p-6 rounded-[35px] border-2 border-amber-100 text-left">
-                  <h3 className="text-amber-600 font-black text-xs uppercase flex items-center gap-2 mb-2"><Flame size={16} fill="currentColor"/> Inscripción Diaria</h3>
-                  <p className="text-[10px] font-bold text-amber-900/40 uppercase leading-relaxed">Seleccioná los días que vas a ayunar.</p>
-                </div>
+                {!isEditingMeta && (event.versicle || event.description) && (
+                  <div className="bg-amber-50/50 p-6 rounded-[35px] border border-amber-100 text-left">
+                    {event.versicle && <p className="text-amber-700 font-black text-xs italic mb-2">"{event.versicle}"</p>}
+                    {event.description && <p className="text-amber-900/60 text-[10px] font-bold leading-relaxed">{event.description}</p>}
+                  </div>
+                )}
                 <div className="grid gap-4">
                   {fastingDays.map((day) => {
                     const dStr = format(day, 'yyyy-MM-dd');
@@ -367,7 +364,6 @@ export default function EventDetails() {
                 ))}
               </div>
             )}
-
             {['jovenes', 'mujeres', 'varones'].includes(event.type) && !isAssigning && (
                 <button className="w-full py-5 border-2 border-dashed border-slate-200 rounded-[35px] text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-center gap-3"><PlusCircle size={20}/> ¿Desea añadir otra actividad?</button>
             )}

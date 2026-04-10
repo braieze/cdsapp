@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { db, auth } from '../firebase';
 import {
@@ -11,12 +11,13 @@ import {
   ChevronLeft, ChevronRight, Loader2, Megaphone,
   Send, EyeOff, CheckCircle, XCircle, Edit3,
   AlertCircle, ChevronRight as ArrowRight, LayoutGrid, Sparkles, Heart, UserCheck, Globe,
-  Church, Users, Music, Eraser, Wrench, Flame, Lock, Info, CheckSquare, MessageSquare
+  Church, Users, Music, Eraser, Wrench, Flame, Lock, Info, CheckSquare, MessageSquare, ChevronDown
 } from 'lucide-react';
 import { 
   format, addMonths, subMonths, isSameMonth, startOfMonth, 
   endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, 
-  isSameDay, isWithinInterval, parseISO, isAfter, startOfDay, isBefore, differenceInDays
+  isSameDay, isWithinInterval, parseISO, isAfter, startOfDay, isBefore, differenceInDays,
+  addDays, subDays
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import imageCompression from 'browser-image-compression';
@@ -35,15 +36,17 @@ export const OPERATIVE_EVENT_TYPES = {
 export default function CalendarPage() {
   const navigate = useNavigate();
   const { dbUser } = useOutletContext();
+  const listRef = useRef(null);
   
-  const [viewMode, setViewMode] = useState('list'); 
-  const [filterType, setFilterType] = useState('mine'); 
+  // ✅ PERSISTENCIA DE FILTRO (Punto 1 y 3 del resumen)
+  const [filterType, setFilterType] = useState(() => localStorage.getItem('cds_filter') || 'mine');
+  const [isMonthGridOpen, setIsMonthGridOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(new Date());
   
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [selectedDayEvents, setSelectedDayEvents] = useState(null);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [userRole, setUserRole] = useState(null);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -52,6 +55,10 @@ export default function CalendarPage() {
   const [actionConfirm, setActionConfirm] = useState(null);
 
   const currentUser = auth.currentUser;
+
+  useEffect(() => {
+    localStorage.setItem('cds_filter', filterType);
+  }, [filterType]);
 
   useEffect(() => {
     if (toast) {
@@ -122,6 +129,7 @@ export default function CalendarPage() {
     }
   };
 
+  // ✅ FILTRADO Y EFECTO FANTASMA (Punto 1 y 4)
   const processedEvents = useMemo(() => {
     const today = startOfDay(new Date());
     const isPastor = ['pastor', 'lider'].includes(userRole);
@@ -135,10 +143,10 @@ export default function CalendarPage() {
       return true;
     });
 
-    const past = filtered.filter(ev => isBefore(new Date(ev.date + 'T00:00:00'), today));
-    const upcoming = filtered.filter(ev => !isBefore(new Date(ev.date + 'T00:00:00'), today));
-
-    return { past, upcoming };
+    return {
+      past: filtered.filter(ev => isBefore(new Date(ev.date + 'T00:00:00'), today)),
+      upcoming: filtered.filter(ev => !isBefore(new Date(ev.date + 'T00:00:00'), today))
+    };
   }, [events, filterType, currentDate, userRole, currentUser]);
 
   const handleSaveEvent = async () => {
@@ -161,23 +169,22 @@ export default function CalendarPage() {
     finally { setIsUploading(false); }
   };
 
+  // ✅ RENDER DE TARJETA GRANDE (Punto 2 y 3)
   const renderEventCard = (ev, isPast) => {
     const config = OPERATIVE_EVENT_TYPES[ev.type] || OPERATIVE_EVENT_TYPES.culto;
     const isMyTask = ev.assignments && Object.values(ev.assignments).flat().includes(currentUser?.displayName);
     const today = startOfDay(new Date());
 
-    // ✅ RESTRICCIÓN DE ACCESO CORREGIDA
     const canAccess = !config.private || (['pastor', 'lider'].includes(userRole) || dbUser?.area?.toLowerCase() === 'alabanza');
     
-    // ✅ BARRA DE PROGRESO LIMPIEZA
     let progress = null;
     if (ev.type === 'limpieza' || ev.type === 'mantenimiento') {
       const sectors = ev.checklist ? Object.values(ev.checklist) : [];
+      const totalSectors = 4; // Ajuste para cálculo real
       const done = sectors.filter(s => s.done).length;
-      if (sectors.length > 0) progress = Math.round((done / sectors.length) * 100);
+      progress = Math.round((done / totalSectors) * 100);
     }
 
-    // ✅ INFO AYUNO UNIFICADA
     let fastingInfo = null;
     if (ev.type === 'ayuno') {
       const start = parseISO(ev.date);
@@ -190,68 +197,56 @@ export default function CalendarPage() {
 
     return (
       <div key={ev.id} 
-           onClick={() => canAccess ? navigate(`/calendario/${ev.id}`) : setToast({message: "Acceso Privado a Alabanza", type: "error"})}
-           className={`bg-white p-5 rounded-[35px] border-2 transition-all active:scale-95 cursor-pointer relative shadow-sm flex gap-5
-           ${isPast ? 'opacity-40 grayscale-[0.5]' : ''} 
-           ${ev.isCena ? 'border-rose-500 shadow-rose-100 ring-4 ring-rose-500/10' : 'border-slate-50'}
+           id={`event-${ev.date}`}
+           onClick={() => canAccess ? navigate(`/calendario/${ev.id}`) : setToast({message: "Acceso Privado", type: "error"})}
+           className={`bg-white p-7 rounded-[45px] border-2 transition-all active:scale-95 cursor-pointer relative shadow-sm flex gap-6
+           ${isPast ? 'opacity-40 grayscale-[0.5] border-slate-100' : 'border-slate-50'} 
+           ${ev.isCena ? 'border-rose-500 shadow-rose-100 ring-4 ring-rose-500/10' : ''}
            ${isMyTask && !isPast ? 'border-brand-500 shadow-brand-100' : ''}`}>
         
         {isMyTask && !isPast && (
-          <div className="absolute -top-2.5 right-8 bg-brand-600 text-white px-3 py-1 rounded-full text-[8px] font-black tracking-widest shadow-lg border-2 border-white">MI TURNO</div>
+          <div className="absolute -top-3 right-10 bg-brand-600 text-white px-4 py-1.5 rounded-full text-[9px] font-black tracking-widest shadow-lg border-2 border-white">MI TURNO</div>
         )}
 
-        {!ev.published && (
-           <div className="absolute -top-2.5 left-8 bg-amber-500 text-white px-3 py-1 rounded-full text-[8px] font-black tracking-widest shadow-lg border-2 border-white flex items-center gap-1"><EyeOff size={10}/> BORRADOR</div>
-        )}
-
-        <div className={`flex flex-col items-center justify-center px-4 rounded-3xl border-2 min-w-[75px] ${config.light} ${config.text} border-current opacity-80`}>
+        <div className={`flex flex-col items-center justify-center px-5 rounded-[30px] border-2 min-w-[85px] ${config.light} ${config.text} border-current opacity-80 h-24`}>
           <span className="text-[10px] font-black uppercase opacity-60">{format(new Date(ev.date + 'T00:00:00'), 'MMM', { locale: es })}</span>
-          <span className="text-2xl font-black">{format(new Date(ev.date + 'T00:00:00'), 'dd')}</span>
+          <span className="text-3xl font-black">{format(new Date(ev.date + 'T00:00:00'), 'dd')}</span>
         </div>
 
-        <div className="flex-1 min-w-0 text-left">
-          <div className="flex justify-between items-start">
-            <div className="flex items-center gap-2">
-                <span className={`text-[8px] font-black px-2 py-1 rounded-lg uppercase tracking-widest ${config.color} text-white`}>{config.label}</span>
-                {config.private && <Lock size={10} className="text-slate-400"/>}
-            </div>
+        <div className="flex-1 min-w-0 text-left py-1">
+          <div className="flex justify-between items-start mb-1">
+            <span className={`text-[9px] font-black px-3 py-1 rounded-xl uppercase tracking-widest ${config.color} text-white`}>{config.label}</span>
             {['pastor', 'lider'].includes(userRole) && (
               <div className="flex gap-1">
-                <button onClick={(e) => { e.stopPropagation(); setEditingId(ev.id); setNewEvent(ev); setIsModalOpen(true); }} className="p-1 text-slate-300 hover:text-brand-600"><Edit3 size={16}/></button>
-                <button onClick={(e) => { e.stopPropagation(); setActionConfirm({ type: 'delete', id: ev.id, title: '¿Borrar?', message: 'Esta acción no se puede deshacer.' }); }} className="p-1 text-slate-200 hover:text-rose-500"><Trash2 size={16}/></button>
+                <button onClick={(e) => { e.stopPropagation(); setEditingId(ev.id); setNewEvent(ev); setIsModalOpen(true); }} className="p-1.5 text-slate-300 hover:text-brand-600"><Edit3 size={18}/></button>
+                <button onClick={(e) => { e.stopPropagation(); setActionConfirm({ type: 'delete', id: ev.id, title: '¿Borrar?', message: 'Se borrará permanentemente.' }); }} className="p-1.5 text-slate-200 hover:text-rose-500"><Trash2 size={18}/></button>
               </div>
             )}
           </div>
           
-          <h4 className="font-black text-slate-800 text-base leading-tight mt-2 uppercase truncate">
-            {ev.type === 'ayuno' ? 'Semana de Ayuno Congregacional' : ev.title}
+          <h4 className="font-black text-slate-900 text-xl leading-tight uppercase truncate">
+            {ev.type === 'ayuno' ? `Día ${fastingInfo?.currentDayNum || 1} | Ayuno Congregacional` : ev.title}
           </h4>
 
-          <div className="mt-3 space-y-2">
+          <div className="mt-4 space-y-3">
             {ev.type === 'ayuno' && fastingInfo ? (
-              <div className="flex flex-col gap-2">
-                 <div className="flex items-center justify-between">
-                    <span className="text-[9px] font-black text-amber-600 uppercase tracking-widest">
-                      {fastingInfo.totalDays > 1 ? `Día ${fastingInfo.currentDayNum} de ${fastingInfo.totalDays}` : 'Ayuno'}
-                    </span>
-                    <div className="flex -space-x-2">
-                       {fastingInfo.signups.slice(0, 3).map((s, i) => (
-                         <div key={i} className="w-5 h-5 rounded-full border-2 border-white bg-slate-200 overflow-hidden shadow-sm">
-                            <img src={`https://ui-avatars.com/api/?name=${s}&background=random&color=fff`} className="w-full h-full object-cover" />
-                         </div>
-                       ))}
-                       {fastingInfo.signups.length > 3 && <div className="w-5 h-5 rounded-full border-2 border-white bg-amber-500 text-white text-[7px] font-black flex items-center justify-center">+{fastingInfo.signups.length - 3}</div>}
-                    </div>
-                 </div>
-              </div>
+               <div className="flex items-center justify-between bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                  <span className="text-[10px] font-black text-amber-600 uppercase">Versículo Clave: {ev.description?.substring(0, 20) || 'Filipenses 4:6'}...</span>
+                  <div className="flex -space-x-2">
+                    {fastingInfo.signups.slice(0, 3).map((s, i) => (
+                      <div key={i} className="w-6 h-6 rounded-full border-2 border-white bg-slate-200 overflow-hidden shadow-sm"><img src={`https://ui-avatars.com/api/?name=${s}&background=random&color=fff`} /></div>
+                    ))}
+                    {fastingInfo.signups.length > 3 && <div className="w-6 h-6 rounded-full border-2 border-white bg-amber-500 text-white text-[8px] font-black flex items-center justify-center">+{fastingInfo.signups.length - 3}</div>}
+                  </div>
+               </div>
             ) : (
-              <span className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-1.5"><Clock size={12} className="text-brand-500"/> {ev.time} hs</span>
+              <span className="text-[11px] font-black text-slate-400 uppercase flex items-center gap-2"><Clock size={14} className="text-brand-500"/> {ev.time} hs</span>
             )}
-            
+
             {progress !== null && (
-              <div className="flex flex-col gap-1">
-                <div className="flex justify-between text-[8px] font-black uppercase text-slate-400"><span>Progreso</span><span>{progress}%</span></div>
-                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden flex border border-slate-50 shadow-inner">
+              <div className="flex flex-col gap-2">
+                <div className="flex justify-between text-[9px] font-black uppercase text-slate-400"><span>CUMPLIMIENTO</span><span>{progress}%</span></div>
+                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex border border-slate-50">
                   <div className="bg-emerald-500 h-full transition-all duration-700 rounded-full" style={{ width: `${progress}%` }}></div>
                 </div>
               </div>
@@ -262,93 +257,95 @@ export default function CalendarPage() {
     );
   };
 
-  const renderMonthView = () => {
-    const start = startOfWeek(startOfMonth(currentDate), { weekStartsOn: 0 });
-    const end = endOfWeek(endOfMonth(currentDate), { weekStartsOn: 0 });
-    const days = eachDayOfInterval({ start, end });
-    const weekDays = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  // ✅ CABECERA HÍBRIDA (Tira Semanal + Grilla Mensual)
+  const renderHybridHeader = () => {
+    const startWeek = startOfWeek(selectedDate, { weekStartsOn: 0 });
+    const weekDays = Array.from({ length: 7 }, (_, i) => addDays(startWeek, i));
+    const daysInMonth = eachDayOfInterval({ start: startOfMonth(currentDate), end: endOfMonth(currentDate) });
+    const monthStartWeek = startOfWeek(startOfMonth(currentDate), { weekStartsOn: 0 });
+    const monthEndWeek = endOfWeek(endOfMonth(currentDate), { weekStartsOn: 0 });
+    const calendarDays = eachDayOfInterval({ start: monthStartWeek, end: monthEndWeek });
 
     return (
-        <div className="bg-white rounded-[45px] border-2 border-slate-50 shadow-xl p-7 animate-fade-in mx-4 mb-20 text-left">
-            <div className="grid grid-cols-7 mb-4 border-b border-slate-50 pb-4 text-center">
-                {weekDays.map(day => <div key={day} className="text-center text-[10px] font-black text-slate-300 uppercase tracking-widest">{day}</div>)}
-            </div>
-            <div className="grid grid-cols-7 gap-1">
-                {days.map(day => {
-                    const isToday = isSameDay(day, new Date());
-                    const isCurrentMonthDay = isSameMonth(day, currentDate);
-                    const dayEvents = events.filter(e => {
-                        const s = parseISO(e.date);
-                        const en = parseISO(e.endDate || e.date);
-                        return isWithinInterval(day, { start: s, end: en });
-                    });
-                    const hasEvents = dayEvents.length > 0;
-                    const isMyDay = dayEvents.some(e => e.assignments && Object.values(e.assignments).flat().includes(currentUser?.displayName));
-                    const isAyunoDay = dayEvents.some(e => e.type === 'ayuno');
-                    const isLimpiezaDay = dayEvents.some(e => e.type === 'limpieza' || e.type === 'mantenimiento');
-                    
-                    return (
-                        <div key={day.toString()} 
-                            onClick={() => hasEvents && setSelectedDayEvents({ date: day, events: dayEvents })}
-                            className={`aspect-square rounded-2xl flex flex-col items-center justify-center relative cursor-pointer transition-all active:scale-90
-                                ${!isCurrentMonthDay ? 'opacity-20' : 'text-slate-700'}
-                                ${isToday ? 'bg-slate-900 text-white shadow-xl scale-110 z-10' : ''}
-                                ${isMyDay && !isToday ? 'border-2 border-amber-500 bg-amber-50/20' : ''}
-                                ${isAyunoDay && !isToday ? 'bg-amber-100/30' : ''}
-                                ${hasEvents && !isMyDay && !isAyunoDay && !isToday ? 'bg-slate-50' : ''}`}>
-                            
-                            {isAyunoDay && !isToday && <div className="absolute top-1 left-0 right-0 h-0.5 bg-amber-500/60 shadow-[0_0_4px_rgba(245,158,11,0.5)]"></div>}
-                            
-                            <span className="text-xs font-black">{format(day, 'd')}</span>
-                            
-                            <div className="flex gap-0.5 mt-1">
-                              {isLimpiezaDay && !isToday && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-sm"></div>}
-                              {dayEvents.filter(e => e.type !== 'ayuno' && e.type !== 'limpieza').slice(0, 2).map(e => (
-                                <div key={e.id} className={`w-1 h-1 rounded-full ${OPERATIVE_EVENT_TYPES[e.type]?.color || 'bg-slate-300'}`}></div>
-                              ))}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
+      <div className="bg-white rounded-b-[50px] shadow-xl border-b border-slate-100 px-6 pt-4 pb-8 mb-8 sticky top-0 z-30 animate-fade-in">
+        <div className="flex justify-between items-center mb-6">
+           <div className="flex items-center gap-2 cursor-pointer" onClick={() => setIsMonthGridOpen(!isMonthGridOpen)}>
+             <h2 className="text-xl font-black text-slate-900 capitalize tracking-tighter">{format(currentDate, 'MMMM yyyy', { locale: es })}</h2>
+             <ChevronDown size={20} className={`text-brand-500 transition-transform ${isMonthGridOpen ? 'rotate-180' : ''}`} />
+           </div>
+           <div className="flex gap-2">
+             <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-2 bg-slate-50 rounded-xl text-slate-400"><ChevronLeft size={20}/></button>
+             <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-2 bg-slate-50 rounded-xl text-slate-400"><ChevronRight size={20}/></button>
+           </div>
         </div>
+
+        {isMonthGridOpen ? (
+          <div className="grid grid-cols-7 gap-2 animate-slide-down pb-4">
+             {['D', 'L', 'M', 'X', 'J', 'V', 'S'].map(d => <span key={d} className="text-[10px] font-black text-slate-300 text-center">{d}</span>)}
+             {calendarDays.map(day => {
+               const isSelected = isSameDay(day, selectedDate);
+               const isCurrentMonth = isSameMonth(day, currentDate);
+               const hasEvents = events.some(e => isSameDay(parseISO(e.date), day));
+               const isMyTurn = events.some(e => isSameDay(parseISO(e.date), day) && e.assignments && Object.values(e.assignments).flat().includes(currentUser?.displayName));
+               const isAyuno = events.some(e => isSameDay(parseISO(e.date), day) && e.type === 'ayuno');
+               
+               return (
+                 <button key={day.toString()} 
+                   onClick={() => { setSelectedDate(day); setIsMonthGridOpen(false); document.getElementById(`event-${format(day, 'yyyy-MM-dd')}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}
+                   className={`aspect-square rounded-2xl flex flex-col items-center justify-center relative transition-all
+                   ${!isCurrentMonth ? 'opacity-10' : ''}
+                   ${isSelected ? 'bg-slate-900 text-white shadow-lg scale-110' : 'hover:bg-slate-50 text-slate-600'}
+                   ${isMyTurn && !isSelected ? 'border-2 border-brand-500' : ''}`}>
+                   <span className="text-xs font-black">{format(day, 'd')}</span>
+                   {hasEvents && !isSelected && <div className={`w-1 h-1 rounded-full absolute bottom-2 ${isAyuno ? 'bg-amber-500' : 'bg-brand-500'}`}></div>}
+                   {isAyuno && !isSelected && <div className="absolute top-1 left-0 right-0 h-0.5 bg-amber-500/30"></div>}
+                 </button>
+               );
+             })}
+          </div>
+        ) : (
+          <div className="flex justify-between gap-2 overflow-x-auto no-scrollbar py-2">
+            {weekDays.map(day => {
+              const isSelected = isSameDay(day, selectedDate);
+              const hasEvents = events.some(e => isSameDay(parseISO(e.date), day));
+              const isLimpieza = events.some(e => isSameDay(parseISO(e.date), day) && e.type === 'limpieza');
+              
+              return (
+                <button key={day.toString()} 
+                  onClick={() => { setSelectedDate(day); document.getElementById(`event-${format(day, 'yyyy-MM-dd')}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}
+                  className={`flex-1 min-w-[45px] py-4 rounded-[22px] flex flex-col items-center gap-1 transition-all
+                  ${isSelected ? 'bg-slate-900 text-white shadow-xl scale-105' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}>
+                  <span className="text-[8px] font-black uppercase opacity-60">{format(day, 'EEE', { locale: es })}</span>
+                  <span className="text-sm font-black">{format(day, 'd')}</span>
+                  {hasEvents && !isSelected && <div className={`w-1 h-1 rounded-full ${isLimpieza ? 'bg-emerald-500' : 'bg-brand-500'}`}></div>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
     );
   };
 
   return (
-    <div className="pb-36 pt-4 bg-slate-50 min-h-screen animate-fade-in relative font-outfit">
+    <div className="pb-36 bg-slate-50 min-h-screen animate-fade-in relative font-outfit">
       
-      <div className="px-6 mb-8 mt-4">
-        <div className="bg-white p-1.5 rounded-[30px] shadow-sm border-2 border-slate-50 flex gap-1">
-          <button onClick={() => setFilterType('mine')} 
-            className={`flex-1 py-4 rounded-[25px] text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2
-            ${filterType === 'mine' ? 'bg-brand-600 text-white shadow-xl scale-[1.02]' : 'text-slate-400 hover:bg-slate-50'}`}>
-            <UserCheck size={18}/> Mi Agenda
-          </button>
-          <button onClick={() => setFilterType('all')} 
-            className={`flex-1 py-4 rounded-[25px] text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2
-            ${filterType === 'all' ? 'bg-slate-900 text-white shadow-xl scale-[1.02]' : 'text-slate-400 hover:bg-slate-50'}`}>
-            <Globe size={18}/> Comunidad
-          </button>
-        </div>
+      {/* TABS DE FILTRO */}
+      <div className="px-6 pt-6 mb-4 flex justify-between items-center">
+         <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Agenda</h1>
+         <div className="flex bg-white p-1 rounded-3xl border-2 border-slate-100 shadow-sm">
+            <button onClick={() => setFilterType('mine')} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${filterType === 'mine' ? 'bg-brand-600 text-white shadow-lg' : 'text-slate-400'}`}><UserCheck size={16}/> Mis Turnos</button>
+            <button onClick={() => setFilterType('all')} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${filterType === 'all' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400'}`}><Globe size={16}/> Global</button>
+         </div>
       </div>
 
-      <div className="px-6 flex justify-between items-center mb-6">
-        <div className="text-left">
-            <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter leading-none">Agenda</h1>
-            <div className="h-1.5 w-10 bg-brand-500 rounded-full mt-2"></div>
-        </div>
-        <div className="flex bg-white p-1.5 rounded-[22px] border-2 border-slate-50 shadow-sm">
-            <button onClick={() => setViewMode('list')} className={`p-2.5 rounded-xl transition-all ${viewMode === 'list' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-300'}`}><List size={20}/></button>
-            <button onClick={() => setViewMode('month')} className={`p-2.5 rounded-xl transition-all ${viewMode === 'month' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-300'}`}><CalIcon size={20}/></button>
-        </div>
-      </div>
+      {renderHybridHeader()}
 
       {['pastor', 'lider'].includes(userRole) && events.some(e => !e.published && isSameMonth(new Date(e.date + 'T00:00:00'), currentDate)) && (
           <div className="mx-6 bg-amber-500 p-6 rounded-[35px] mb-8 flex items-center justify-between shadow-xl shadow-amber-200/40 animate-pulse">
             <div className="flex items-center gap-4 text-white text-left">
               <Megaphone size={26}/>
-              <div><p className="text-xs font-black uppercase tracking-tighter">Borradores</p><p className="text-[9px] font-bold opacity-90 uppercase">Listos para lanzar</p></div>
+              <div><p className="text-xs font-black uppercase">Borradores</p><p className="text-[9px] font-bold opacity-90 uppercase">Listos para lanzar</p></div>
             </div>
             <button onClick={() => setActionConfirm({ type: 'publish', title: '¿Publicar Agenda?', message: 'Se notificará a toda la iglesia.' })} disabled={isPublishing} className="bg-white text-amber-600 px-6 py-3 rounded-2xl text-[10px] font-black shadow-lg">
               {isPublishing ? <Loader2 size={12} className="animate-spin"/> : 'Publicar'}
@@ -356,45 +353,39 @@ export default function CalendarPage() {
           </div>
       )}
 
-      <div className="px-6 flex items-center justify-between bg-white mx-5 p-5 rounded-[30px] border border-slate-100 mb-8 shadow-sm">
-        <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-3 text-slate-300 bg-slate-50 rounded-2xl active:scale-75 transition-transform"><ChevronLeft size={24} /></button>
-        <h2 className="text-lg font-black text-slate-900 capitalize tracking-tighter">{format(currentDate, 'MMMM yyyy', { locale: es })}</h2>
-        <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-3 text-slate-300 bg-slate-50 rounded-2xl active:scale-75 transition-transform"><ChevronRight size={24} /></button>
-      </div>
-
-      <div className="flex-1">
-        {loading ? <div className="py-24 text-center opacity-20"><Loader2 className="animate-spin mx-auto" size={48}/></div> : (viewMode === 'month' ? renderMonthView() : (
-          <div className="space-y-10 pb-20">
+      <div className="flex-1 px-6">
+        {loading ? <div className="py-24 text-center opacity-20"><Loader2 className="animate-spin mx-auto" size={48}/></div> : (
+          <div className="space-y-12 pb-24" ref={listRef}>
             {processedEvents.upcoming.length > 0 && (
-              <div className="space-y-4 px-4">
-                <div className="flex items-center gap-3 px-4 mb-2">
-                  <span className="text-[10px] font-black text-brand-600 uppercase tracking-widest">Lo que viene</span>
-                  <div className="h-[1px] flex-1 bg-brand-100"></div>
+              <div className="space-y-6">
+                <div className="flex items-center gap-4">
+                  <span className="text-[10px] font-black text-brand-600 uppercase tracking-[0.2em] whitespace-nowrap">Lo que viene</span>
+                  <div className="h-[2px] flex-1 bg-brand-100 rounded-full"></div>
                 </div>
                 {processedEvents.upcoming.map(ev => renderEventCard(ev, false))}
               </div>
             )}
             {processedEvents.past.length > 0 && (
-              <div className="space-y-4 px-4">
-                <div className="flex items-center gap-3 px-4 mb-2">
-                  <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Ya realizado</span>
-                  <div className="h-[1px] flex-1 bg-slate-100"></div>
+              <div className="space-y-6 opacity-60">
+                <div className="flex items-center gap-4">
+                  <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] whitespace-nowrap">Anteriormente</span>
+                  <div className="h-[2px] flex-1 bg-slate-100 rounded-full"></div>
                 </div>
                 {processedEvents.past.map(ev => renderEventCard(ev, true))}
               </div>
             )}
           </div>
-        ))}
+        )}
       </div>
 
       {['pastor', 'lider'].includes(userRole) && (
-        <button onClick={() => { setEditingId(null); setNewEvent({ title: '', type: 'culto', date: '', endDate: '', time: '19:30', published: false }); setIsModalOpen(true); }} className="fixed bottom-28 right-6 w-16 h-16 bg-slate-900 text-white rounded-[24px] shadow-2xl flex items-center justify-center z-40 border-4 border-white active:scale-90 transition-all"><Plus size={32}/></button>
+        <button onClick={() => { setEditingId(null); setNewEvent({ title: '', type: 'culto', date: '', endDate: '', time: '19:30', published: false }); setIsModalOpen(true); }} className="fixed bottom-28 right-6 w-18 h-18 bg-slate-900 text-white rounded-[30px] shadow-2xl flex items-center justify-center z-40 border-4 border-white active:scale-90 transition-all"><Plus size={36}/></button>
       )}
 
       {/* MODAL PLANIFICAR */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
-            <div className="bg-white w-full max-w-sm rounded-[45px] p-8 shadow-2xl max-h-[90vh] overflow-y-auto no-scrollbar relative animate-slide-up text-left">
+            <div className="bg-white w-full max-w-sm rounded-[50px] p-10 shadow-2xl max-h-[90vh] overflow-y-auto no-scrollbar relative animate-slide-up text-left">
                 <div className="flex justify-between items-center mb-8 border-b pb-5 border-slate-50">
                     <div><h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{editingId ? 'Editar' : 'Planificar'}</h2><p className="text-[10px] font-black text-brand-600 uppercase tracking-widest">Actividad Ministerial</p></div>
                     <button onClick={() => setIsModalOpen(false)} className="p-3 bg-slate-50 rounded-full text-slate-400"><X size={24}/></button>
@@ -403,12 +394,12 @@ export default function CalendarPage() {
                     <input placeholder="Título..." className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[24px] font-black text-slate-800 outline-none focus:border-brand-500 uppercase text-sm" value={newEvent.title} onChange={e => setNewEvent({...newEvent, title: e.target.value})} />
                     <div className="grid grid-cols-1 gap-4">
                         <div className="space-y-1">
-                          <label className="text-[9px] font-black text-slate-400 uppercase ml-4">Inicio / Único</label>
+                          <label className="text-[9px] font-black text-slate-400 uppercase ml-4">Inicio</label>
                           <input type="date" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-[20px] text-xs font-black uppercase outline-none" value={newEvent.date} onChange={e => setNewEvent({...newEvent, date: e.target.value})} />
                         </div>
                         {newEvent.type === 'ayuno' && (
                           <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-400 uppercase ml-4">Finalización (Opcional)</label>
+                            <label className="text-[9px] font-black text-slate-400 uppercase ml-4">Finalización</label>
                             <input type="date" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-[20px] text-xs font-black uppercase outline-none" value={newEvent.endDate} onChange={e => setNewEvent({...newEvent, endDate: e.target.value})} />
                           </div>
                         )}
@@ -433,34 +424,6 @@ export default function CalendarPage() {
                     </button>
                 </div>
             </div>
-        </div>
-      )}
-
-      {/* MODAL DETALLES DEL DÍA */}
-      {selectedDayEvents && (
-        <div className="fixed inset-0 z-[400] bg-slate-900/60 backdrop-blur-sm flex items-end justify-center animate-fade-in" onClick={() => setSelectedDayEvents(null)}>
-          <div className="bg-white w-full max-w-md rounded-t-[50px] p-10 shadow-2xl animate-slide-up" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-8 text-left">
-              <div>
-                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{format(selectedDayEvents.date, "EEEE d", { locale: es })}</h3>
-                <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest">{format(selectedDayEvents.date, "MMMM", { locale: es })}</p>
-              </div>
-              <button onClick={() => setSelectedDayEvents(null)} className="p-3 bg-slate-100 rounded-full text-slate-400"><X size={20}/></button>
-            </div>
-            <div className="space-y-4 max-h-[50vh] overflow-y-auto no-scrollbar pb-6 text-left">
-              {selectedDayEvents.events.map(ev => (
-                <button key={ev.id} onClick={() => { setSelectedDayEvents(null); navigate(`/calendario/${ev.id}`); }} className="w-full flex items-center justify-between p-6 bg-slate-50 rounded-[30px] border-2 border-slate-100 active:scale-95 transition-all">
-                  <div className="flex items-center gap-5">
-                    <div className={`p-4 rounded-2xl ${OPERATIVE_EVENT_TYPES[ev.type]?.color || 'bg-slate-200'} text-white shadow-sm`}>
-                      {(() => { const Icon = OPERATIVE_EVENT_TYPES[ev.type]?.icon || Church; return <Icon size={24}/> })()}
-                    </div>
-                    <div><p className="font-black text-slate-900 text-sm uppercase tracking-tight">{ev.title}</p><p className="text-[11px] font-bold text-slate-400 uppercase">{ev.time} hs</p></div>
-                  </div>
-                  <ArrowRight size={20} className="text-slate-300" />
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       )}
 
