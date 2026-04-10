@@ -1,517 +1,416 @@
-import { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useOutletContext } from 'react-router-dom';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase';
-import {
-  collection, query, orderBy, onSnapshot, addDoc,
-  deleteDoc, doc, getDoc, serverTimestamp,
-  writeBatch, updateDoc
-} from 'firebase/firestore';
-import {
-  Plus, Calendar as CalIcon, List, Clock, Trash2, X,
-  ChevronLeft, ChevronRight, Loader2, Megaphone,
-  Send, EyeOff, CheckCircle, XCircle, Edit3,
-  AlertCircle, ChevronRight as ArrowRight, LayoutGrid, Sparkles, Heart, UserCheck, Globe,
-  Church, Users, Music, Eraser, Wrench, Flame, Lock, Info, CheckSquare, MessageSquare
-} from 'lucide-react';
 import { 
-  format, addMonths, subMonths, isSameMonth, startOfMonth, 
-  endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, 
-  isSameDay, isWithinInterval, parseISO, isAfter, startOfDay, isBefore, differenceInDays
-} from 'date-fns';
+  doc, getDoc, updateDoc, collection, getDocs, deleteDoc, 
+  serverTimestamp, arrayUnion, arrayRemove 
+} from 'firebase/firestore'; 
+import { 
+  X, Calendar, Clock, Save, Trash2, Plus, Users, 
+  CheckCircle, Download, Loader2, Search, HelpCircle,
+  AlertCircle, Check, ExternalLink, ArrowRight, UserPlus, UserMinus, Heart,
+  Music, Eraser, Wrench, Flame, Church, Lock, ShieldAlert, MessageSquare, 
+  Edit3, PlusCircle, CheckSquare, Square, Car, Shield, Monitor, Camera, Send, Globe
+} from 'lucide-react';
+import { format, eachDayOfInterval, parseISO, isSameDay } from 'date-fns';
 import { es } from 'date-fns/locale';
-import imageCompression from 'browser-image-compression';
+import html2canvas from 'html2canvas'; 
+import jsPDF from 'jspdf'; 
+import { toast } from 'sonner';
+import { OPERATIVE_EVENT_TYPES } from './Calendar';
 
-export const OPERATIVE_EVENT_TYPES = {
-  culto: { label: 'Culto', icon: Church, color: 'bg-blue-600', text: 'text-blue-600', light: 'bg-blue-50' },
-  jovenes: { label: 'Jóvenes', icon: Users, color: 'bg-orange-500', text: 'text-orange-500', light: 'bg-orange-50' },
-  mujeres: { label: 'Mujeres', icon: Heart, color: 'bg-pink-500', text: 'text-pink-500', light: 'bg-pink-50' },
-  varones: { label: 'Varones', icon: UserCheck, color: 'bg-indigo-500', text: 'text-indigo-500', light: 'bg-indigo-50' },
-  ensayo: { label: 'Ensayo', icon: Music, color: 'bg-purple-600', text: 'text-purple-600', light: 'bg-purple-50', private: true },
-  limpieza: { label: 'Limpieza', icon: Eraser, color: 'bg-emerald-500', text: 'text-emerald-500', light: 'bg-emerald-50' },
-  mantenimiento: { label: 'Mantenimiento', icon: Wrench, color: 'bg-slate-600', text: 'text-slate-600', light: 'bg-slate-100' },
-  ayuno: { label: 'Ayuno', icon: Flame, color: 'bg-amber-500', text: 'text-amber-500', light: 'bg-amber-50' }
-};
-
-export default function CalendarPage() {
+export default function EventDetails() {
+  const { id } = useParams();
   const navigate = useNavigate();
-  const { dbUser } = useOutletContext();
+  const reportRef = useRef(); 
   
-  const [viewMode, setViewMode] = useState('list'); 
-  const [filterType, setFilterType] = useState('mine'); 
-  
-  const [events, setEvents] = useState([]);
+  const [event, setEvent] = useState(null);
+  const [users, setUsers] = useState([]); 
   const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [selectedDayEvents, setSelectedDayEvents] = useState(null);
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [userRole, setUserRole] = useState(null);
-  const [isPublishing, setIsPublishing] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [imageFile, setImageFile] = useState(null);
-  const [toast, setToast] = useState(null);
-  const [actionConfirm, setActionConfirm] = useState(null);
+  const [dbUser, setDbUser] = useState(null);
+  const [isEditingMeta, setIsEditingMeta] = useState(false);
+  const [isAssigning, setIsAssigning] = useState(false);
+  const [assignments, setAssignments] = useState({}); 
+  const [isSelectorOpen, setIsSelectorOpen] = useState(false);
+  const [activeRoleKey, setActiveRoleKey] = useState(null); 
+  const [activeRoleConfig, setActiveRoleConfig] = useState(null); 
+  const [personSearchTerm, setPersonSearchTerm] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const currentUser = auth.currentUser;
-  const CLOUD_NAME = "djmkggzjp";
-  const UPLOAD_PRESET = "ml_default";
 
-  const [newEvent, setNewEvent] = useState({
-    title: '', type: 'culto', date: '', endDate: '', time: '19:30', description: '',
-    published: false, isCena: false
-  });
-
+  // --- 1. CARGA DE DATOS (ORDEN ALFABÉTICO Y PRIVACIDAD) ---
   useEffect(() => {
-    if (toast) {
-      const timer = setTimeout(() => setToast(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [toast]);
+    const fetchData = async () => {
+      try {
+        if (!currentUser) return;
+        const uSnap = await getDoc(doc(db, 'users', currentUser.uid));
+        const currentDbUser = uSnap.exists() ? uSnap.data() : null;
+        setDbUser(currentDbUser);
 
-  useEffect(() => {
-    const fetchUserRole = async () => {
-      if (currentUser) {
-        const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
-        if (userSnap.exists()) setUserRole(userSnap.data().role);
-      }
+        const eRef = doc(db, 'events', id);
+        const eSnap = await getDoc(eRef);
+        
+        const usSnap = await getDocs(collection(db, 'users'));
+        // ✅ LISTA EN ORDEN ALFABÉTICO
+        const sortedUsers = usSnap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''));
+        setUsers(sortedUsers);
+
+        if (eSnap.exists()) {
+          const data = { id: eSnap.id, ...eSnap.data() };
+          // ✅ PRIVACIDAD ENSAYO ALABANZA
+          const isAlabanza = currentDbUser?.area?.toLowerCase() === 'alabanza';
+          const isLeader = ['pastor', 'lider'].includes(currentDbUser?.role);
+          if (data.type === 'ensayo' && !isAlabanza && !isLeader) {
+            setEvent({ ...data, restricted: true });
+          } else {
+            setEvent(data);
+          }
+          setAssignments(data.assignments || {});
+        } else { navigate('/calendario'); }
+      } catch (e) { console.error(e); } finally { setLoading(false); }
     };
-    fetchUserRole();
+    fetchData();
+  }, [id, currentUser, navigate]);
 
-    const q = query(collection(db, 'events'), orderBy('date', 'asc'));
-    const unsubscribeEvents = onSnapshot(q, (snapshot) => {
-      setEvents(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setLoading(false);
-    });
-    return () => unsubscribeEvents();
-  }, [currentUser]);
-
-  const sendOneSignalNotification = async (notifTitle, notifBody, path) => {
+  // --- 4. NOTIFICACIONES REST API ---
+  const sendPush = async (userNames, eventTitle) => {
+    const KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
+    if (!KEY) return;
+    const targetIds = users.filter(u => userNames.includes(u.displayName)).map(u => u.id);
+    if (targetIds.length === 0) return;
     try {
-      const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
-      if (!REST_API_KEY) return;
       await fetch("https://onesignal.com/api/v1/notifications", {
         method: "POST",
-        headers: { "Content-Type": "application/json; charset=utf-8", "Authorization": `Basic ${REST_API_KEY}` },
+        headers: { "Content-Type": "application/json", "Authorization": `Basic ${KEY}` },
         body: JSON.stringify({
           app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
-          included_segments: ["Total Subscriptions"],
-          headings: { en: notifTitle, es: notifTitle },
-          contents: { en: notifBody, es: notifBody },
-          data: { route: path }, 
+          include_external_user_ids: targetIds,
+          headings: { en: "📍 Tarea asignada", es: "📍 Tarea asignada" },
+          contents: { en: `Tarea en: ${eventTitle}`, es: `Tarea en: ${eventTitle}` },
+          data: { route: `/calendario/${id}` },
           priority: 10
         })
       });
-    } catch (error) { console.error("Error envío notif:", error); }
+    } catch (e) { console.log(e); }
   };
 
-  // ✅ RESTAURADA: FUNCIÓN DE PUBLICAR BORRADORES
-  const executeConfirmedAction = async () => {
-    if (!actionConfirm) return;
-    const { type, id } = actionConfirm;
-    setActionConfirm(null);
-    if (type === 'delete') {
-      try {
-        await deleteDoc(doc(db, 'events', id));
-        setToast({ message: "Evento eliminado", type: "info" });
-      } catch (e) { setToast({ message: "Error", type: "error" }); }
-    }
-    if (type === 'publish') {
-      setIsPublishing(true);
-      try {
-        const monthEvents = events.filter(e => !e.published && isSameMonth(new Date(e.date + 'T00:00:00'), currentDate));
-        const batch = writeBatch(db);
-        monthEvents.forEach(e => {
-          batch.update(doc(db, 'events', e.id), { published: true, updatedAt: serverTimestamp() });
-        });
-        await batch.commit();
-        await sendOneSignalNotification(`📅 Agenda lista`, "Se publicaron las actividades del mes.", "/calendario");
-        setToast({ message: "¡Todo publicado!", type: "success" });
-      } catch (e) { setToast({ message: "Error", type: "error" }); }
-      finally { setIsPublishing(false); }
-    }
-  };
-
-  // ✅ FILTRADO PRO (VISIBILIDAD DE BORRADORES Y AYUNO)
-  const processedEvents = useMemo(() => {
-    const today = startOfDay(new Date());
-    const isPastor = ['pastor', 'lider'].includes(userRole);
-
-    const filtered = events.filter(ev => {
-      const eventDate = new Date(ev.date + 'T00:00:00');
-      const isMyTask = ev.assignments && Object.values(ev.assignments).flat().includes(currentUser?.displayName);
-      
-      if (!isSameMonth(eventDate, currentDate)) return false;
-      
-      // ✅ LOGICA DE BORRADORES
-      if (!ev.published && !isPastor && !isMyTask) return false;
-      
-      if (filterType === 'mine' && !isMyTask) return false;
-      return true;
-    });
-
-    const past = filtered.filter(ev => isBefore(new Date(ev.date + 'T00:00:00'), today));
-    const upcoming = filtered.filter(ev => !isBefore(new Date(ev.date + 'T00:00:00'), today));
-
-    return { past, upcoming };
-  }, [events, filterType, currentDate, userRole, currentUser]);
-
-  const handleSaveEvent = async () => {
-    if (!newEvent.title || !newEvent.date) return setToast({ message: "Falta título o fecha", type: "error" });
-    setIsUploading(true);
-    let uploadedImageUrl = newEvent.image || null;
+  const handleConfirm = async (status) => {
     try {
-        if (imageFile) {
-            const options = { maxSizeMB: 0.6, maxWidthOrHeight: 1200, useWebWorker: true };
-            const compressed = await imageCompression(imageFile, options);
-            const formData = new FormData();
-            formData.append("file", compressed); formData.append("upload_preset", UPLOAD_PRESET);
-            const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { method: "POST", body: formData });
-            const data = await res.json();
-            uploadedImageUrl = data.secure_url;
-        }
-        const eventData = { ...newEvent, image: uploadedImageUrl, updatedAt: serverTimestamp(), endDate: newEvent.endDate || newEvent.date };
-        if (editingId) {
-            await updateDoc(doc(db, 'events', editingId), eventData);
-            setToast({ message: "Actualizado", type: "success" });
-        } else {
-            const docRef = await addDoc(collection(db, 'events'), { ...eventData, createdAt: serverTimestamp(), assignments: {} });
-            if (newEvent.published) await sendOneSignalNotification("Nueva actividad", newEvent.title, `/calendario/${docRef.id}`);
-            setToast({ message: "Creado", type: "success" });
-        }
-        setIsModalOpen(false);
-        setEditingId(null);
-        setNewEvent({ title: '', type: 'culto', date: '', endDate: '', time: '19:30', published: false, isCena: false });
-    } catch (error) { setToast({ message: "Error al guardar", type: "error" }); }
-    finally { setIsUploading(false); }
+      const eRef = doc(db, 'events', id);
+      await updateDoc(eRef, { [`confirmations.${dbUser.displayName}`]: status });
+      setEvent(prev => ({ ...prev, confirmations: { ...prev.confirmations, [dbUser.displayName]: status } }));
+      toast.success(status === 'confirmed' ? "Servicio confirmado" : "Aviso enviado");
+    } catch (e) { toast.error("Error"); }
   };
 
-  const renderEventCard = (ev, isPast) => {
-    const config = OPERATIVE_EVENT_TYPES[ev.type] || OPERATIVE_EVENT_TYPES.culto;
-    const isMyTask = ev.assignments && Object.values(ev.assignments).flat().includes(currentUser?.displayName);
-    const today = startOfDay(new Date());
-    
-    // ✅ PROGRESO LIMPIEZA
-    let progress = null;
-    if (ev.type === 'limpieza' || ev.type === 'mantenimiento') {
-      const sectors = ev.checklist ? Object.values(ev.checklist) : [];
-      const done = sectors.filter(s => s.done).length;
-      if (sectors.length > 0) progress = Math.round((done / sectors.length) * 100);
+  const saveAll = async () => {
+    setIsSaving(true);
+    try {
+      const eRef = doc(db, 'events', id);
+      await updateDoc(eRef, { ...event, assignments, updatedAt: serverTimestamp() });
+      if (isAssigning) await sendPush(Object.values(assignments).flat(), event.title);
+      setIsAssigning(false);
+      setIsEditingMeta(false);
+      toast.success("Cambios guardados");
+    } catch (e) { toast.error("Error al guardar"); } finally { setIsSaving(false); }
+  };
+
+  // ✅ ASIGNAR GRUPO COMPLETO (Ministerios)
+  const assignGroup = (areaName) => {
+    const ministry = users.filter(u => u.area?.toLowerCase() === areaName.toLowerCase()).map(u => u.displayName);
+    const current = assignments[activeRoleKey] || [];
+    setAssignments({ ...assignments, [activeRoleKey]: [...new Set([...current, ...ministry])] });
+    setIsSelectorOpen(false);
+    toast.info(`Grupo ${areaName} añadido`);
+  };
+
+  // ✅ AYUNO: ANOTARSE POR DÍA
+  const toggleFast = async (dateStr) => {
+    const currentList = event.fastingSignups?.[dateStr] || [];
+    const isSigned = currentList.includes(dbUser.displayName);
+    const eRef = doc(db, 'events', id);
+    try {
+      if (isSigned) await updateDoc(eRef, { [`fastingSignups.${dateStr}`]: arrayRemove(dbUser.displayName) });
+      else await updateDoc(eRef, { [`fastingSignups.${dateStr}`]: arrayUnion(dbUser.displayName) });
+      const newList = isSigned ? currentList.filter(n => n !== dbUser.displayName) : [...currentList, dbUser.displayName];
+      setEvent({ ...event, fastingSignups: { ...event.fastingSignups, [dateStr]: newList } });
+    } catch (e) { toast.error("Error"); }
+  };
+
+  // ✅ CHECKLIST LIMPIEZA CON COMENTARIOS
+  const toggleCheck = async (sector) => {
+    const currentChecklist = event.checklist || {};
+    const newState = !currentChecklist[sector]?.done;
+    const updated = { ...currentChecklist, [sector]: { ...currentChecklist[sector], done: newState } };
+    setEvent({ ...event, checklist: updated });
+    await updateDoc(doc(db, 'events', id), { checklist: updated });
+  };
+
+  const saveComment = async (sector, text) => {
+    const currentChecklist = event.checklist || {};
+    const updated = { ...currentChecklist, [sector]: { ...currentChecklist[sector], comment: text } };
+    setEvent({ ...event, checklist: updated });
+    await updateDoc(doc(db, 'events', id), { checklist: updated });
+    toast.success("Comentario guardado");
+  };
+
+  if (loading || !event) return <div className="fixed inset-0 flex items-center justify-center bg-white z-[200]"><Loader2 className="animate-spin text-brand-600" size={40}/></div>;
+
+  // ✅ PRIVACIDAD ENSAYO
+  if (event.restricted) return (
+    <div className="fixed inset-0 bg-white z-[200] flex flex-col items-center justify-center p-10 text-center font-outfit">
+      <Lock size={60} className="text-slate-200 mb-6"/><h2 className="text-2xl font-black text-slate-900 uppercase">Ensayo Privado</h2>
+      <p className="text-slate-500 font-bold text-xs uppercase mt-4 leading-loose">Solo el ministerio de Alabanza puede ver el detalle.</p>
+      <button onClick={() => navigate(-1)} className="mt-12 py-4 px-10 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase">Volver</button>
+    </div>
+  );
+
+  const Config = OPERATIVE_EVENT_TYPES[event.type] || OPERATIVE_EVENT_TYPES.culto;
+  
+  // ✅ LÓGICA PULSE
+  const myStatus = event.confirmations?.[dbUser?.displayName] || 'pending';
+  const amIAssigned = Object.values(event.assignments || {}).flat().includes(dbUser?.displayName);
+  const shouldPulse = amIAssigned && myStatus === 'pending';
+
+  // ✅ ESTRUCTURAS OPERATIVAS (RECUPERADAS)
+  const getStructure = () => {
+    if (event.type === 'limpieza' || event.type === 'mantenimiento') {
+      return [
+        { section: 'SECTORES Y TRABAJO', roles: [
+          { key: 'salon', label: 'Salón Principal', icon: Church, type: 'multi' },
+          { key: 'banos', label: 'Baños y Pasillos', icon: Eraser, type: 'multi' },
+          { key: 'vereda', label: 'Vereda y Entrada', icon: ArrowRight, type: 'multi' },
+          { key: 'cocina', label: 'Cocina / Anexo', icon: Flame, type: 'multi' }
+        ]}
+      ];
     }
-
-    // ✅ AVATARES AYUNO
-    let fastingInfo = null;
-    if (ev.type === 'ayuno') {
-      const start = parseISO(ev.date);
-      const end = parseISO(ev.endDate || ev.date);
-      const totalDays = differenceInDays(end, start) + 1;
-      const currentDayNum = isWithinInterval(today, { start, end }) ? differenceInDays(today, start) + 1 : null;
-      const todaySignups = ev.fastingSignups?.[format(today, 'yyyy-MM-dd')] || [];
-      fastingInfo = { totalDays, currentDayNum, signups: todaySignups };
-    }
-
-    return (
-      <div key={ev.id} 
-           onClick={() => navigate(`/calendario/${ev.id}`)} // ✅ FIX: AHORA ABRE EL DETALLE
-           className={`bg-white p-5 rounded-[35px] border-2 transition-all active:scale-95 cursor-pointer relative shadow-sm flex gap-5
-           ${isPast ? 'opacity-40 grayscale-[0.5]' : ''} 
-           ${ev.isCena ? 'border-rose-500 shadow-rose-100 ring-2 ring-rose-500/20' : 'border-slate-50'}
-           ${isMyTask && !isPast ? 'border-brand-500 shadow-brand-100' : ''}`}>
-        
-        {isMyTask && !isPast && (
-          <div className="absolute -top-2.5 right-8 bg-brand-600 text-white px-3 py-1 rounded-full text-[8px] font-black tracking-widest shadow-lg border-2 border-white">MI TURNO</div>
-        )}
-
-        {!ev.published && (
-           <div className="absolute -top-2.5 left-8 bg-amber-500 text-white px-3 py-1 rounded-full text-[8px] font-black tracking-widest shadow-lg border-2 border-white flex items-center gap-1"><EyeOff size={10}/> BORRADOR</div>
-        )}
-
-        <div className={`flex flex-col items-center justify-center px-4 rounded-3xl border-2 min-w-[75px] ${config.light} ${config.text} border-current opacity-80`}>
-          <span className="text-[10px] font-black uppercase opacity-60">{format(new Date(ev.date + 'T00:00:00'), 'MMM', { locale: es })}</span>
-          <span className="text-2xl font-black">{format(new Date(ev.date + 'T00:00:00'), 'dd')}</span>
-        </div>
-
-        <div className="flex-1 min-w-0 text-left">
-          <div className="flex justify-between items-start">
-            <span className={`text-[8px] font-black px-2 py-1 rounded-lg uppercase tracking-widest ${config.color} text-white`}>{config.label}</span>
-            {['pastor', 'lider'].includes(userRole) && (
-              <div className="flex gap-1">
-                <button onClick={(e) => { e.stopPropagation(); setEditingId(ev.id); setNewEvent(ev); setIsModalOpen(true); }} className="p-1 text-slate-300 hover:text-brand-600"><Edit3 size={16}/></button>
-                <button onClick={(e) => { e.stopPropagation(); setActionConfirm({ type: 'delete', id: ev.id, title: '¿Borrar?', message: 'Se borrará permanentemente.' }); }} className="p-1 text-slate-200 hover:text-rose-500"><Trash2 size={16}/></button>
-              </div>
-            )}
-          </div>
-          
-          <h4 className="font-black text-slate-800 text-base leading-tight mt-2 uppercase truncate">
-            {ev.type === 'ayuno' ? 'Semana de Ayuno Congregacional' : ev.title}
-          </h4>
-          
-          <div className="mt-3 space-y-2">
-            {ev.type === 'ayuno' && fastingInfo ? (
-              <div className="flex flex-col gap-2">
-                 <div className="flex items-center justify-between">
-                    <span className="text-[9px] font-black text-amber-600 uppercase tracking-widest">
-                      {fastingInfo.currentDayNum ? `Día ${fastingInfo.currentDayNum} de ${fastingInfo.totalDays}` : `${fastingInfo.totalDays} Días programados`}
-                    </span>
-                    <div className="flex -space-x-2">
-                       {fastingInfo.signups.slice(0, 3).map((s, i) => (
-                         <div key={i} className="w-5 h-5 rounded-full border-2 border-white bg-slate-200 overflow-hidden shadow-sm">
-                            <img src={`https://ui-avatars.com/api/?name=${s}&background=random`} className="w-full h-full object-cover" />
-                         </div>
-                       ))}
-                       {fastingInfo.signups.length > 3 && (
-                         <div className="w-5 h-5 rounded-full border-2 border-white bg-amber-500 text-white text-[7px] font-black flex items-center justify-center">+{fastingInfo.signups.length - 3}</div>
-                       )}
-                    </div>
-                 </div>
-              </div>
-            ) : (
-              <span className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-1.5"><Clock size={12} className="text-brand-500"/> {ev.time} hs</span>
-            )}
-            
-            {progress !== null && (
-              <div className="flex flex-col gap-1">
-                <div className="flex justify-between text-[8px] font-black uppercase text-slate-400"><span>Progreso</span><span>{progress}%</span></div>
-                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex border border-slate-50 shadow-inner">
-                  <div className="bg-emerald-500 h-full transition-all duration-700 rounded-full" style={{ width: `${progress}%` }}></div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
+    return [
+      { section: 'LIDERAZGO', roles: [
+          { key: 'predicador', label: 'Predicador', icon: MessageSquare, type: 'single' },
+          { key: 'oracion_inicio', label: 'Oración de Inicio', icon: Heart, type: 'single' },
+          { key: 'palabra_ofrenda', label: 'Palabra de Ofrenda', icon: Globe, type: 'single' }
+      ]},
+      { section: 'MINISTERIO DE ALABANZA', roles: [
+          { key: 'vocalistas', label: 'Vocalistas', icon: Music, type: 'multi' },
+          { key: 'g_electrica', label: 'Guitarra Eléctrica', icon: Music, type: 'single' },
+          { key: 'g_acustica', label: 'Guitarra Acústica', icon: Music, type: 'single' },
+          { key: 'bateria', label: 'Batería', icon: Music, type: 'single' },
+          { key: 'bajo', label: 'Bajo', icon: Music, type: 'single' },
+          { key: 'teclado', label: 'Teclado', icon: Music, type: 'single' }
+      ]},
+      { section: 'OPERATIVO / UJERES', roles: [
+          { key: 'bienvenida', label: 'Bienvenida', icon: Users, type: 'multi' },
+          { key: 'porteria', label: 'Portero (cerrar iglesia)', icon: Lock, type: 'single' },
+          { key: 'pasillos', label: 'Pasillos', icon: ArrowRight, type: 'multi' },
+          { key: 'seguridad_autos', label: 'Seguridad Autos', icon: Car, type: 'multi' },
+          { key: 'control_banos', label: 'Control de Baños', icon: Eraser, type: 'multi' },
+          { key: 'servicio_altar', label: 'Servicio Altar', icon: Shield, type: 'multi' }
+      ]},
+      { section: 'TÉCNICA', roles: [
+          { key: 'proyeccion', label: 'Proyección', icon: Monitor, type: 'single' },
+          { key: 'transmision', label: 'Transmisión Cámaras', icon: Camera, type: 'single' },
+          { key: 'sonido', label: 'Sonido', icon: Wrench, type: 'single' }
+      ]}
+    ];
   };
 
-  const renderMonthView = () => {
-    const start = startOfWeek(startOfMonth(currentDate), { weekStartsOn: 0 });
-    const end = endOfWeek(endOfMonth(currentDate), { weekStartsOn: 0 });
-    const days = eachDayOfInterval({ start, end });
-    const weekDays = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-
-    return (
-        <div className="bg-white rounded-[45px] border-2 border-slate-50 shadow-xl p-7 animate-fade-in mx-4 mb-20 text-left">
-            <div className="grid grid-cols-7 mb-4 border-b border-slate-50 pb-4">
-                {weekDays.map(day => <div key={day} className="text-center text-[10px] font-black text-slate-300 uppercase tracking-widest">{day}</div>)}
-            </div>
-            <div className="grid grid-cols-7 gap-1">
-                {days.map(day => {
-                    const isToday = isSameDay(day, new Date());
-                    const isCurrentMonthDay = isSameMonth(day, currentDate);
-                    const dayEvents = events.filter(e => {
-                        const s = parseISO(e.date);
-                        const en = parseISO(e.endDate || e.date);
-                        return isWithinInterval(day, { start: s, end: en });
-                    });
-                    const hasEvents = dayEvents.length > 0;
-                    const isMyDay = dayEvents.some(e => e.assignments && Object.values(e.assignments).flat().includes(currentUser?.displayName));
-                    const isAyunoDay = dayEvents.some(e => e.type === 'ayuno');
-                    const isLimpiezaDay = dayEvents.some(e => e.type === 'limpieza' || e.type === 'mantenimiento');
-                    
-                    return (
-                        <div key={day.toString()} 
-                            onClick={() => hasEvents && setSelectedDayEvents({ date: day, events: dayEvents })}
-                            className={`aspect-square rounded-2xl flex flex-col items-center justify-center relative cursor-pointer transition-all active:scale-90
-                                ${!isCurrentMonthDay ? 'opacity-20' : 'text-slate-700'}
-                                ${isToday ? 'bg-slate-900 text-white shadow-xl scale-110 z-10' : ''}
-                                ${isMyDay && !isToday ? 'border-2 border-amber-500 bg-amber-50/20' : ''}
-                                ${isAyunoDay && !isToday ? 'bg-amber-100/30' : ''}
-                                ${hasEvents && !isMyDay && !isAyunoDay && !isToday ? 'bg-slate-50' : ''}`}>
-                            
-                            {/* ✅ LÍNEA NARANJA PARA AYUNO */}
-                            {isAyunoDay && !isToday && <div className="absolute top-1 left-0 right-0 h-0.5 bg-amber-500/60"></div>}
-                            
-                            <span className="text-xs font-black">{format(day, 'd')}</span>
-                            
-                            <div className="flex gap-0.5 mt-1">
-                              {/* ✅ INDICADORES VISUALES */}
-                              {isLimpiezaDay && !isToday && <div className="w-1 h-1 rounded-full bg-emerald-500 shadow-sm"></div>}
-                              {dayEvents.filter(e => e.type !== 'ayuno' && e.type !== 'limpieza').slice(0, 2).map(e => (
-                                <div key={e.id} className={`w-1 h-1 rounded-full ${OPERATIVE_EVENT_TYPES[e.type]?.color || 'bg-slate-300'}`}></div>
-                              ))}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-    );
-  };
+  // ✅ CORRECCIÓN DE NOMBRE: fastingDays
+  const fastingDays = (event.type === 'ayuno' && event.endDate) ? eachDayOfInterval({ start: parseISO(event.date), end: parseISO(event.endDate) }) : [];
 
   return (
-    <div className="pb-36 pt-4 bg-slate-50 min-h-screen animate-fade-in relative font-outfit">
+    <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-fade-in overflow-hidden font-outfit">
       
-      {/* SOLAPAS DE "DOS MUNDOS" */}
-      <div className="px-6 mb-8 mt-4">
-        <div className="bg-white p-1.5 rounded-[30px] shadow-sm border-2 border-slate-50 flex gap-1">
-          <button onClick={() => setFilterType('mine')} 
-            className={`flex-1 py-4 rounded-[25px] text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2
-            ${filterType === 'mine' ? 'bg-brand-600 text-white shadow-xl scale-[1.02]' : 'text-slate-400 hover:bg-slate-50'}`}>
-            <UserCheck size={18}/> Mi Agenda
-          </button>
-          <button onClick={() => setFilterType('all')} 
-            className={`flex-1 py-4 rounded-[25px] text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2
-            ${filterType === 'all' ? 'bg-slate-900 text-white shadow-xl scale-[1.02]' : 'text-slate-400 hover:bg-slate-50'}`}>
-            <Globe size={18}/> Comunidad
-          </button>
-        </div>
-      </div>
-
-      <div className="px-6 flex justify-between items-center mb-6">
-        <div className="text-left">
-            <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter leading-none">Agenda</h1>
-            <div className="h-1.5 w-10 bg-brand-500 rounded-full mt-2"></div>
-        </div>
-        <div className="flex bg-white p-1.5 rounded-[22px] border-2 border-slate-50 shadow-sm">
-            <button onClick={() => setViewMode('list')} className={`p-2.5 rounded-xl transition-all ${viewMode === 'list' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-300'}`}><List size={20}/></button>
-            <button onClick={() => setViewMode('month')} className={`p-2.5 rounded-xl transition-all ${viewMode === 'month' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-300'}`}><CalIcon size={20}/></button>
-        </div>
-      </div>
-
-      {/* BANNER DE BORRADORES RESTAURADO */}
-      {['pastor', 'lider'].includes(userRole) && events.some(e => !e.published && isSameMonth(new Date(e.date + 'T00:00:00'), currentDate)) && (
-          <div className="mx-6 bg-amber-500 p-6 rounded-[35px] mb-8 flex items-center justify-between shadow-xl shadow-amber-200/40 animate-pulse">
-            <div className="flex items-center gap-4 text-white text-left">
-              <Megaphone size={26}/>
-              <div><p className="text-xs font-black uppercase tracking-tighter">Borradores</p><p className="text-[9px] font-bold opacity-90 uppercase">Listos para lanzar</p></div>
+      <header className={`relative pt-12 pb-24 px-6 ${Config.color} transition-all`}>
+        <div className="absolute top-4 left-4 right-4 flex justify-between items-center">
+            <button onClick={() => navigate('/calendario')} className="p-2 bg-white/10 backdrop-blur-md rounded-full text-white"><X size={24} /></button>
+            <div className="flex gap-2">
+                {['pastor', 'lider'].includes(dbUser?.role) && (
+                    <>
+                      <button onClick={() => setIsEditingMeta(!isEditingMeta)} className={`p-2 rounded-xl ${isEditingMeta ? 'bg-white text-slate-900' : 'bg-white/20 text-white'}`}><Edit3 size={20}/></button>
+                      <button onClick={() => setIsAssigning(!isAssigning)} className={`px-4 py-2 rounded-xl font-black text-[10px] uppercase ${isAssigning ? 'bg-white text-slate-900' : 'bg-white/20 text-white'}`}>{isAssigning ? 'Salir' : 'Asignar'}</button>
+                    </>
+                )}
             </div>
-            <button onClick={() => setActionConfirm({ type: 'publish', title: '¿Publicar Agenda?', message: 'Se notificará a toda la iglesia.' })} disabled={isPublishing} className="bg-white text-amber-600 px-6 py-3 rounded-2xl text-[10px] font-black shadow-lg">
-              {isPublishing ? <Loader2 size={12} className="animate-spin"/> : 'Publicar'}
-            </button>
-          </div>
-      )}
+        </div>
 
-      {/* SELECTOR DE MES */}
-      <div className="px-6 flex items-center justify-between bg-white mx-5 p-5 rounded-[30px] border border-slate-100 mb-8 shadow-sm">
-        <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-3 text-slate-300 bg-slate-50 rounded-2xl active:scale-75 transition-transform"><ChevronLeft size={24} /></button>
-        <h2 className="text-lg font-black text-slate-900 capitalize tracking-tighter">{format(currentDate, 'MMMM yyyy', { locale: es })}</h2>
-        <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-3 text-slate-300 bg-slate-50 rounded-2xl active:scale-75 transition-transform"><ChevronRight size={24} /></button>
-      </div>
-
-      <div className="flex-1">
-        {loading ? <div className="py-24 text-center opacity-20"><Loader2 className="animate-spin mx-auto" size={48}/></div> : (viewMode === 'month' ? renderMonthView() : (
-          <div className="space-y-10 pb-20">
-            {processedEvents.upcoming.length > 0 && (
-              <div className="space-y-4 px-4">
-                <div className="flex items-center gap-3 px-4 mb-2">
-                  <span className="text-[10px] font-black text-brand-600 uppercase tracking-widest">Lo que viene</span>
-                  <div className="h-[1px] flex-1 bg-brand-100"></div>
-                </div>
-                {processedEvents.upcoming.map(ev => renderEventCard(ev, false))}
-              </div>
+        <div className="flex flex-col items-center text-center mt-4">
+            <div className="w-20 h-20 bg-white rounded-[32px] shadow-2xl flex items-center justify-center mb-5 border-4 border-white/20">
+                <Config.icon size={40} className={Config.text} />
+            </div>
+            {isEditingMeta ? (
+              <input className="bg-white/20 text-white text-2xl font-black text-center w-full outline-none uppercase tracking-tighter rounded-xl px-2" value={event.title} onChange={e => setEvent({...event, title: e.target.value})} />
+            ) : (
+              <h1 className="text-2xl font-black text-white uppercase tracking-tighter px-4">{event.title}</h1>
             )}
-            {processedEvents.past.length > 0 && (
-              <div className="space-y-4 px-4">
-                <div className="flex items-center gap-3 px-4 mb-2">
-                  <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Ya realizado</span>
-                  <div className="h-[1px] flex-1 bg-slate-100"></div>
-                </div>
-                {processedEvents.past.map(ev => renderEventCard(ev, true))}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {['pastor', 'lider'].includes(userRole) && (
-        <button onClick={() => { setEditingId(null); setNewEvent({ title: '', type: 'culto', date: '', endDate: '', time: '19:30', published: false }); setIsModalOpen(true); }} className="fixed bottom-28 right-6 w-16 h-16 bg-slate-900 text-white rounded-[24px] shadow-2xl flex items-center justify-center z-40 border-4 border-white active:scale-90 transition-all"><Plus size={32}/></button>
-      )}
-
-      {/* MODAL PLANIFICAR/EDITAR */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
-            <div className="bg-white w-full max-w-sm rounded-[45px] p-8 shadow-2xl max-h-[90vh] overflow-y-auto no-scrollbar relative animate-slide-up text-left">
-                <div className="flex justify-between items-center mb-8 border-b pb-5 border-slate-50">
-                    <div><h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{editingId ? 'Editar' : 'Planificar'}</h2><p className="text-[10px] font-black text-brand-600 uppercase tracking-widest">Actividad Ministerial</p></div>
-                    <button onClick={() => setIsModalOpen(false)} className="p-3 bg-slate-50 rounded-full text-slate-400"><X size={24}/></button>
-                </div>
-                <div className="space-y-6">
-                    <input placeholder="Título..." className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[24px] font-black text-slate-800 outline-none focus:border-brand-500 uppercase text-sm" value={newEvent.title} onChange={e => setNewEvent({...newEvent, title: e.target.value})} />
-                    
-                    <div className="grid grid-cols-1 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-black text-slate-400 uppercase ml-4">Inicio</label>
-                          <input type="date" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-[20px] text-xs font-black uppercase outline-none" value={newEvent.date} onChange={e => setNewEvent({...newEvent, date: e.target.value})} />
-                        </div>
-                        {newEvent.type === 'ayuno' && (
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-400 uppercase ml-4">Finalización</label>
-                            <input type="date" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-[20px] text-xs font-black uppercase outline-none" value={newEvent.endDate} onChange={e => setNewEvent({...newEvent, endDate: e.target.value})} />
-                          </div>
-                        )}
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-black text-slate-400 uppercase ml-4">Hora</label>
-                          <input type="time" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-[20px] text-xs font-black uppercase outline-none" value={newEvent.time} onChange={e => setNewEvent({...newEvent, time: e.target.value})} />
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                        {Object.entries(OPERATIVE_EVENT_TYPES).map(([key, config]) => (
-                            <button key={key} onClick={() => setNewEvent({...newEvent, type: key})} className={`flex items-center gap-3 p-4 rounded-2xl border-2 text-[8px] font-black uppercase transition-all ${newEvent.type === key ? config.color + ' border-current text-white shadow-md' : 'bg-white border-slate-50 text-slate-300'}`}>
-                              <config.icon size={14}/> {config.label}
-                            </button>
-                        ))}
-                    </div>
-
-                    <button onClick={() => setNewEvent({...newEvent, published: !newEvent.published})} className={`w-full p-5 rounded-[28px] border-2 flex items-center justify-between transition-all ${newEvent.published ? 'bg-emerald-600 border-emerald-400 text-white shadow-xl' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>
-                        <span className="text-[10px] font-black uppercase tracking-widest">¿Notificar Iglesia?</span>
-                        {newEvent.published ? <CheckCircle size={24}/> : <EyeOff size={24}/>}
-                    </button>
-
-                    <button onClick={handleSaveEvent} disabled={isUploading} className="w-full bg-slate-900 text-white font-black py-6 rounded-[35px] shadow-2xl mt-4 active:scale-95 transition-all disabled:opacity-50 uppercase text-xs tracking-[0.3em] flex items-center justify-center gap-3">
-                        {isUploading ? <Loader2 className="animate-spin" size={24}/> : (editingId ? "Guardar Cambios" : "Confirmar Actividad")}
-                    </button>
-                </div>
-            </div>
+            {event.isCena && <div className="mt-3 bg-white/20 backdrop-blur-md px-4 py-1 rounded-full text-[9px] font-black text-white uppercase tracking-widest">Cena del Señor</div>}
         </div>
-      )}
+        <div className="absolute -bottom-1 left-0 right-0 h-14 bg-white rounded-t-[50px]"></div>
+      </header>
 
-      {/* MODAL DETALLES DEL DÍA */}
-      {selectedDayEvents && (
-        <div className="fixed inset-0 z-[400] bg-slate-900/60 backdrop-blur-sm flex items-end justify-center animate-fade-in" onClick={() => setSelectedDayEvents(null)}>
-          <div className="bg-white w-full max-w-md rounded-t-[50px] p-10 shadow-2xl animate-slide-up" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-8 text-left">
-              <div>
-                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{format(selectedDayEvents.date, "EEEE d", { locale: es })}</h3>
-                <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest">{format(selectedDayEvents.date, "MMMM", { locale: es })}</p>
-              </div>
-              <button onClick={() => setSelectedDayEvents(null)} className="p-3 bg-slate-100 rounded-full text-slate-400"><X size={20}/></button>
-            </div>
-            <div className="space-y-4 max-h-[50vh] overflow-y-auto no-scrollbar pb-6 text-left">
-              {selectedDayEvents.events.map(ev => (
-                <button key={ev.id} onClick={() => { setSelectedDayEvents(null); navigate(`/calendario/${ev.id}`); }} className="w-full flex items-center justify-between p-6 bg-slate-50 rounded-[30px] border-2 border-slate-100 active:scale-95 transition-all">
-                  <div className="flex items-center gap-5">
-                    <div className={`p-4 rounded-2xl ${OPERATIVE_EVENT_TYPES[ev.type]?.color || 'bg-slate-200'} text-white`}>
-                      {(() => { const Icon = OPERATIVE_EVENT_TYPES[ev.type]?.icon || Church; return <Icon size={24}/> })()}
+      <div className="flex-1 overflow-y-auto bg-white px-6 pb-40 no-scrollbar">
+        <div className="max-w-xl mx-auto space-y-8">
+            
+            {shouldPulse && !isAssigning && (
+                <div className="bg-brand-50 border-2 border-brand-200 p-6 rounded-[35px] flex flex-col items-center animate-pulse mt-2">
+                    <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest mb-4">¿Confirmas tu servicio hoy?</p>
+                    <div className="flex gap-3 w-full">
+                        <button onClick={() => handleConfirm('confirmed')} className="flex-1 bg-brand-600 text-white py-4 rounded-2xl font-black text-[11px] uppercase shadow-xl">Sí, Asistiré</button>
+                        <button onClick={() => handleConfirm('declined')} className="px-6 py-4 bg-white text-slate-400 rounded-2xl font-black text-[11px] uppercase border border-slate-100">No puedo</button>
                     </div>
-                    <div><p className="font-black text-slate-900 text-sm uppercase tracking-tight">{ev.title}</p><p className="text-[11px] font-bold text-slate-400 uppercase">{ev.time} hs</p></div>
+                </div>
+            )}
+
+            <div className="flex flex-wrap gap-3 justify-center mt-4">
+                <div className="flex items-center gap-2 bg-slate-50 px-5 py-3 rounded-2xl border border-slate-100 shadow-sm">
+                   <Calendar size={14} className="text-brand-500"/>
+                   {isEditingMeta ? (
+                     <div className="flex gap-1">
+                        <input type="date" className="bg-white border rounded p-1 text-[10px] font-black" value={event.date} onChange={e => setEvent({...event, date: e.target.value})} />
+                        {event.type === 'ayuno' && <><ArrowRight size={10}/><input type="date" className="bg-white border rounded p-1 text-[10px] font-black" value={event.endDate} onChange={e => setEvent({...event, endDate: e.target.value})} /></>}
+                     </div>
+                   ) : (
+                     <span className="text-[11px] font-black text-slate-700 uppercase">{format(parseISO(event.date), "EEEE d MMMM", { locale: es })} {event.endDate && event.endDate !== event.date && ` al ${format(parseISO(event.endDate), "d MMMM", { locale: es })}`}</span>
+                   )}
+                </div>
+                <div className="flex items-center gap-2 bg-slate-50 px-5 py-3 rounded-2xl border border-slate-100 shadow-sm">
+                   <Clock size={14} className="text-brand-500"/>
+                   {isEditingMeta ? (
+                     <input type="time" className="bg-transparent font-black text-[11px] outline-none" value={event.time} onChange={e => setEvent({...event, time: e.target.value})} />
+                   ) : (
+                     <span className="text-[11px] font-black text-slate-700 uppercase">{event.time} hs</span>
+                   )}
+                </div>
+                {isEditingMeta && (
+                  <div className="w-full grid grid-cols-2 gap-3 mt-4">
+                     <button onClick={() => setEvent({...event, isCena: !event.isCena})} className={`py-4 rounded-2xl font-black text-[10px] uppercase border-2 transition-all ${event.isCena ? 'bg-rose-50 border-rose-500 text-rose-600' : 'bg-slate-50 border-slate-100 text-slate-300'}`}>Cena del Señor</button>
+                     <button onClick={saveAll} className="bg-slate-900 text-white py-4 rounded-2xl font-black text-[10px] uppercase shadow-xl flex items-center justify-center gap-2"><Save size={16}/> Guardar Info</button>
                   </div>
-                  <ArrowRight size={20} className="text-slate-300" />
-                </button>
-              ))}
+                )}
             </div>
-          </div>
+
+            {/* ✅ CASO AYUNO: USO DE fastingDays */}
+            {event.type === 'ayuno' ? (
+              <div className="space-y-6">
+                <div className="bg-amber-50 p-6 rounded-[35px] border-2 border-amber-100 text-left">
+                  <h3 className="text-amber-600 font-black text-xs uppercase flex items-center gap-2 mb-2"><Flame size={16} fill="currentColor"/> Inscripción Diaria</h3>
+                  <p className="text-[10px] font-bold text-amber-900/40 uppercase leading-relaxed">Seleccioná los días que vas a ayunar.</p>
+                </div>
+                <div className="grid gap-4">
+                  {fastingDays.map((day) => {
+                    const dStr = format(day, 'yyyy-MM-dd');
+                    const signups = event.fastingSignups?.[dStr] || [];
+                    const isMe = signups.includes(dbUser?.displayName);
+                    return (
+                      <div key={dStr} className={`p-5 rounded-[30px] border-2 transition-all flex flex-col gap-4 ${isMe ? 'bg-white border-amber-500 shadow-xl' : 'bg-slate-50 border-slate-100'}`}>
+                        <div className="flex justify-between items-center text-left">
+                          <div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{format(day, "EEEE", { locale: es })}</p><p className="text-lg font-black text-slate-800 uppercase tracking-tighter">{format(day, "d 'de' MMMM", { locale: es })}</p></div>
+                          <button onClick={() => toggleFast(dStr)} className={`p-4 rounded-2xl shadow-lg ${isMe ? 'bg-amber-500 text-white' : 'bg-white text-slate-300'}`}>{isMe ? <UserMinus size={22}/> : <UserPlus size={22}/>}</button>
+                        </div>
+                        <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
+                           <p className="w-full text-[8px] font-black text-slate-300 uppercase mb-1">Anotados ({signups.length})</p>
+                           {signups.map((n, i) => <span key={i} className="px-3 py-1 bg-white border border-slate-100 rounded-lg text-[10px] font-black text-slate-600 uppercase">{n.split(' ')[0]}</span>)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-10">
+                {getStructure().map((sec, sIdx) => (
+                  <div key={sIdx} className="text-left">
+                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-6 border-l-4 border-brand-500 pl-3 ml-2">{sec.section}</h3>
+                    <div className="grid gap-5">
+                      {sec.roles.map(role => {
+                        const assigned = assignments[role.key] || [];
+                        const check = event.checklist?.[role.key] || { done: false, comment: '' };
+                        return (
+                          <div key={role.key} className="bg-white p-6 rounded-[35px] border border-slate-50 shadow-sm">
+                            <div className="flex justify-between items-center mb-5">
+                              <div className="flex items-center gap-3">
+                                <div className="p-2.5 bg-slate-50 rounded-xl text-slate-400"><role.icon size={18}/></div>
+                                <span className="text-[11px] font-black text-slate-800 uppercase tracking-widest">{role.label}</span>
+                              </div>
+                              {isAssigning ? (
+                                <button onClick={() => { setActiveRoleKey(role.key); setActiveRoleConfig(role); setIsSelectorOpen(true); }} className="p-2.5 bg-brand-50 text-brand-600 rounded-xl shadow-sm"><Plus size={18}/></button>
+                              ) : (
+                                (event.type === 'limpieza' || event.type === 'mantenimiento') && (
+                                  <button onClick={() => toggleCheck(role.key)} className={`p-2 rounded-xl transition-all ${check.done ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-50 text-slate-300'}`}>{check.done ? <CheckSquare size={20}/> : <Square size={20}/>}</button>
+                                )
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-2.5">
+                              {assigned.length === 0 ? <p className="text-[9px] font-bold text-slate-300 uppercase italic px-2 py-1">Sin personal</p> : 
+                               assigned.map((p, pIdx) => (
+                                <div key={pIdx} className="flex items-center gap-3 bg-slate-50 px-4 py-2.5 rounded-2xl border border-slate-100 shadow-sm">
+                                  <span className="text-[10px] font-black text-slate-800 uppercase">{p}</span>
+                                  {event.confirmations?.[p] === 'confirmed' && <CheckCircle size={14} className="text-emerald-500"/>}
+                                  {isAssigning && <button onClick={() => setAssignments({...assignments, [role.key]: assigned.filter(n => n !== p)})} className="text-rose-500 ml-1"><X size={12}/></button>}
+                                </div>
+                              ))}
+                            </div>
+                            {(event.type === 'limpieza' || event.type === 'mantenimiento') && !isAssigning && (
+                               <div className="mt-4 pt-4 border-t border-slate-50 flex gap-3 items-center">
+                                  <input className="flex-1 bg-slate-50 border-none rounded-xl px-4 py-2 text-[10px] font-bold outline-none" placeholder="Agregar comentario..." defaultValue={check.comment} onBlur={(e) => saveComment(role.key, e.target.value)}/>
+                                  {check.comment && <div className="p-2 bg-amber-50 text-amber-600 rounded-lg"><MessageSquare size={14}/></div>}
+                               </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {['jovenes', 'mujeres', 'varones'].includes(event.type) && !isAssigning && (
+                <button className="w-full py-5 border-2 border-dashed border-slate-200 rounded-[35px] text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-center gap-3"><PlusCircle size={20}/> ¿Desea añadir otra actividad?</button>
+            )}
+        </div>
+      </div>
+
+      {isAssigning && (
+        <div className="absolute bottom-0 w-full p-6 bg-white border-t border-slate-100 shadow-2xl z-50 flex gap-4 animate-slide-up">
+           <button onClick={async () => { if(window.confirm("¿Eliminar actividad?")) { await deleteDoc(doc(db, 'events', id)); navigate('/calendario'); } }} className="p-5 bg-rose-50 text-rose-500 rounded-3xl"><Trash2 size={24}/></button>
+           <button onClick={saveAll} disabled={isSaving} className="flex-1 bg-slate-900 text-white font-black py-5 rounded-3xl shadow-xl flex items-center justify-center gap-3 uppercase text-[11px] tracking-widest active:scale-95 transition-all">
+             {isSaving ? <Loader2 className="animate-spin" size={20}/> : <Save size={20}/>} Guardar Cambios
+           </button>
         </div>
       )}
 
-      {/* CONFIRMACIÓN DE ACCIONES */}
-      {actionConfirm && (
-        <div className="fixed inset-0 z-[1000] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-8 animate-fade-in">
-          <div className="bg-white w-full max-w-xs rounded-[45px] p-10 shadow-2xl text-center">
-            <AlertCircle size={44} className="mx-auto text-rose-500 mb-6" strokeWidth={3}/>
-            <h4 className="font-black text-slate-900 text-xl mb-3 uppercase tracking-tighter">{actionConfirm.title}</h4>
-            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-10 leading-relaxed">{actionConfirm.message}</p>
-            <div className="flex flex-col gap-3">
-              <button onClick={executeConfirmedAction} className="w-full py-5 rounded-2xl font-black text-xs uppercase bg-rose-600 text-white shadow-xl">Confirmar</button>
-              <button onClick={() => setActionConfirm(null)} className="w-full py-5 rounded-2xl font-black text-xs uppercase text-slate-400 bg-slate-50">Cancelar</button>
+      {isSelectorOpen && (
+        <div className="fixed inset-0 z-[300] bg-slate-900/90 backdrop-blur-md flex items-end justify-center" onClick={() => setIsSelectorOpen(false)}>
+          <div className="bg-white w-full max-w-md rounded-t-[50px] h-[88vh] flex flex-col animate-slide-up shadow-2xl relative overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="p-8 border-b flex justify-between items-center text-left bg-white shrink-0">
+               <div><h3 className="font-black text-slate-900 text-sm uppercase">Asignar Personal</h3><p className="text-[9px] font-bold text-slate-400 uppercase">CDS Plátanos</p></div>
+               <button onClick={() => setIsSelectorOpen(false)} className="p-3 bg-slate-50 rounded-full active:scale-90"><X size={20}/></button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {toast && (
-        <div className="fixed bottom-28 left-6 right-6 z-[600] animate-slide-up">
-          <div className={`flex items-center gap-4 px-8 py-5 rounded-[30px] shadow-2xl border-2 ${toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-400' : 'bg-slate-900 text-white border-slate-700'}`}>
-            <CheckCircle size={24}/><span className="text-[11px] font-black uppercase tracking-widest leading-none">{toast.message}</span>
+            <div className="p-5 flex gap-2 overflow-x-auto no-scrollbar border-b border-slate-50 bg-slate-50/50 shrink-0">
+               {['Alabanza', 'Ujieres', 'Multimedia', 'Niños', 'Limpieza'].map(area => (
+                 <button key={area} onClick={() => assignGroup(area)} className="px-5 py-2.5 bg-brand-50 text-brand-600 rounded-xl text-[9px] font-black uppercase whitespace-nowrap border border-brand-100">+ Grupo {area}</button>
+               ))}
+            </div>
+            <div className="p-5 bg-white shrink-0"><div className="bg-slate-50 rounded-2xl px-5 py-4 flex items-center gap-3 shadow-inner"><Search size={18} className="text-slate-300"/><input autoFocus type="text" placeholder="Buscar por nombre..." className="w-full text-sm font-bold outline-none bg-transparent" value={personSearchTerm} onChange={e => setPersonSearchTerm(e.target.value)}/></div></div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-2 no-scrollbar pb-32">
+              {users.filter(u => u.displayName?.toLowerCase().includes(personSearchTerm.toLowerCase())).map(u => {
+                const isAlready = (assignments[activeRoleKey] || []).includes(u.displayName);
+                return (
+                  <button key={u.id} onClick={() => {
+                    const curr = assignments[activeRoleKey] || [];
+                    setAssignments({ ...assignments, [activeRoleKey]: isAlready ? curr.filter(n => n !== u.displayName) : (activeRoleConfig.type === 'single' ? [u.displayName] : [...curr, u.displayName]) });
+                  }} className={`w-full flex items-center gap-4 p-4 rounded-3xl border-2 transition-all text-left ${isAlready ? 'bg-brand-600 border-brand-600 text-white shadow-xl' : 'bg-white border-slate-50'}`}>
+                    <div className="w-12 h-12 rounded-2xl border-2 border-white overflow-hidden shadow-sm shrink-0"><img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}`} className="w-full h-full object-cover" /></div>
+                    <div className="flex-1 min-w-0"><p className={`font-black text-xs uppercase truncate ${isAlready ? 'text-white' : 'text-slate-800'}`}>{u.displayName}</p><p className={`text-[9px] font-bold uppercase mt-0.5 ${isAlready ? 'text-white/60' : 'text-slate-400'}`}>{u.area || 'Miembro'}</p></div>
+                    {isAlready ? <Check size={20} className="text-white"/> : <Plus size={20} className="text-slate-200"/>}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
