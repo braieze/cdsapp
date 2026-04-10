@@ -48,18 +48,10 @@ export default function CalendarPage() {
   const [userRole, setUserRole] = useState(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [imageFile, setImageFile] = useState(null);
   const [toast, setToast] = useState(null);
   const [actionConfirm, setActionConfirm] = useState(null);
 
   const currentUser = auth.currentUser;
-  const CLOUD_NAME = "djmkggzjp";
-  const UPLOAD_PRESET = "ml_default";
-
-  const [newEvent, setNewEvent] = useState({
-    title: '', type: 'culto', date: '', endDate: '', time: '19:30', description: '',
-    published: false, isCena: false
-  });
 
   useEffect(() => {
     if (toast) {
@@ -101,7 +93,7 @@ export default function CalendarPage() {
           priority: 10
         })
       });
-    } catch (error) { console.error("Error envío notif:", error); }
+    } catch (error) { console.error(error); }
   };
 
   const executeConfirmedAction = async () => {
@@ -137,11 +129,9 @@ export default function CalendarPage() {
     const filtered = events.filter(ev => {
       const eventDate = new Date(ev.date + 'T00:00:00');
       const isMyTask = ev.assignments && Object.values(ev.assignments).flat().includes(currentUser?.displayName);
-      
       if (!isSameMonth(eventDate, currentDate)) return false;
       if (!ev.published && !isPastor && !isMyTask) return false;
       if (filterType === 'mine' && !isMyTask) return false;
-      
       return true;
     });
 
@@ -154,21 +144,20 @@ export default function CalendarPage() {
   const handleSaveEvent = async () => {
     if (!newEvent.title || !newEvent.date) return setToast({ message: "Falta título o fecha", type: "error" });
     setIsUploading(true);
-    let uploadedImageUrl = newEvent.image || null;
     try {
-        const eventData = { ...newEvent, image: uploadedImageUrl, updatedAt: serverTimestamp(), endDate: newEvent.endDate || newEvent.date };
+        const eventData = { ...newEvent, updatedAt: serverTimestamp(), endDate: newEvent.endDate || newEvent.date };
         if (editingId) {
             await updateDoc(doc(db, 'events', editingId), eventData);
             setToast({ message: "Actualizado", type: "success" });
         } else {
             const docRef = await addDoc(collection(db, 'events'), { ...eventData, createdAt: serverTimestamp(), assignments: {} });
             if (newEvent.published) await sendOneSignalNotification("Nueva actividad", newEvent.title, `/calendario/${docRef.id}`);
-            setToast({ message: "Creado", type: "success" });
+            setToast({ message: "Evento creado", type: "success" });
         }
         setIsModalOpen(false);
         setEditingId(null);
         setNewEvent({ title: '', type: 'culto', date: '', endDate: '', time: '19:30', description: '', published: false, isCena: false });
-    } catch (error) { setToast({ message: "Error al guardar", type: "error" }); }
+    } catch (error) { setToast({ message: "Error", type: "error" }); }
     finally { setIsUploading(false); }
   };
 
@@ -176,11 +165,11 @@ export default function CalendarPage() {
     const config = OPERATIVE_EVENT_TYPES[ev.type] || OPERATIVE_EVENT_TYPES.culto;
     const isMyTask = ev.assignments && Object.values(ev.assignments).flat().includes(currentUser?.displayName);
     const today = startOfDay(new Date());
-    
-    // ✅ VALIDACIÓN DE ACCESO (Asegura que el clic abra el detalle)
-    const canAccess = !config.private || (['pastor', 'lider'].includes(userRole) || dbUser?.area?.toLowerCase() === 'alabanza');
 
-    // ✅ PROGRESO LIMPIEZA
+    // ✅ RESTRICCIÓN DE ACCESO (Punto 1)
+    const canAccess = !config.private || (['pastor', 'lider'].includes(userRole) || dbUser?.area?.toLowerCase() === 'alabanza');
+    
+    // ✅ PROGRESO LIMPIEZA (Punto 3)
     let progress = null;
     if (ev.type === 'limpieza' || ev.type === 'mantenimiento') {
       const sectors = ev.checklist ? Object.values(ev.checklist) : [];
@@ -188,7 +177,7 @@ export default function CalendarPage() {
       if (sectors.length > 0) progress = Math.round((done / sectors.length) * 100);
     }
 
-    // ✅ INFO AYUNO UNIFICADA
+    // ✅ AVATARES AYUNO (Punto 3)
     let fastingInfo = null;
     if (ev.type === 'ayuno') {
       const start = parseISO(ev.date);
@@ -201,10 +190,10 @@ export default function CalendarPage() {
 
     return (
       <div key={ev.id} 
-           onClick={() => canAccess ? navigate(`/calendario/${ev.id}`) : setToast({ message: "Acceso Privado", type: "error" })} 
+           onClick={() => canAccess ? navigate(`/calendario/${ev.id}`) : setToast({message: "Acceso Privado a Alabanza", type: "error"})}
            className={`bg-white p-5 rounded-[35px] border-2 transition-all active:scale-95 cursor-pointer relative shadow-sm flex gap-5
            ${isPast ? 'opacity-40 grayscale-[0.5]' : ''} 
-           ${ev.isCena ? 'border-rose-500 shadow-rose-100 ring-4 ring-rose-500/10' : 'border-slate-50'}
+           ${ev.isCena ? 'border-rose-500 shadow-rose-100 ring-2 ring-rose-500/20' : 'border-slate-50'}
            ${isMyTask && !isPast ? 'border-brand-500 shadow-brand-100' : ''}`}>
         
         {isMyTask && !isPast && (
@@ -229,7 +218,7 @@ export default function CalendarPage() {
             {['pastor', 'lider'].includes(userRole) && (
               <div className="flex gap-1">
                 <button onClick={(e) => { e.stopPropagation(); setEditingId(ev.id); setNewEvent(ev); setIsModalOpen(true); }} className="p-1 text-slate-300 hover:text-brand-600"><Edit3 size={16}/></button>
-                <button onClick={(e) => { e.stopPropagation(); setActionConfirm({ type: 'delete', id: ev.id, title: '¿Borrar?', message: 'Esta acción no se puede deshacer.' }); }} className="p-1 text-slate-200 hover:text-rose-500"><Trash2 size={16}/></button>
+                <button onClick={(e) => { e.stopPropagation(); setActionConfirm({ type: 'delete', id: ev.id, title: '¿Borrar?', message: 'Se borrará permanentemente.' }); }} className="p-1 text-slate-200 hover:text-rose-500"><Trash2 size={16}/></button>
               </div>
             )}
           </div>
@@ -237,18 +226,18 @@ export default function CalendarPage() {
           <h4 className="font-black text-slate-800 text-base leading-tight mt-2 uppercase truncate">
             {ev.type === 'ayuno' ? 'Semana de Ayuno Congregacional' : ev.title}
           </h4>
-          
+
           <div className="mt-3 space-y-2">
             {ev.type === 'ayuno' && fastingInfo ? (
               <div className="flex flex-col gap-2">
                  <div className="flex items-center justify-between">
                     <span className="text-[9px] font-black text-amber-600 uppercase tracking-widest">
-                      {fastingInfo.totalDays > 1 ? `Día ${fastingInfo.currentDayNum} de ${fastingInfo.totalDays}` : 'Ayuno General'}
+                      {fastingInfo.totalDays > 1 ? `Día ${fastingInfo.currentDayNum} de ${fastingInfo.totalDays}` : 'Ayuno'}
                     </span>
                     <div className="flex -space-x-2">
-                       {fastingInfo.signups.slice(0, 3).map((name, i) => (
+                       {fastingInfo.signups.slice(0, 3).map((s, i) => (
                          <div key={i} className="w-5 h-5 rounded-full border-2 border-white bg-slate-200 overflow-hidden shadow-sm">
-                            <img src={`https://ui-avatars.com/api/?name=${name}&background=random&color=fff&size=32`} className="w-full h-full object-cover" />
+                            <img src={`https://ui-avatars.com/api/?name=${s}&background=random`} className="w-full h-full object-cover" />
                          </div>
                        ))}
                        {fastingInfo.signups.length > 3 && <div className="w-5 h-5 rounded-full border-2 border-white bg-amber-500 text-white text-[7px] font-black flex items-center justify-center">+{fastingInfo.signups.length - 3}</div>}
@@ -261,8 +250,8 @@ export default function CalendarPage() {
             
             {progress !== null && (
               <div className="flex flex-col gap-1">
-                <div className="flex justify-between text-[8px] font-black uppercase text-slate-400"><span>CUMPLIMIENTO</span><span>{progress}%</span></div>
-                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex border border-slate-50 shadow-inner">
+                <div className="flex justify-between text-[8px] font-black uppercase text-slate-400"><span>Progreso</span><span>{progress}%</span></div>
+                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden flex border border-slate-50 shadow-inner">
                   <div className="bg-emerald-500 h-full transition-all duration-700 rounded-full" style={{ width: `${progress}%` }}></div>
                 </div>
               </div>
@@ -282,7 +271,7 @@ export default function CalendarPage() {
     return (
         <div className="bg-white rounded-[45px] border-2 border-slate-50 shadow-xl p-7 animate-fade-in mx-4 mb-20 text-left">
             <div className="grid grid-cols-7 mb-4 border-b border-slate-50 pb-4 text-center">
-                {weekDays.map(day => <div key={day} className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{day}</div>)}
+                {weekDays.map(day => <div key={day} className="text-center text-[10px] font-black text-slate-300 uppercase tracking-widest">{day}</div>)}
             </div>
             <div className="grid grid-cols-7 gap-1">
                 {days.map(day => {
@@ -308,13 +297,13 @@ export default function CalendarPage() {
                                 ${isAyunoDay && !isToday ? 'bg-amber-100/30' : ''}
                                 ${hasEvents && !isMyDay && !isAyunoDay && !isToday ? 'bg-slate-50' : ''}`}>
                             
-                            {/* ✅ LÍNEA NARANJA AYUNO EN GRILLA */}
+                            {/* ✅ LÍNEA NARANJA AYUNO EN GRILLA (Punto 4) */}
                             {isAyunoDay && !isToday && <div className="absolute top-1 left-0 right-0 h-0.5 bg-amber-500/60 shadow-[0_0_4px_rgba(245,158,11,0.5)]"></div>}
                             
                             <span className="text-xs font-black">{format(day, 'd')}</span>
                             
                             <div className="flex gap-0.5 mt-1">
-                              {/* ✅ INDICADORES GRILLA */}
+                              {/* ✅ PUNTO VERDE PARA LIMPIEZA (Punto 4) */}
                               {isLimpiezaDay && !isToday && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-sm"></div>}
                               {dayEvents.filter(e => e.type !== 'ayuno' && e.type !== 'limpieza').slice(0, 2).map(e => (
                                 <div key={e.id} className={`w-1 h-1 rounded-full ${OPERATIVE_EVENT_TYPES[e.type]?.color || 'bg-slate-300'}`}></div>
@@ -331,7 +320,6 @@ export default function CalendarPage() {
   return (
     <div className="pb-36 pt-4 bg-slate-50 min-h-screen animate-fade-in relative font-outfit">
       
-      {/* SOLAPAS DE "DOS MUNDOS" */}
       <div className="px-6 mb-8 mt-4">
         <div className="bg-white p-1.5 rounded-[30px] shadow-sm border-2 border-slate-50 flex gap-1">
           <button onClick={() => setFilterType('mine')} 
@@ -349,7 +337,7 @@ export default function CalendarPage() {
 
       <div className="px-6 flex justify-between items-center mb-6">
         <div className="text-left">
-            <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Agenda</h1>
+            <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter leading-none">Agenda</h1>
             <div className="h-1.5 w-10 bg-brand-500 rounded-full mt-2"></div>
         </div>
         <div className="flex bg-white p-1.5 rounded-[22px] border-2 border-slate-50 shadow-sm">
@@ -358,14 +346,14 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* ✅ BANNER DE BORRADORES RESTAURADO */}
+      {/* BANNER DE BORRADORES (Punto 2) */}
       {['pastor', 'lider'].includes(userRole) && events.some(e => !e.published && isSameMonth(new Date(e.date + 'T00:00:00'), currentDate)) && (
           <div className="mx-6 bg-amber-500 p-6 rounded-[35px] mb-8 flex items-center justify-between shadow-xl shadow-amber-200/40 animate-pulse">
             <div className="flex items-center gap-4 text-white text-left">
               <Megaphone size={26}/>
-              <div><p className="text-xs font-black uppercase">Borradores</p><p className="text-[9px] font-bold opacity-90 uppercase">Listos para lanzar</p></div>
+              <div><p className="text-xs font-black uppercase tracking-tighter">Borradores</p><p className="text-[9px] font-bold opacity-90 uppercase">Listos para lanzar</p></div>
             </div>
-            <button onClick={() => setActionConfirm({ type: 'publish', title: '¿Publicar Agenda?', message: 'Se notificará a la iglesia.' })} disabled={isPublishing} className="bg-white text-amber-600 px-6 py-3 rounded-2xl text-[10px] font-black shadow-lg">
+            <button onClick={() => setActionConfirm({ type: 'publish', title: '¿Publicar Agenda?', message: 'Se notificará a toda la iglesia.' })} disabled={isPublishing} className="bg-white text-amber-600 px-6 py-3 rounded-2xl text-[10px] font-black shadow-lg">
               {isPublishing ? <Loader2 size={12} className="animate-spin"/> : 'Publicar'}
             </button>
           </div>
@@ -374,14 +362,13 @@ export default function CalendarPage() {
       {/* SELECTOR DE MES */}
       <div className="px-6 flex items-center justify-between bg-white mx-5 p-5 rounded-[30px] border border-slate-100 mb-8 shadow-sm">
         <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-3 text-slate-300 bg-slate-50 rounded-2xl active:scale-75 transition-transform"><ChevronLeft size={24} /></button>
-        <h2 className="text-lg font-black text-slate-900 capitalize">{format(currentDate, 'MMMM yyyy', { locale: es })}</h2>
+        <h2 className="text-lg font-black text-slate-900 capitalize tracking-tighter">{format(currentDate, 'MMMM yyyy', { locale: es })}</h2>
         <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-3 text-slate-300 bg-slate-50 rounded-2xl active:scale-75 transition-transform"><ChevronRight size={24} /></button>
       </div>
 
       <div className="flex-1">
         {loading ? <div className="py-24 text-center opacity-20"><Loader2 className="animate-spin mx-auto" size={48}/></div> : (viewMode === 'month' ? renderMonthView() : (
-          <div className="space-y-10 pb-24">
-            {/* ✅ CRONOLOGÍA NATURAL */}
+          <div className="space-y-10 pb-20">
             {processedEvents.upcoming.length > 0 && (
               <div className="space-y-4 px-4">
                 <div className="flex items-center gap-3 px-4 mb-2">
@@ -404,16 +391,16 @@ export default function CalendarPage() {
         ))}
       </div>
 
-      {userRole === 'pastor' && (
+      {['pastor', 'lider'].includes(userRole) && (
         <button onClick={() => { setEditingId(null); setNewEvent({ title: '', type: 'culto', date: '', endDate: '', time: '19:30', published: false }); setIsModalOpen(true); }} className="fixed bottom-28 right-6 w-16 h-16 bg-slate-900 text-white rounded-[24px] shadow-2xl flex items-center justify-center z-40 border-4 border-white active:scale-90 transition-all"><Plus size={32}/></button>
       )}
 
-      {/* MODAL PLANIFICAR */}
+      {/* MODAL PLANIFICAR/EDITAR */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
             <div className="bg-white w-full max-w-sm rounded-[45px] p-8 shadow-2xl max-h-[90vh] overflow-y-auto no-scrollbar relative animate-slide-up text-left">
                 <div className="flex justify-between items-center mb-8 border-b pb-5 border-slate-50">
-                    <div><h2 className="text-2xl font-black text-slate-900 uppercase">{editingId ? 'Editar' : 'Planificar'}</h2><p className="text-[10px] font-black text-brand-600 uppercase">Actividad Ministerial</p></div>
+                    <div><h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{editingId ? 'Editar' : 'Planificar'}</h2><p className="text-[10px] font-black text-brand-600 uppercase tracking-widest">Actividad Ministerial</p></div>
                     <button onClick={() => setIsModalOpen(false)} className="p-3 bg-slate-50 rounded-full text-slate-400"><X size={24}/></button>
                 </div>
                 <div className="space-y-6">
@@ -421,12 +408,12 @@ export default function CalendarPage() {
                     
                     <div className="grid grid-cols-1 gap-4">
                         <div className="space-y-1">
-                          <label className="text-[9px] font-black text-slate-400 uppercase ml-4">Inicio</label>
+                          <label className="text-[9px] font-black text-slate-400 uppercase ml-4">Inicio / Único</label>
                           <input type="date" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-[20px] text-xs font-black uppercase outline-none" value={newEvent.date} onChange={e => setNewEvent({...newEvent, date: e.target.value})} />
                         </div>
                         {newEvent.type === 'ayuno' && (
                           <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-400 uppercase ml-4">Finalización</label>
+                            <label className="text-[9px] font-black text-slate-400 uppercase ml-4">Finalización (Opcional)</label>
                             <input type="date" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-[20px] text-xs font-black uppercase outline-none" value={newEvent.endDate} onChange={e => setNewEvent({...newEvent, endDate: e.target.value})} />
                           </div>
                         )}
@@ -457,14 +444,14 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* DETALLES DEL DÍA (GRID) */}
+      {/* MODAL DETALLES DEL DÍA */}
       {selectedDayEvents && (
         <div className="fixed inset-0 z-[400] bg-slate-900/60 backdrop-blur-sm flex items-end justify-center animate-fade-in" onClick={() => setSelectedDayEvents(null)}>
           <div className="bg-white w-full max-w-md rounded-t-[50px] p-10 shadow-2xl animate-slide-up" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-8 text-left">
               <div>
                 <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{format(selectedDayEvents.date, "EEEE d", { locale: es })}</h3>
-                <p className="text-[10px] font-black text-brand-600 uppercase">{format(selectedDayEvents.date, "MMMM", { locale: es })}</p>
+                <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest">{format(selectedDayEvents.date, "MMMM", { locale: es })}</p>
               </div>
               <button onClick={() => setSelectedDayEvents(null)} className="p-3 bg-slate-100 rounded-full text-slate-400"><X size={20}/></button>
             </div>
@@ -472,7 +459,7 @@ export default function CalendarPage() {
               {selectedDayEvents.events.map(ev => (
                 <button key={ev.id} onClick={() => { setSelectedDayEvents(null); navigate(`/calendario/${ev.id}`); }} className="w-full flex items-center justify-between p-6 bg-slate-50 rounded-[30px] border-2 border-slate-100 active:scale-95 transition-all">
                   <div className="flex items-center gap-5">
-                    <div className={`p-4 rounded-2xl ${OPERATIVE_EVENT_TYPES[ev.type]?.color || 'bg-slate-200'} text-white shadow-sm`}>
+                    <div className={`p-4 rounded-2xl ${OPERATIVE_EVENT_TYPES[ev.type]?.color || 'bg-slate-200'} text-white`}>
                       {(() => { const Icon = OPERATIVE_EVENT_TYPES[ev.type]?.icon || Church; return <Icon size={24}/> })()}
                     </div>
                     <div><p className="font-black text-slate-900 text-sm uppercase tracking-tight">{ev.title}</p><p className="text-[11px] font-bold text-slate-400 uppercase">{ev.time} hs</p></div>
@@ -490,7 +477,7 @@ export default function CalendarPage() {
         <div className="fixed inset-0 z-[1000] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-8 animate-fade-in">
           <div className="bg-white w-full max-w-xs rounded-[45px] p-10 shadow-2xl text-center">
             <AlertCircle size={44} className="mx-auto text-rose-500 mb-6" strokeWidth={3}/>
-            <h4 className="font-black text-slate-900 text-xl mb-3 uppercase">{actionConfirm.title}</h4>
+            <h4 className="font-black text-slate-900 text-xl mb-3 uppercase tracking-tighter">{actionConfirm.title}</h4>
             <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-10 leading-relaxed">{actionConfirm.message}</p>
             <div className="flex flex-col gap-3">
               <button onClick={executeConfirmedAction} className="w-full py-5 rounded-2xl font-black text-xs uppercase bg-rose-600 text-white shadow-xl">Confirmar</button>
