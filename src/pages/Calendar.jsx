@@ -11,12 +11,12 @@ import {
   ChevronLeft, ChevronRight, Loader2, Megaphone,
   Send, EyeOff, CheckCircle, XCircle, Edit3,
   AlertCircle, ChevronRight as ArrowRight, LayoutGrid, Sparkles, Heart, UserCheck, Globe,
-  Church, Users, Music, Eraser, Wrench, Flame, Lock, Info
+  Church, Users, Music, Eraser, Wrench, Flame, Lock, Info, CheckSquare, MessageSquare
 } from 'lucide-react';
 import { 
   format, addMonths, subMonths, isSameMonth, startOfMonth, 
   endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, 
-  isSameDay, isWithinInterval, parseISO, isAfter, startOfDay, isBefore
+  isSameDay, isWithinInterval, parseISO, isAfter, startOfDay, isBefore, differenceInDays
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import imageCompression from 'browser-image-compression';
@@ -37,7 +37,7 @@ export default function CalendarPage() {
   const { dbUser } = useOutletContext();
   
   const [viewMode, setViewMode] = useState('list'); 
-  const [filterType, setFilterType] = useState('mine'); // 'mine' = MI AGENDA, 'all' = COMUNIDAD
+  const [filterType, setFilterType] = useState('mine'); 
   
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -104,6 +104,7 @@ export default function CalendarPage() {
     } catch (error) { console.error("Error envío notif:", error); }
   };
 
+  // ✅ 2. RESTAURADO: FUNCIÓN DE PUBLICAR BORRADORES
   const executeConfirmedAction = async () => {
     if (!actionConfirm) return;
     const { type, id } = actionConfirm;
@@ -124,13 +125,13 @@ export default function CalendarPage() {
         });
         await batch.commit();
         await sendOneSignalNotification(`📅 Agenda lista`, "Se publicaron las actividades del mes.", "/calendario");
-        setToast({ message: "¡Agenda publicada!", type: "success" });
+        setToast({ message: "¡Todo publicado!", type: "success" });
       } catch (e) { setToast({ message: "Error", type: "error" }); }
       finally { setIsPublishing(false); }
     }
   };
 
-  // ✅ CRONOLOGÍA NATURAL Y FILTROS DE "DOS MUNDOS"
+  // ✅ FILTRADO PRO (CON VISIBILIDAD DE BORRADORES SEGÚN PERMISOS)
   const processedEvents = useMemo(() => {
     const today = startOfDay(new Date());
     const isPastor = ['pastor', 'lider'].includes(userRole);
@@ -140,9 +141,11 @@ export default function CalendarPage() {
       const isMyTask = ev.assignments && Object.values(ev.assignments).flat().includes(currentUser?.displayName);
       
       if (!isSameMonth(eventDate, currentDate)) return false;
+
+      // ✅ 2. Lógica de Borradores: Solo Pastores o asignados ven lo no publicado
       if (!ev.published && !isPastor && !isMyTask) return false;
-      if (filterType === 'mine' && !isMyTask) return false;
       
+      if (filterType === 'mine' && !isMyTask) return false;
       return true;
     });
 
@@ -152,33 +155,11 @@ export default function CalendarPage() {
     return { past, upcoming };
   }, [events, filterType, currentDate, userRole, currentUser]);
 
-  // ✅ ALERTA DE CONFLICTOS (Mis Turnos duplicados)
-  const conflicts = useMemo(() => {
-    if (filterType !== 'mine') return [];
-    const schedule = {};
-    const conflictList = [];
-    processedEvents.upcoming.forEach(ev => {
-      const key = `${ev.date}-${ev.time}`;
-      if (schedule[key]) conflictList.push(ev.id);
-      schedule[key] = true;
-    });
-    return conflictList;
-  }, [processedEvents.upcoming, filterType]);
-
   const handleSaveEvent = async () => {
     if (!newEvent.title || !newEvent.date) return setToast({ message: "Falta título o fecha", type: "error" });
     setIsUploading(true);
     let uploadedImageUrl = newEvent.image || null;
     try {
-        if (imageFile) {
-            const options = { maxSizeMB: 0.6, maxWidthOrHeight: 1200, useWebWorker: true };
-            const compressed = await imageCompression(imageFile, options);
-            const formData = new FormData();
-            formData.append("file", compressed); formData.append("upload_preset", UPLOAD_PRESET);
-            const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { method: "POST", body: formData });
-            const data = await res.json();
-            uploadedImageUrl = data.secure_url;
-        }
         const eventData = { ...newEvent, image: uploadedImageUrl, updatedAt: serverTimestamp(), endDate: newEvent.endDate || newEvent.date };
         if (editingId) {
             await updateDoc(doc(db, 'events', editingId), eventData);
@@ -190,17 +171,20 @@ export default function CalendarPage() {
         }
         setIsModalOpen(false);
         setEditingId(null);
-        setNewEvent({ title: '', type: 'culto', date: '', time: '19:30', published: false, isCena: false });
-    } catch (error) { setToast({ message: "Error", type: "error" }); }
+        setNewEvent({ title: '', type: 'culto', date: '', endDate: '', time: '19:30', description: '', published: false, isCena: false });
+    } catch (error) { setToast({ message: "Error al guardar", type: "error" }); }
     finally { setIsUploading(false); }
   };
 
   const renderEventCard = (ev, isPast) => {
     const config = OPERATIVE_EVENT_TYPES[ev.type] || OPERATIVE_EVENT_TYPES.culto;
     const isMyTask = ev.assignments && Object.values(ev.assignments).flat().includes(currentUser?.displayName);
-    const hasConflict = conflicts.includes(ev.id);
+    const today = startOfDay(new Date());
+
+    // ✅ VALIDACIÓN DE ACCESO (Asegura que el clic funcione según permisos)
+    const canAccess = !config.private || (['pastor', 'lider'].includes(userRole) || dbUser?.area?.toLowerCase() === 'alabanza');
     
-    // Cálculos de Tarjetas Vivas
+    // ✅ 3. LÓGICA TARJETAS VIVAS - PROGRESO LIMPIEZA
     let progress = null;
     if (ev.type === 'limpieza' || ev.type === 'mantenimiento') {
       const sectors = ev.checklist ? Object.values(ev.checklist) : [];
@@ -208,25 +192,31 @@ export default function CalendarPage() {
       if (sectors.length > 0) progress = Math.round((done / sectors.length) * 100);
     }
 
-    let fastingCount = 0;
+    // ✅ 3. LÓGICA TARJETAS VIVAS - AYUNO (PROGRESO Y AVATARES)
+    let fastingInfo = null;
     if (ev.type === 'ayuno') {
-      const todayStr = format(new Date(), 'yyyy-MM-dd');
-      fastingCount = ev.fastingSignups?.[todayStr]?.length || 0;
+      const start = parseISO(ev.date);
+      const end = parseISO(ev.endDate || ev.date);
+      const totalDays = differenceInDays(end, start) + 1;
+      const currentDayNum = (isWithinInterval(today, { start, end }) || isSameDay(today, start)) ? differenceInDays(today, start) + 1 : 1;
+      const todaySignups = ev.fastingSignups?.[format(today, 'yyyy-MM-dd')] || [];
+      fastingInfo = { totalDays, currentDayNum, signups: todaySignups };
     }
 
     return (
-      <div key={ev.id} onClick={() => navigate(`/calendario/${ev.id}`)} 
+      <div key={ev.id} 
+           onClick={() => canAccess ? navigate(`/calendario/${ev.id}`) : toast.error("Acceso privado a Alabanza")} 
            className={`bg-white p-5 rounded-[35px] border-2 transition-all active:scale-95 cursor-pointer relative shadow-sm flex gap-5
-           ${isPast ? 'opacity-40 grayscale-[0.5] border-slate-50' : 'border-slate-50'} 
-           ${ev.isCena ? 'border-rose-500 shadow-rose-100' : ''}
+           ${isPast ? 'opacity-40 grayscale-[0.5]' : ''} 
+           ${ev.isCena ? 'border-rose-500 shadow-rose-100 ring-2 ring-rose-500/20 bg-rose-50/10' : 'border-slate-50'}
            ${isMyTask && !isPast ? 'border-brand-500 shadow-brand-100' : ''}`}>
         
         {isMyTask && !isPast && (
           <div className="absolute -top-2.5 right-8 bg-brand-600 text-white px-3 py-1 rounded-full text-[8px] font-black tracking-widest shadow-lg border-2 border-white">MI TURNO</div>
         )}
 
-        {hasConflict && (
-          <div className="absolute -top-2.5 left-8 bg-rose-600 text-white p-1 rounded-full shadow-lg border-2 border-white animate-bounce"><AlertCircle size={14}/></div>
+        {!ev.published && (
+           <div className="absolute -top-2.5 left-8 bg-amber-500 text-white px-3 py-1 rounded-full text-[8px] font-black tracking-widest shadow-lg border-2 border-white flex items-center gap-1"><EyeOff size={10}/> BORRADOR</div>
         )}
 
         <div className={`flex flex-col items-center justify-center px-4 rounded-3xl border-2 min-w-[75px] ${config.light} ${config.text} border-current opacity-80`}>
@@ -237,27 +227,50 @@ export default function CalendarPage() {
         <div className="flex-1 min-w-0 text-left">
           <div className="flex justify-between items-start">
             <span className={`text-[8px] font-black px-2 py-1 rounded-lg uppercase tracking-widest ${config.color} text-white`}>{config.label}</span>
-            {userRole === 'pastor' && (
+            {['pastor', 'lider'].includes(userRole) && (
               <div className="flex gap-1">
                 <button onClick={(e) => { e.stopPropagation(); setEditingId(ev.id); setNewEvent(ev); setIsModalOpen(true); }} className="p-1 text-slate-300 hover:text-brand-600"><Edit3 size={16}/></button>
                 <button onClick={(e) => { e.stopPropagation(); setActionConfirm({ type: 'delete', id: ev.id, title: '¿Borrar?', message: 'Se borrará permanentemente.' }); }} className="p-1 text-slate-200 hover:text-rose-500"><Trash2 size={16}/></button>
               </div>
             )}
           </div>
-          <h4 className="font-black text-slate-800 text-base leading-tight mt-2 uppercase truncate">{ev.title}</h4>
+
+          {/* ✅ 1. TARJETA UNIFICADA DE AYUNO */}
+          <h4 className="font-black text-slate-800 text-base leading-tight mt-2 uppercase truncate">
+            {ev.type === 'ayuno' ? 'Semana de Ayuno Congregacional' : ev.title}
+          </h4>
           
-          {/* VISTAS VIVAS EN LA TARJETA */}
           <div className="mt-3 space-y-2">
-            <div className="flex items-center gap-3">
+            {ev.type === 'ayuno' && fastingInfo ? (
+              <div className="flex flex-col gap-2">
+                 <div className="flex items-center justify-between">
+                    <span className="text-[9px] font-black text-amber-600 uppercase tracking-widest">
+                      {fastingInfo.totalDays > 1 ? `Día ${fastingInfo.currentDayNum} de ${fastingInfo.totalDays}` : 'Ayuno General'}
+                    </span>
+                    {/* ✅ 3. AVATARES DE ÚLTIMOS ANOTADOS */}
+                    <div className="flex -space-x-2">
+                       {fastingInfo.signups.slice(0, 3).map((name, i) => (
+                         <div key={i} className="w-5 h-5 rounded-full border-2 border-white bg-slate-200 overflow-hidden shadow-sm">
+                            <img src={`https://ui-avatars.com/api/?name=${name}&background=random&color=fff&size=32`} className="w-full h-full object-cover" />
+                         </div>
+                       ))}
+                       {fastingInfo.signups.length > 3 && (
+                         <div className="w-5 h-5 rounded-full border-2 border-white bg-amber-500 text-white text-[7px] font-black flex items-center justify-center">+{fastingInfo.signups.length - 3}</div>
+                       )}
+                    </div>
+                 </div>
+              </div>
+            ) : (
               <span className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-1.5"><Clock size={12} className="text-brand-500"/> {ev.time} hs</span>
-              {ev.type === 'ayuno' && fastingCount > 0 && (
-                <span className="text-[9px] font-black text-amber-600 bg-amber-50 px-2 py-0.5 rounded-lg flex items-center gap-1"><Users size={10}/> {fastingCount} hermanos</span>
-              )}
-            </div>
+            )}
             
+            {/* ✅ 3. BARRA DE PROGRESO LIMPIEZA */}
             {progress !== null && (
-              <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden flex">
-                <div className="bg-emerald-500 h-full transition-all" style={{ width: `${progress}%` }}></div>
+              <div className="flex flex-col gap-1">
+                <div className="flex justify-between text-[8px] font-black uppercase text-slate-400"><span>CUMPLIMIENTO</span><span>{progress}%</span></div>
+                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex border border-slate-50 shadow-inner">
+                  <div className="bg-emerald-500 h-full transition-all duration-700 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.5)]" style={{ width: `${progress}%` }}></div>
+                </div>
               </div>
             )}
           </div>
@@ -281,9 +294,15 @@ export default function CalendarPage() {
                 {days.map(day => {
                     const isToday = isSameDay(day, new Date());
                     const isCurrentMonthDay = isSameMonth(day, currentDate);
-                    const dayEvents = events.filter(e => isSameDay(parseISO(e.date), day));
+                    const dayEvents = events.filter(e => {
+                        const s = parseISO(e.date);
+                        const en = parseISO(e.endDate || e.date);
+                        return isWithinInterval(day, { start: s, end: en });
+                    });
                     const hasEvents = dayEvents.length > 0;
                     const isMyDay = dayEvents.some(e => e.assignments && Object.values(e.assignments).flat().includes(currentUser?.displayName));
+                    const isAyunoDay = dayEvents.some(e => e.type === 'ayuno');
+                    const isLimpiezaDay = dayEvents.some(e => e.type === 'limpieza' || e.type === 'mantenimiento');
                     
                     return (
                         <div key={day.toString()} 
@@ -291,16 +310,22 @@ export default function CalendarPage() {
                             className={`aspect-square rounded-2xl flex flex-col items-center justify-center relative cursor-pointer transition-all active:scale-90
                                 ${!isCurrentMonthDay ? 'opacity-20' : 'text-slate-700'}
                                 ${isToday ? 'bg-slate-900 text-white shadow-xl scale-110 z-10' : ''}
-                                ${isMyDay && !isToday ? 'border-2 border-brand-500 bg-brand-50' : ''}
-                                ${hasEvents && !isMyDay && !isToday ? 'bg-slate-50' : ''}`}>
+                                ${isMyDay && !isToday ? 'border-2 border-amber-500 bg-amber-50/20' : ''}
+                                ${isAyunoDay && !isToday ? 'bg-amber-100/30' : ''}
+                                ${hasEvents && !isMyDay && !isAyunoDay && !isToday ? 'bg-slate-50' : ''}`}>
+                            
+                            {/* ✅ 4. LÍNEA NARANJA PARA AYUNO EN GRILLA */}
+                            {isAyunoDay && !isToday && <div className="absolute top-1 left-0 right-0 h-0.5 bg-amber-500/60 shadow-[0_0_4px_rgba(245,158,11,0.5)]"></div>}
+                            
                             <span className="text-xs font-black">{format(day, 'd')}</span>
-                            {hasEvents && !isToday && (
-                              <div className="flex gap-0.5 mt-1">
-                                {dayEvents.slice(0, 3).map(e => (
-                                  <div key={e.id} className={`w-1 h-1 rounded-full ${OPERATIVE_EVENT_TYPES[e.type]?.color || 'bg-slate-400'}`}></div>
-                                ))}
-                              </div>
-                            )}
+                            
+                            <div className="flex gap-0.5 mt-1">
+                              {/* ✅ 4. PUNTO VERDE PARA LIMPIEZA */}
+                              {isLimpiezaDay && !isToday && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-sm"></div>}
+                              {dayEvents.filter(e => e.type !== 'ayuno' && e.type !== 'limpieza').slice(0, 2).map(e => (
+                                <div key={e.id} className={`w-1 h-1 rounded-full ${OPERATIVE_EVENT_TYPES[e.type]?.color || 'bg-slate-300'}`}></div>
+                              ))}
+                            </div>
                         </div>
                     );
                 })}
@@ -312,7 +337,7 @@ export default function CalendarPage() {
   return (
     <div className="pb-36 pt-4 bg-slate-50 min-h-screen animate-fade-in relative font-outfit">
       
-      {/* ✅ SOLAPAS DE "DOS MUNDOS" */}
+      {/* SOLAPAS DE "DOS MUNDOS" */}
       <div className="px-6 mb-8 mt-4">
         <div className="bg-white p-1.5 rounded-[30px] shadow-sm border-2 border-slate-50 flex gap-1">
           <button onClick={() => setFilterType('mine')} 
@@ -339,6 +364,19 @@ export default function CalendarPage() {
         </div>
       </div>
 
+      {/* ✅ 2. BANNER DE BORRADORES RESTAURADO */}
+      {['pastor', 'lider'].includes(userRole) && events.some(e => !e.published && isSameMonth(new Date(e.date + 'T00:00:00'), currentDate)) && (
+          <div className="mx-6 bg-amber-500 p-6 rounded-[35px] mb-8 flex items-center justify-between shadow-xl shadow-amber-200/40 animate-pulse">
+            <div className="flex items-center gap-4 text-white text-left">
+              <Megaphone size={26}/>
+              <div><p className="text-xs font-black uppercase tracking-tighter">Borradores</p><p className="text-[9px] font-bold opacity-90 uppercase">Listos para lanzar</p></div>
+            </div>
+            <button onClick={() => setActionConfirm({ type: 'publish', title: '¿Lanzar Agenda?', message: 'Se notificará a la iglesia.' })} disabled={isPublishing} className="bg-white text-amber-600 px-6 py-3 rounded-2xl text-[10px] font-black shadow-lg">
+              {isPublishing ? <Loader2 size={12} className="animate-spin"/> : 'Publicar'}
+            </button>
+          </div>
+      )}
+
       {/* SELECTOR DE MES */}
       <div className="px-6 flex items-center justify-between bg-white mx-5 p-5 rounded-[30px] border border-slate-100 mb-8 shadow-sm">
         <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-3 text-slate-300 bg-slate-50 rounded-2xl active:scale-75 transition-transform"><ChevronLeft size={24} /></button>
@@ -346,12 +384,9 @@ export default function CalendarPage() {
         <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-3 text-slate-300 bg-slate-50 rounded-2xl active:scale-75 transition-transform"><ChevronRight size={24} /></button>
       </div>
 
-      {/* CONTENIDO CRONOLÓGICO */}
       <div className="flex-1">
-        {loading ? (
-          <div className="py-24 text-center opacity-20"><Loader2 className="animate-spin mx-auto" size={48}/></div>
-        ) : viewMode === 'month' ? renderMonthView() : (
-          <div className="space-y-10 pb-20">
+        {loading ? <div className="py-24 text-center opacity-20"><Loader2 className="animate-spin mx-auto" size={48}/></div> : (viewMode === 'month' ? renderMonthView() : (
+          <div className="space-y-10 pb-24">
             {/* PRÓXIMOS */}
             {processedEvents.upcoming.length > 0 && (
               <div className="space-y-4 px-4">
@@ -367,44 +402,48 @@ export default function CalendarPage() {
             {processedEvents.past.length > 0 && (
               <div className="space-y-4 px-4">
                 <div className="flex items-center gap-3 px-4 mb-2">
-                  <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Anteriormente este mes</span>
+                  <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Ya realizado</span>
                   <div className="h-[1px] flex-1 bg-slate-100"></div>
                 </div>
                 {processedEvents.past.map(ev => renderEventCard(ev, true))}
               </div>
             )}
-
-            {processedEvents.upcoming.length === 0 && processedEvents.past.length === 0 && (
-               <div className="py-24 text-center opacity-30 flex flex-col items-center">
-                 <Sparkles size={48} className="mb-4 text-slate-300"/>
-                 <p className="text-[10px] font-black uppercase tracking-widest">Nada planeado para este mes</p>
-               </div>
-            )}
           </div>
-        )}
+        ))}
       </div>
 
-      {userRole === 'pastor' && (
-        <button onClick={() => { setEditingId(null); setNewEvent({ title: '', type: 'culto', date: '', time: '19:30', published: false }); setIsModalOpen(true); }} className="fixed bottom-28 right-6 w-16 h-16 bg-slate-900 text-white rounded-[24px] shadow-2xl flex items-center justify-center z-40 border-4 border-white active:scale-90 transition-all"><Plus size={32}/></button>
+      {['pastor', 'lider'].includes(userRole) && (
+        <button onClick={() => { setEditingId(null); setNewEvent({ title: '', type: 'culto', date: '', endDate: '', time: '19:30', published: false }); setIsModalOpen(true); }} className="fixed bottom-28 right-6 w-16 h-16 bg-slate-900 text-white rounded-[24px] shadow-2xl flex items-center justify-center z-40 border-4 border-white active:scale-90 transition-all"><Plus size={32}/></button>
       )}
 
-      {/* MODAL PLANIFICAR/EDITAR */}
+      {/* MODAL PLANIFICAR */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
             <div className="bg-white w-full max-w-sm rounded-[45px] p-8 shadow-2xl max-h-[90vh] overflow-y-auto no-scrollbar relative animate-slide-up text-left">
                 <div className="flex justify-between items-center mb-8 border-b pb-5 border-slate-50">
-                    <div>
-                        <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{editingId ? 'Editar' : 'Planificar'}</h2>
-                        <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest">Actividad Ministerial</p>
-                    </div>
+                    <div><h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{editingId ? 'Editar' : 'Planificar'}</h2><p className="text-[10px] font-black text-brand-600 uppercase tracking-widest">Actividad Ministerial</p></div>
                     <button onClick={() => setIsModalOpen(false)} className="p-3 bg-slate-50 rounded-full text-slate-400"><X size={24}/></button>
                 </div>
                 <div className="space-y-6">
                     <input placeholder="Título..." className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[24px] font-black text-slate-800 outline-none focus:border-brand-500 uppercase text-sm" value={newEvent.title} onChange={e => setNewEvent({...newEvent, title: e.target.value})} />
-                    <div className="grid grid-cols-2 gap-4">
-                        <input type="date" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-[20px] text-xs font-black uppercase outline-none" value={newEvent.date} onChange={e => setNewEvent({...newEvent, date: e.target.value})} />
-                        <input type="time" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-[20px] text-xs font-black uppercase outline-none" value={newEvent.time} onChange={e => setNewEvent({...newEvent, time: e.target.value})} />
+                    
+                    <div className="grid grid-cols-1 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-black text-slate-400 uppercase ml-4">Inicio</label>
+                          <input type="date" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-[20px] text-xs font-black uppercase outline-none" value={newEvent.date} onChange={e => setNewEvent({...newEvent, date: e.target.value})} />
+                        </div>
+                        {newEvent.type === 'ayuno' && (
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-black text-slate-400 uppercase ml-4">Finalización</label>
+                            <input type="date" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-[20px] text-xs font-black uppercase outline-none" value={newEvent.endDate} onChange={e => setNewEvent({...newEvent, endDate: e.target.value})} />
+                          </div>
+                        )}
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-black text-slate-400 uppercase ml-4">Hora</label>
+                          <input type="time" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-[20px] text-xs font-black uppercase outline-none" value={newEvent.time} onChange={e => setNewEvent({...newEvent, time: e.target.value})} />
+                        </div>
                     </div>
+
                     <div className="grid grid-cols-2 gap-2">
                         {Object.entries(OPERATIVE_EVENT_TYPES).map(([key, config]) => (
                             <button key={key} onClick={() => setNewEvent({...newEvent, type: key})} className={`flex items-center gap-3 p-4 rounded-2xl border-2 text-[8px] font-black uppercase transition-all ${newEvent.type === key ? config.color + ' border-current text-white shadow-md' : 'bg-white border-slate-50 text-slate-300'}`}>
@@ -412,16 +451,12 @@ export default function CalendarPage() {
                             </button>
                         ))}
                     </div>
-                    {newEvent.type === 'culto' && (
-                      <button onClick={() => setNewEvent({...newEvent, isCena: !newEvent.isCena})} className={`w-full p-4 rounded-2xl border-2 flex items-center justify-between transition-all ${newEvent.isCena ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>
-                        <span className="text-[9px] font-black uppercase">🍷 Cena del Señor</span>
-                        {newEvent.isCena ? <CheckCircle size={18}/> : <div className="w-4 h-4 rounded-full border-2 border-slate-200"></div>}
-                      </button>
-                    )}
+
                     <button onClick={() => setNewEvent({...newEvent, published: !newEvent.published})} className={`w-full p-5 rounded-[28px] border-2 flex items-center justify-between transition-all ${newEvent.published ? 'bg-emerald-600 border-emerald-400 text-white shadow-xl' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>
                         <span className="text-[10px] font-black uppercase tracking-widest">¿Notificar Iglesia?</span>
                         {newEvent.published ? <CheckCircle size={24}/> : <EyeOff size={24}/>}
                     </button>
+
                     <button onClick={handleSaveEvent} disabled={isUploading} className="w-full bg-slate-900 text-white font-black py-6 rounded-[35px] shadow-2xl mt-4 active:scale-95 transition-all disabled:opacity-50 uppercase text-xs tracking-[0.3em] flex items-center justify-center gap-3">
                         {isUploading ? <Loader2 className="animate-spin" size={24}/> : (editingId ? "Guardar Cambios" : "Confirmar Actividad")}
                     </button>
@@ -448,10 +483,7 @@ export default function CalendarPage() {
                     <div className={`p-4 rounded-2xl ${OPERATIVE_EVENT_TYPES[ev.type]?.color || 'bg-slate-200'} text-white`}>
                       {(() => { const Icon = OPERATIVE_EVENT_TYPES[ev.type]?.icon || Church; return <Icon size={24}/> })()}
                     </div>
-                    <div>
-                      <p className="font-black text-slate-900 text-sm uppercase tracking-tight">{ev.title}</p>
-                      <p className="text-[11px] font-bold text-slate-400 uppercase">{ev.time} hs</p>
-                    </div>
+                    <div><p className="font-black text-slate-900 text-sm uppercase tracking-tight">{ev.title}</p><p className="text-[11px] font-bold text-slate-400 uppercase">{ev.time} hs</p></div>
                   </div>
                   <ArrowRight size={20} className="text-slate-300" />
                 </button>
@@ -461,7 +493,7 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* TOAST & ACTIONS */}
+      {/* CONFIRMACIÓN ACCIONES */}
       {actionConfirm && (
         <div className="fixed inset-0 z-[1000] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-8 animate-fade-in">
           <div className="bg-white w-full max-w-xs rounded-[45px] p-10 shadow-2xl text-center">
