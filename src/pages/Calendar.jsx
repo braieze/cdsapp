@@ -11,7 +11,7 @@ import {
   ChevronLeft, ChevronRight, Loader2, Megaphone,
   Send, EyeOff, CheckCircle, XCircle,
   AlertCircle, ChevronRight as ArrowRight, Sparkles, Heart, UserCheck, Globe, 
-  Edit3, Music, Users, Broom, Wrench, Flame, Church, Lock, Save
+  Edit3, Music, Users, Eraser, Wrench, Flame, Church, Lock, Save
 } from 'lucide-react';
 import { 
   format, addMonths, subMonths, isSameMonth, startOfMonth, 
@@ -29,7 +29,7 @@ export const OPERATIVE_EVENT_TYPES = {
   mujeres: { label: 'Mujeres', icon: Heart, color: 'bg-pink-500', text: 'text-pink-500', light: 'bg-pink-50' },
   varones: { label: 'Varones', icon: UserCheck, color: 'bg-indigo-500', text: 'text-indigo-500', light: 'bg-indigo-50' },
   ensayo: { label: 'Ensayo', icon: Music, color: 'bg-purple-600', text: 'text-purple-600', light: 'bg-purple-50', private: true },
-  limpieza: { label: 'Limpieza', icon: Broom, color: 'bg-emerald-500', text: 'text-emerald-500', light: 'bg-emerald-50' },
+  limpieza: { label: 'Limpieza', icon: Eraser, color: 'bg-emerald-500', text: 'text-emerald-500', light: 'bg-emerald-50' },
   mantenimiento: { label: 'Mantenimiento', icon: Wrench, color: 'bg-slate-600', text: 'text-slate-600', light: 'bg-slate-100' },
   ayuno: { label: 'Ayuno', icon: Flame, color: 'bg-amber-500', text: 'text-amber-500', light: 'bg-amber-50' }
 };

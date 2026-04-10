@@ -6,7 +6,7 @@ import {
   X, Calendar, Clock, Save, Trash2, Plus, Users, 
   CheckCircle, Download, Loader2, Search, HelpCircle,
   AlertCircle, Check, ExternalLink, ArrowRight, UserPlus, UserMinus, Heart,
-  Music, Broom, Wrench, Flame, Church, Lock, ShieldAlert, MessageSquare
+  Music, Eraser, Wrench, Flame, Church, Lock, ShieldAlert, MessageSquare
 } from 'lucide-react';
 import { format, eachDayOfInterval, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
