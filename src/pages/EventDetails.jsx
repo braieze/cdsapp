@@ -104,7 +104,7 @@ export default function CalendarPage() {
     } catch (error) { console.error("Error envío notif:", error); }
   };
 
-  // ✅ 2. FUNCIÓN DE PUBLICAR BORRADORES RESTAURADA
+  // ✅ RESTAURADA: FUNCIÓN DE PUBLICAR BORRADORES
   const executeConfirmedAction = async () => {
     if (!actionConfirm) return;
     const { type, id } = actionConfirm;
@@ -131,7 +131,7 @@ export default function CalendarPage() {
     }
   };
 
-  // ✅ FILTRADO PRO (CON LÓGICA DE BORRADORES Y AYUNO UNIFICADO)
+  // ✅ FILTRADO PRO (VISIBILIDAD DE BORRADORES Y AYUNO)
   const processedEvents = useMemo(() => {
     const today = startOfDay(new Date());
     const isPastor = ['pastor', 'lider'].includes(userRole);
@@ -142,7 +142,7 @@ export default function CalendarPage() {
       
       if (!isSameMonth(eventDate, currentDate)) return false;
       
-      // ✅ 2. LÓGICA DE VISIBILIDAD DE BORRADORES
+      // ✅ LOGICA DE BORRADORES
       if (!ev.published && !isPastor && !isMyTask) return false;
       
       if (filterType === 'mine' && !isMyTask) return false;
@@ -190,7 +190,7 @@ export default function CalendarPage() {
     const isMyTask = ev.assignments && Object.values(ev.assignments).flat().includes(currentUser?.displayName);
     const today = startOfDay(new Date());
     
-    // ✅ 3. LÓGICA TARJETAS VIVAS - PROGRESO LIMPIEZA
+    // ✅ PROGRESO LIMPIEZA
     let progress = null;
     if (ev.type === 'limpieza' || ev.type === 'mantenimiento') {
       const sectors = ev.checklist ? Object.values(ev.checklist) : [];
@@ -198,20 +198,20 @@ export default function CalendarPage() {
       if (sectors.length > 0) progress = Math.round((done / sectors.length) * 100);
     }
 
-    // ✅ 3. LÓGICA TARJETAS VIVAS - AYUNO (AVATARES)
+    // ✅ AVATARES AYUNO
     let fastingInfo = null;
     if (ev.type === 'ayuno') {
       const start = parseISO(ev.date);
       const end = parseISO(ev.endDate || ev.date);
       const totalDays = differenceInDays(end, start) + 1;
       const currentDayNum = isWithinInterval(today, { start, end }) ? differenceInDays(today, start) + 1 : null;
-      
       const todaySignups = ev.fastingSignups?.[format(today, 'yyyy-MM-dd')] || [];
       fastingInfo = { totalDays, currentDayNum, signups: todaySignups };
     }
 
     return (
-      <div key={ev.id} onClick={() => navigate(`/calendario/${ev.id}`)} 
+      <div key={ev.id} 
+           onClick={() => navigate(`/calendario/${ev.id}`)} // ✅ FIX: AHORA ABRE EL DETALLE
            className={`bg-white p-5 rounded-[35px] border-2 transition-all active:scale-95 cursor-pointer relative shadow-sm flex gap-5
            ${isPast ? 'opacity-40 grayscale-[0.5]' : ''} 
            ${ev.isCena ? 'border-rose-500 shadow-rose-100 ring-2 ring-rose-500/20' : 'border-slate-50'}
@@ -241,7 +241,6 @@ export default function CalendarPage() {
             )}
           </div>
           
-          {/* ✅ 1. TARJETA UNIFICADA DE AYUNO */}
           <h4 className="font-black text-slate-800 text-base leading-tight mt-2 uppercase truncate">
             {ev.type === 'ayuno' ? 'Semana de Ayuno Congregacional' : ev.title}
           </h4>
@@ -269,7 +268,6 @@ export default function CalendarPage() {
               <span className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-1.5"><Clock size={12} className="text-brand-500"/> {ev.time} hs</span>
             )}
             
-            {/* ✅ 3. BARRA DE PROGRESO LIMPIEZA */}
             {progress !== null && (
               <div className="flex flex-col gap-1">
                 <div className="flex justify-between text-[8px] font-black uppercase text-slate-400"><span>Progreso</span><span>{progress}%</span></div>
@@ -300,9 +298,9 @@ export default function CalendarPage() {
                     const isToday = isSameDay(day, new Date());
                     const isCurrentMonthDay = isSameMonth(day, currentDate);
                     const dayEvents = events.filter(e => {
-                        const start = parseISO(e.date);
-                        const end = parseISO(e.endDate || e.date);
-                        return isWithinInterval(day, { start, end });
+                        const s = parseISO(e.date);
+                        const en = parseISO(e.endDate || e.date);
+                        return isWithinInterval(day, { start: s, end: en });
                     });
                     const hasEvents = dayEvents.length > 0;
                     const isMyDay = dayEvents.some(e => e.assignments && Object.values(e.assignments).flat().includes(currentUser?.displayName));
@@ -319,14 +317,14 @@ export default function CalendarPage() {
                                 ${isAyunoDay && !isToday ? 'bg-amber-100/30' : ''}
                                 ${hasEvents && !isMyDay && !isAyunoDay && !isToday ? 'bg-slate-50' : ''}`}>
                             
-                            {/* ✅ 4. LÍNEA NARANJA PARA AYUNO EN GRILLA */}
-                            {isAyunoDay && !isToday && <div className="absolute top-1 left-0 right-0 h-0.5 bg-amber-500/40"></div>}
+                            {/* ✅ LÍNEA NARANJA PARA AYUNO */}
+                            {isAyunoDay && !isToday && <div className="absolute top-1 left-0 right-0 h-0.5 bg-amber-500/60"></div>}
                             
                             <span className="text-xs font-black">{format(day, 'd')}</span>
                             
                             <div className="flex gap-0.5 mt-1">
-                              {/* ✅ 4. INDICADORES VISUALES GRILLA */}
-                              {isLimpiezaDay && !isToday && <div className="w-1 h-1 rounded-full bg-emerald-500"></div>}
+                              {/* ✅ INDICADORES VISUALES */}
+                              {isLimpiezaDay && !isToday && <div className="w-1 h-1 rounded-full bg-emerald-500 shadow-sm"></div>}
                               {dayEvents.filter(e => e.type !== 'ayuno' && e.type !== 'limpieza').slice(0, 2).map(e => (
                                 <div key={e.id} className={`w-1 h-1 rounded-full ${OPERATIVE_EVENT_TYPES[e.type]?.color || 'bg-slate-300'}`}></div>
                               ))}
@@ -342,7 +340,7 @@ export default function CalendarPage() {
   return (
     <div className="pb-36 pt-4 bg-slate-50 min-h-screen animate-fade-in relative font-outfit">
       
-      {/* ✅ SOLAPAS DE "DOS MUNDOS" */}
+      {/* SOLAPAS DE "DOS MUNDOS" */}
       <div className="px-6 mb-8 mt-4">
         <div className="bg-white p-1.5 rounded-[30px] shadow-sm border-2 border-slate-50 flex gap-1">
           <button onClick={() => setFilterType('mine')} 
@@ -369,19 +367,20 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* ✅ 2. BANNER DE BORRADORES RESTAURADO */}
+      {/* BANNER DE BORRADORES RESTAURADO */}
       {['pastor', 'lider'].includes(userRole) && events.some(e => !e.published && isSameMonth(new Date(e.date + 'T00:00:00'), currentDate)) && (
           <div className="mx-6 bg-amber-500 p-6 rounded-[35px] mb-8 flex items-center justify-between shadow-xl shadow-amber-200/40 animate-pulse">
             <div className="flex items-center gap-4 text-white text-left">
               <Megaphone size={26}/>
               <div><p className="text-xs font-black uppercase tracking-tighter">Borradores</p><p className="text-[9px] font-bold opacity-90 uppercase">Listos para lanzar</p></div>
             </div>
-            <button onClick={() => setActionConfirm({ type: 'publish', title: '¿Publicar Agenda?', message: 'Se notificará a toda la iglesia.' })} disabled={isPublishing} className="bg-white text-amber-600 px-6 py-3 rounded-2xl text-[10px] font-black shadow-lg active:scale-95 transition-all">
+            <button onClick={() => setActionConfirm({ type: 'publish', title: '¿Publicar Agenda?', message: 'Se notificará a toda la iglesia.' })} disabled={isPublishing} className="bg-white text-amber-600 px-6 py-3 rounded-2xl text-[10px] font-black shadow-lg">
               {isPublishing ? <Loader2 size={12} className="animate-spin"/> : 'Publicar'}
             </button>
           </div>
       )}
 
+      {/* SELECTOR DE MES */}
       <div className="px-6 flex items-center justify-between bg-white mx-5 p-5 rounded-[30px] border border-slate-100 mb-8 shadow-sm">
         <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-3 text-slate-300 bg-slate-50 rounded-2xl active:scale-75 transition-transform"><ChevronLeft size={24} /></button>
         <h2 className="text-lg font-black text-slate-900 capitalize tracking-tighter">{format(currentDate, 'MMMM yyyy', { locale: es })}</h2>
@@ -391,7 +390,6 @@ export default function CalendarPage() {
       <div className="flex-1">
         {loading ? <div className="py-24 text-center opacity-20"><Loader2 className="animate-spin mx-auto" size={48}/></div> : (viewMode === 'month' ? renderMonthView() : (
           <div className="space-y-10 pb-20">
-            {/* ✅ CRONOLOGÍA NATURAL */}
             {processedEvents.upcoming.length > 0 && (
               <div className="space-y-4 px-4">
                 <div className="flex items-center gap-3 px-4 mb-2">
@@ -414,7 +412,7 @@ export default function CalendarPage() {
         ))}
       </div>
 
-      {userRole === 'pastor' && (
+      {['pastor', 'lider'].includes(userRole) && (
         <button onClick={() => { setEditingId(null); setNewEvent({ title: '', type: 'culto', date: '', endDate: '', time: '19:30', published: false }); setIsModalOpen(true); }} className="fixed bottom-28 right-6 w-16 h-16 bg-slate-900 text-white rounded-[24px] shadow-2xl flex items-center justify-center z-40 border-4 border-white active:scale-90 transition-all"><Plus size={32}/></button>
       )}
 
@@ -429,7 +427,6 @@ export default function CalendarPage() {
                 <div className="space-y-6">
                     <input placeholder="Título..." className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[24px] font-black text-slate-800 outline-none focus:border-brand-500 uppercase text-sm" value={newEvent.title} onChange={e => setNewEvent({...newEvent, title: e.target.value})} />
                     
-                    {/* ✅ 1. FECHA INICIO Y FIN PARA AYUNO */}
                     <div className="grid grid-cols-1 gap-4">
                         <div className="space-y-1">
                           <label className="text-[9px] font-black text-slate-400 uppercase ml-4">Inicio</label>
@@ -496,7 +493,7 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* ACTIONS CONFIRM */}
+      {/* CONFIRMACIÓN DE ACCIONES */}
       {actionConfirm && (
         <div className="fixed inset-0 z-[1000] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-8 animate-fade-in">
           <div className="bg-white w-full max-w-xs rounded-[45px] p-10 shadow-2xl text-center">
