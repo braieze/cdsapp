@@ -29,6 +29,7 @@ import Tesoreria from './pages/Tesoreria';
 
 // ✅ NUEVAS IMPORTACIONES: ACADEMIA CDS
 import StudyHub from './pages/StudyHub';
+import CreateStudy from './pages/CreateStudy'; // Asegurate que el nombre del archivo coincida
 import StudyDetail from './pages/StudyDetail';
 import LessonView from './pages/LessonView';
 
