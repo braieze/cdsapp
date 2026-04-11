@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom'; // ✅ Importamos useLocation
 import { auth, db } from '../firebase';
 import { doc, onSnapshot } from 'firebase/firestore'; 
 import BottomNavigation from '../components/BottomNavigation';
@@ -9,17 +9,17 @@ export default function MainLayout() {
   const [dbUser, setDbUser] = useState(null); 
   const [fetchingUser, setFetchingUser] = useState(true);
   const user = auth.currentUser;
+  const location = useLocation(); // ✅ Hook para saber dónde estamos
 
-  // ✅ ESCUCHA EN TIEMPO REAL DEL PERFIL (Punto #5)
+  // 🎯 Detectamos si estamos en una ruta de estudio para ocultar la nav
+  const isStudyPage = location.pathname.includes('/estudio');
+
   useEffect(() => {
     if (!user) {
       setFetchingUser(false);
       return;
     }
-
     const userRef = doc(db, 'users', user.uid);
-    
-    // onSnapshot es clave para que los cambios de ROL impacten al instante
     const unsubscribe = onSnapshot(userRef, (docSnap) => {
       if (docSnap.exists()) {
         setDbUser({ id: docSnap.id, ...docSnap.data() });
@@ -29,11 +29,9 @@ export default function MainLayout() {
       console.error("Error escuchando usuario:", error);
       setFetchingUser(false);
     });
-
     return () => unsubscribe();
   }, [user]);
 
-  // Si estamos cargando el perfil de la DB, mostramos un spinner pequeño
   if (fetchingUser) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -43,14 +41,14 @@ export default function MainLayout() {
   }
 
   return (
-    <div className="min-h-[100dvh] bg-slate-50 pb-36 font-outfit text-slate-800">
+    // ✅ Cambiamos el padding inferior dinámicamente (pb-36 solo si NO es estudio)
+    <div className={`min-h-[100dvh] bg-slate-50 font-outfit text-slate-800 ${isStudyPage ? 'pb-0' : 'pb-36'}`}>
       <main className="max-w-md mx-auto animate-fade-in relative bg-slate-50">
-        {/* ✅ Punto #5: Pasamos dbUser a todas las páginas (Home, Calendar, etc) */}
         <Outlet context={{ dbUser }} /> 
       </main>
 
-      {/* ✅ La navegación recibe el dbUser para ocultar/mostrar botones (Tesorería) */}
-      <BottomNavigation dbUser={dbUser} />
+      {/* ✅ Ocultamos la navegación si estamos en estudios */}
+      {!isStudyPage && <BottomNavigation dbUser={dbUser} />}
     </div>
   );
 }
