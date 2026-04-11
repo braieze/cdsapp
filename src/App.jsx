@@ -31,6 +31,7 @@ import Tesoreria from './pages/Tesoreria';
 import StudyHub from './pages/StudyHub';
 import CreateStudy from './pages/CreateStudy'; // Asegurate que el nombre del archivo coincida
 import StudyDetail from './pages/StudyDetail';
+import CreateLesson from './pages/CreateLesson';
 import LessonView from './pages/LessonView';
 
 // --- MANEJADOR DE NAVEGACIÓN (Puntos 1 y 6) ---
@@ -197,6 +198,7 @@ export default function App() {
           {/* ✅ IMPORTANTE: "crear" va antes que ":id" para que no se confundan */}
           <Route path="estudio/crear" element={<CreateStudy />} /> 
           <Route path="estudio/:id" element={<StudyDetail />} />
+          <Route path="estudio/:id/nueva-clase" element={<CreateLesson />} />
           <Route path="estudio/clase/:lessonId" element={<LessonView />} />
 
         </Route>
