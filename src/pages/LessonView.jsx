@@ -6,7 +6,7 @@ import {
 } from 'firebase/firestore';
 import { 
   ChevronLeft, Play, FileText, CheckCircle, GraduationCap, 
-  Award, HelpCircle, ArrowRight, Loader2, RefreshCcw, Send, ExternalLink
+  Award, HelpCircle, ArrowRight, Loader2, RefreshCcw, Send, ExternalLink, Clock
 } from 'lucide-react';
 
 export default function LessonView() {

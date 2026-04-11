@@ -7,7 +7,7 @@ import {
 import { 
   ChevronLeft, Play, FileText, CheckCircle, Lock, Users, 
   BarChart3, Award, clock, Search, ArrowRight, Loader2, GraduationCap,
-  MessageSquare, User, Star
+  MessageSquare, User, Star, Clock
 } from 'lucide-react';
 
 export default function StudyDetail() {
