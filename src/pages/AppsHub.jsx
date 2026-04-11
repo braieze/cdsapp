@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react'; 
 import { 
   Users, Heart, History, GraduationCap, Video, 
   Calendar, RefreshCw, Music, HeartHandshake,
@@ -22,7 +22,7 @@ export default function AppsHub() {
     window.location.reload(true);
   };
 
-  // ✅ DEFINICIÓN DE APPS CON FILTRO DE ROLES
+  // ✅ DEFINICIÓN DE APPS ACTUALIZADA (Sincronizada con Series)
   const allApps = [
     { id: 'calendario', name: 'Agenda', icon: Calendar, color: 'text-orange-600', bg: 'bg-orange-50', path: '/calendario', roles: ['todos'] },
     { id: 'directorio', name: 'Directorio', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50', path: '/directorio', roles: ['todos'] },
@@ -44,10 +44,12 @@ export default function AppsHub() {
       roles: ['todos']
     },
 
-    // Apps en desarrollo (visibles para todos o solo líderes según prefieras)
+    // 🎓 SECCIÓN SERIES (Ex Escuela) - Conectada al StudyHub
+    { id: 'classroom', name: 'Series', icon: GraduationCap, color: 'text-emerald-600', bg: 'bg-emerald-50', path: '/estudio', roles: ['todos'] },
+
+    // Apps en desarrollo
     { id: 'alabanza', name: 'Cancionero', icon: Music, color: 'text-pink-600', bg: 'bg-pink-50', path: '#', roles: ['todos'] },
     { id: 'multimedia', name: 'Multimedia', icon: Video, color: 'text-cyan-600', bg: 'bg-cyan-50', path: '#', roles: ['multimedia', 'pastor', 'lider'] },
-    { id: 'classroom', name: 'Escuela', icon: GraduationCap, color: 'text-emerald-600', bg: 'bg-emerald-50', path: '#', roles: ['todos'] },
   ];
 
   // 🕵️‍♂️ FILTRADO LÓGICO
@@ -58,15 +60,15 @@ export default function AppsHub() {
   );
 
   return (
-    <div className="pb-32 pt-4 px-4 animate-fade-in bg-slate-50 min-h-screen font-outfit">
+    <div className="pb-32 pt-4 px-4 animate-fade-in bg-slate-50 min-h-screen font-outfit text-left">
       <div className="mb-8 flex justify-between items-end px-2">
         <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tighter uppercase leading-none">Aplicaciones</h2>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase leading-none">Aplicaciones</h2>
           <p className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mt-1 font-black">Panel de Control</p>
         </div>
         <div className="flex flex-col items-end">
             <span className="text-[9px] text-slate-400 font-black uppercase mb-1">Acceso: {dbUser?.role || 'Miembro'}</span>
-            <span className="text-[10px] text-slate-300 font-bold uppercase tracking-widest bg-white px-3 py-1 rounded-full shadow-sm border border-slate-100">v1.2.5</span>
+            <span className="text-[10px] text-slate-300 font-bold uppercase tracking-widest bg-white px-3 py-1 rounded-full shadow-sm border border-slate-100">v1.2.6</span>
         </div>
       </div>
 
@@ -109,7 +111,7 @@ export default function AppsHub() {
         <div className="relative z-10">
           <div className="bg-brand-500 w-10 h-1 rounded-full mb-3"></div>
           <h3 className="font-black text-xl tracking-tighter uppercase mb-1">Centro de Ayuda</h3>
-          <p className="text-[10px] text-slate-400 mb-6 max-w-[200px] font-bold uppercase tracking-widest leading-relaxed">
+          <p className="text-[10px] text-slate-400 mb-6 max-w-[200px] font-bold uppercase tracking-widest leading-relaxed text-left">
             ¿Tienes problemas con la App o necesitas acompañamiento espiritual?
           </p>
           <a 
@@ -123,7 +125,7 @@ export default function AppsHub() {
         <Heart className="absolute -right-6 -bottom-6 text-brand-600 opacity-20 rotate-12" size={140} />
       </div>
       
-      {/* SELLO DE SEGURIDAD (Solo visible para Pastores/Líderes) */}
+      {/* SELLO DE SEGURIDAD */}
       {['pastor', 'lider'].includes(dbUser?.role) && (
           <div className="mt-8 flex items-center justify-center gap-2 opacity-30">
               <ShieldCheck size={14} className="text-slate-400"/>

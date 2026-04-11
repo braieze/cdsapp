@@ -27,6 +27,11 @@ import Directory from './pages/Directory';
 import Ofrendar from './pages/Ofrendar'; 
 import Tesoreria from './pages/Tesoreria';
 
+// ✅ NUEVAS IMPORTACIONES: ACADEMIA CDS
+import StudyHub from './pages/StudyHub';
+import StudyDetail from './pages/StudyDetail';
+import LessonView from './pages/LessonView';
+
 // --- MANEJADOR DE NAVEGACIÓN (Puntos 1 y 6) ---
 function NavigationHandler() {
   const navigate = useNavigate();
@@ -35,7 +40,6 @@ function NavigationHandler() {
 
   useEffect(() => {
     // 🛡️ FIX GLOBAL PARA IMÁGENES EN ANDROID (Punto 8)
-    // Inyectamos un estilo global para asegurar que el WebView de Android renderice bien las fotos
     if (isNative && Capacitor.getPlatform() === 'android') {
       const style = document.createElement('style');
       style.innerHTML = `
@@ -54,13 +58,11 @@ function NavigationHandler() {
       const handleNotificationClick = (event) => {
         const data = event.notification.additionalData;
         
-        // Si la noti trae una URL externa (Ej: Meet para Oración)
         if (data?.url) {
           window.open(data.url, '_blank');
           return;
         }
 
-        // Navegación interna normal
         const route = data?.route;
         if (route) navigate(route);
       };
@@ -109,14 +111,10 @@ export default function App() {
     const initNotifications = async () => {
       try {
         if (isNative) {
-          // Robustez para iPhone (Punto 1)
           OneSignal.initialize("742a62cd-6d15-427f-8bab-5b8759fabd0a");
-          
-          // Pedimos permiso explícito (crucial para iOS)
           OneSignal.Notifications.requestPermission(true).then((success) => {
             console.log("Notificaciones habilitadas:", success);
           });
-
         } else {
           await OneSignalWeb.init({
             appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
@@ -193,7 +191,13 @@ export default function App() {
           <Route path="perfil" element={<Profile />} /> 
           <Route path="directorio" element={<Directory />} />
           <Route path="tesoreria" element={<Tesoreria />} /> 
+
+          {/* ✅ NUEVAS RUTAS DE SERIES DE ESTUDIO */}
+          <Route path="estudio" element={<StudyHub />} />
+          <Route path="estudio/:id" element={<StudyDetail />} />
+          <Route path="estudio/clase/:lessonId" element={<LessonView />} />
         </Route>
+        
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </HashRouter>
