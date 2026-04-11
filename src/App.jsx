@@ -29,19 +29,18 @@ import Tesoreria from './pages/Tesoreria';
 
 // ✅ NUEVAS IMPORTACIONES: ACADEMIA CDS
 import StudyHub from './pages/StudyHub';
-import CreateStudy from './pages/CreateStudy'; // Asegurate que el nombre del archivo coincida
+import CreateStudy from './pages/CreateStudy'; 
 import StudyDetail from './pages/StudyDetail';
 import CreateLesson from './pages/CreateLesson';
 import LessonView from './pages/LessonView';
 
-// --- MANEJADOR DE NAVEGACIÓN (Puntos 1 y 6) ---
+// --- MANEJADOR DE NAVEGACIÓN ---
 function NavigationHandler() {
   const navigate = useNavigate();
   const location = useLocation();
   const isNative = Capacitor.isNativePlatform();
 
   useEffect(() => {
-    // 🛡️ FIX GLOBAL PARA IMÁGENES EN ANDROID (Punto 8)
     if (isNative && Capacitor.getPlatform() === 'android') {
       const style = document.createElement('style');
       style.innerHTML = `
@@ -55,23 +54,19 @@ function NavigationHandler() {
       document.head.appendChild(style);
     }
 
-    // 1. Lógica para NATIVO (Deep Linking & Oración Meet - Punto 6)
     if (isNative) {
       const handleNotificationClick = (event) => {
         const data = event.notification.additionalData;
-        
         if (data?.url) {
           window.open(data.url, '_blank');
           return;
         }
-
         const route = data?.route;
         if (route) navigate(route);
       };
 
       OneSignal.Notifications.addEventListener("click", handleNotificationClick);
 
-      // 🎯 ARREGLO BOTÓN ATRÁS ANDROID
       const backListener = CapApp.addListener('backButton', () => {
         if (location.pathname === '/') {
           CapApp.exitApp();
@@ -85,7 +80,6 @@ function NavigationHandler() {
         backListener.remove();
       };
     } 
-    // 2. Lógica para WEB
     else {
       const handleWebClick = (event) => {
         const data = event.notification.data;
@@ -114,9 +108,7 @@ export default function App() {
       try {
         if (isNative) {
           OneSignal.initialize("742a62cd-6d15-427f-8bab-5b8759fabd0a");
-          OneSignal.Notifications.requestPermission(true).then((success) => {
-            console.log("Notificaciones habilitadas:", success);
-          });
+          OneSignal.Notifications.requestPermission(true);
         } else {
           await OneSignalWeb.init({
             appId: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
@@ -194,11 +186,19 @@ export default function App() {
           <Route path="directorio" element={<Directory />} />
           <Route path="tesoreria" element={<Tesoreria />} /> 
 
+          {/* 🎓 SECCIÓN ACADEMIA / SERIES CORREGIDA */}
           <Route path="estudio" element={<StudyHub />} />
-          {/* ✅ IMPORTANTE: "crear" va antes que ":id" para que no se confundan */}
+          
+          {/* ✅ Rutas de Creación y Edición de Series */}
           <Route path="estudio/crear" element={<CreateStudy />} /> 
+          <Route path="estudio/crear/:id" element={<CreateStudy />} /> 
+          
+          {/* ✅ Detalle y Gestión de Clases */}
           <Route path="estudio/:id" element={<StudyDetail />} />
           <Route path="estudio/:id/nueva-clase" element={<CreateLesson />} />
+          <Route path="estudio/:id/editar-clase/:lessonId" element={<CreateLesson />} />
+          
+          {/* ✅ Visualización de la Clase */}
           <Route path="estudio/clase/:lessonId" element={<LessonView />} />
 
         </Route>
