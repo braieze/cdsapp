@@ -6,7 +6,7 @@ import {
 } from 'firebase/firestore';
 import { 
   BookOpen, Play, CheckCircle, TrendingUp, Plus, 
-  ChevronRight, GraduationCap, Star, Clock, User 
+  ChevronRight, GraduationCap, Loader2, Star, Clock, User 
 } from 'lucide-react';
 
 export default function StudyHub() {

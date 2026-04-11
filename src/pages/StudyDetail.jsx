@@ -6,7 +6,7 @@ import {
 } from 'firebase/firestore';
 import { 
   ChevronLeft, Play, FileText, CheckCircle, Lock, Users, 
-  BarChart3, Award, clock, Search, ArrowRight, GraduationCap,
+  BarChart3, Award, clock, Search, ArrowRight, Loader2, GraduationCap,
   MessageSquare, User, Star
 } from 'lucide-react';
 
