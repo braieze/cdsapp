@@ -192,10 +192,12 @@ export default function App() {
           <Route path="directorio" element={<Directory />} />
           <Route path="tesoreria" element={<Tesoreria />} /> 
 
-          {/* ✅ NUEVAS RUTAS DE SERIES DE ESTUDIO */}
           <Route path="estudio" element={<StudyHub />} />
+          {/* ✅ IMPORTANTE: "crear" va antes que ":id" para que no se confundan */}
+          <Route path="estudio/crear" element={<CreateStudy />} /> 
           <Route path="estudio/:id" element={<StudyDetail />} />
           <Route path="estudio/clase/:lessonId" element={<LessonView />} />
+
         </Route>
         
         <Route path="*" element={<Navigate to="/" replace />} />
