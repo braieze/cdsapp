@@ -16,8 +16,7 @@ import {
 import { 
   format, addMonths, subMonths, isSameMonth, startOfMonth, 
   endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, 
-  isSameDay, isWithinInterval, parseISO, isAfter, startOfDay, isBefore, differenceInDays,
-  addDays, subDays
+  isSameDay, isWithinInterval, parseISO, isAfter, startOfDay, isBefore, differenceInDays
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import imageCompression from 'browser-image-compression';
@@ -36,17 +35,16 @@ export const OPERATIVE_EVENT_TYPES = {
 export default function CalendarPage() {
   const navigate = useNavigate();
   const { dbUser } = useOutletContext();
-  const listRef = useRef(null);
   
-  // ✅ PERSISTENCIA DE FILTRO (Punto 1 y 3 del resumen)
+  // ✅ PERSISTENCIA Y MODOS DE VISTA
+  const [viewMode, setViewMode] = useState('list'); // 'list' o 'calendar'
   const [filterType, setFilterType] = useState(() => localStorage.getItem('cds_filter') || 'mine');
-  const [isMonthGridOpen, setIsMonthGridOpen] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(new Date());
   
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [selectedDayEvents, setSelectedDayEvents] = useState(null);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [userRole, setUserRole] = useState(null);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -55,6 +53,12 @@ export default function CalendarPage() {
   const [actionConfirm, setActionConfirm] = useState(null);
 
   const currentUser = auth.currentUser;
+
+  // ✅ ESTADO PARA NUEVO EVENTO (RESTAURADO PARA EL BOTÓN CREAR)
+  const [newEvent, setNewEvent] = useState({
+    title: '', type: 'culto', date: '', endDate: '', time: '19:30', description: '',
+    published: false, isCena: false
+  });
 
   useEffect(() => {
     localStorage.setItem('cds_filter', filterType);
@@ -129,7 +133,6 @@ export default function CalendarPage() {
     }
   };
 
-  // ✅ FILTRADO Y EFECTO FANTASMA (Punto 1 y 4)
   const processedEvents = useMemo(() => {
     const today = startOfDay(new Date());
     const isPastor = ['pastor', 'lider'].includes(userRole);
@@ -169,7 +172,6 @@ export default function CalendarPage() {
     finally { setIsUploading(false); }
   };
 
-  // ✅ RENDER DE TARJETA GRANDE (Punto 2 y 3)
   const renderEventCard = (ev, isPast) => {
     const config = OPERATIVE_EVENT_TYPES[ev.type] || OPERATIVE_EVENT_TYPES.culto;
     const isMyTask = ev.assignments && Object.values(ev.assignments).flat().includes(currentUser?.displayName);
@@ -180,7 +182,7 @@ export default function CalendarPage() {
     let progress = null;
     if (ev.type === 'limpieza' || ev.type === 'mantenimiento') {
       const sectors = ev.checklist ? Object.values(ev.checklist) : [];
-      const totalSectors = 4; // Ajuste para cálculo real
+      const totalSectors = 4; 
       const done = sectors.filter(s => s.done).length;
       progress = Math.round((done / totalSectors) * 100);
     }
@@ -197,15 +199,18 @@ export default function CalendarPage() {
 
     return (
       <div key={ev.id} 
-           id={`event-${ev.date}`}
            onClick={() => canAccess ? navigate(`/calendario/${ev.id}`) : setToast({message: "Acceso Privado", type: "error"})}
            className={`bg-white p-7 rounded-[45px] border-2 transition-all active:scale-95 cursor-pointer relative shadow-sm flex gap-6
-           ${isPast ? 'opacity-40 grayscale-[0.5] border-slate-100' : 'border-slate-50'} 
+           ${isPast ? 'grayscale-[0.6] opacity-80 border-dashed border-slate-200 bg-slate-50/40 shadow-none' : 'border-slate-50'} 
            ${ev.isCena ? 'border-rose-500 shadow-rose-100 ring-4 ring-rose-500/10' : ''}
            ${isMyTask && !isPast ? 'border-brand-500 shadow-brand-100' : ''}`}>
         
         {isMyTask && !isPast && (
           <div className="absolute -top-3 right-10 bg-brand-600 text-white px-4 py-1.5 rounded-full text-[9px] font-black tracking-widest shadow-lg border-2 border-white">MI TURNO</div>
+        )}
+
+        {!ev.published && (
+           <div className="absolute -top-3 left-10 bg-amber-500 text-white px-4 py-1.5 rounded-full text-[9px] font-black tracking-widest shadow-lg border-2 border-white flex items-center gap-1"><EyeOff size={12}/> BORRADOR</div>
         )}
 
         <div className={`flex flex-col items-center justify-center px-5 rounded-[30px] border-2 min-w-[85px] ${config.light} ${config.text} border-current opacity-80 h-24`}>
@@ -228,27 +233,22 @@ export default function CalendarPage() {
             {ev.type === 'ayuno' ? `Día ${fastingInfo?.currentDayNum || 1} | Ayuno Congregacional` : ev.title}
           </h4>
 
-          <div className="mt-4 space-y-3">
+          <div className="mt-3 space-y-2">
             {ev.type === 'ayuno' && fastingInfo ? (
-               <div className="flex items-center justify-between bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                  <span className="text-[10px] font-black text-amber-600 uppercase">Versículo Clave: {ev.description?.substring(0, 20) || 'Filipenses 4:6'}...</span>
+               <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black text-amber-600 uppercase">Anotados: {fastingInfo.signups.length}</span>
                   <div className="flex -space-x-2">
                     {fastingInfo.signups.slice(0, 3).map((s, i) => (
                       <div key={i} className="w-6 h-6 rounded-full border-2 border-white bg-slate-200 overflow-hidden shadow-sm"><img src={`https://ui-avatars.com/api/?name=${s}&background=random&color=fff`} /></div>
                     ))}
-                    {fastingInfo.signups.length > 3 && <div className="w-6 h-6 rounded-full border-2 border-white bg-amber-500 text-white text-[8px] font-black flex items-center justify-center">+{fastingInfo.signups.length - 3}</div>}
                   </div>
                </div>
             ) : (
               <span className="text-[11px] font-black text-slate-400 uppercase flex items-center gap-2"><Clock size={14} className="text-brand-500"/> {ev.time} hs</span>
             )}
-
             {progress !== null && (
-              <div className="flex flex-col gap-2">
-                <div className="flex justify-between text-[9px] font-black uppercase text-slate-400"><span>CUMPLIMIENTO</span><span>{progress}%</span></div>
-                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex border border-slate-50">
-                  <div className="bg-emerald-500 h-full transition-all duration-700 rounded-full" style={{ width: `${progress}%` }}></div>
-                </div>
+              <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden flex border border-slate-50">
+                <div className="bg-emerald-500 h-full transition-all duration-700" style={{ width: `${progress}%` }}></div>
               </div>
             )}
           </div>
@@ -257,89 +257,70 @@ export default function CalendarPage() {
     );
   };
 
-  // ✅ CABECERA HÍBRIDA (Tira Semanal + Grilla Mensual)
-  const renderHybridHeader = () => {
-    const startWeek = startOfWeek(selectedDate, { weekStartsOn: 0 });
-    const weekDays = Array.from({ length: 7 }, (_, i) => addDays(startWeek, i));
-    const daysInMonth = eachDayOfInterval({ start: startOfMonth(currentDate), end: endOfMonth(currentDate) });
-    const monthStartWeek = startOfWeek(startOfMonth(currentDate), { weekStartsOn: 0 });
-    const monthEndWeek = endOfWeek(endOfMonth(currentDate), { weekStartsOn: 0 });
-    const calendarDays = eachDayOfInterval({ start: monthStartWeek, end: monthEndWeek });
-
+  const renderMonthView = () => {
+    const days = eachDayOfInterval({ start: startOfWeek(startOfMonth(currentDate)), end: endOfWeek(endOfMonth(currentDate)) });
     return (
-      <div className="bg-white rounded-b-[50px] shadow-xl border-b border-slate-100 px-6 pt-4 pb-8 mb-8 sticky top-0 z-30 animate-fade-in">
-        <div className="flex justify-between items-center mb-6">
-           <div className="flex items-center gap-2 cursor-pointer" onClick={() => setIsMonthGridOpen(!isMonthGridOpen)}>
-             <h2 className="text-xl font-black text-slate-900 capitalize tracking-tighter">{format(currentDate, 'MMMM yyyy', { locale: es })}</h2>
-             <ChevronDown size={20} className={`text-brand-500 transition-transform ${isMonthGridOpen ? 'rotate-180' : ''}`} />
-           </div>
-           <div className="flex gap-2">
-             <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-2 bg-slate-50 rounded-xl text-slate-400"><ChevronLeft size={20}/></button>
-             <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-2 bg-slate-50 rounded-xl text-slate-400"><ChevronRight size={20}/></button>
-           </div>
+        <div className="bg-white rounded-[50px] border-2 border-slate-50 shadow-xl p-8 animate-fade-in mx-6 mb-20 text-left">
+            <div className="grid grid-cols-7 mb-6 border-b border-slate-50 pb-4">
+                {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map(day => <div key={day} className="text-center text-[10px] font-black text-slate-300 uppercase tracking-widest">{day}</div>)}
+            </div>
+            <div className="grid grid-cols-7 gap-2">
+                {days.map(day => {
+                    const isToday = isSameDay(day, new Date());
+                    const isCurrentMonthDay = isSameMonth(day, currentDate);
+                    const dayEvents = events.filter(e => isSameDay(parseISO(e.date), day));
+                    const hasEvents = dayEvents.length > 0;
+                    return (
+                        <div key={day.toString()} 
+                            onClick={() => hasEvents && setSelectedDayEvents({ date: day, events: dayEvents })}
+                            className={`aspect-square rounded-2xl flex flex-col items-center justify-center relative cursor-pointer transition-all active:scale-90
+                                ${!isCurrentMonthDay ? 'opacity-10' : 'text-slate-700'}
+                                ${isToday ? 'bg-slate-900 text-white shadow-xl scale-110 z-10' : 'hover:bg-slate-50'}`}>
+                            <span className="text-xs font-black">{format(day, 'd')}</span>
+                            {hasEvents && !isToday && (
+                              <div className="flex gap-0.5 mt-1">
+                                {dayEvents.slice(0, 3).map(e => <div key={e.id} className={`w-1 h-1 rounded-full ${OPERATIVE_EVENT_TYPES[e.type]?.color || 'bg-slate-300'}`}></div>)}
+                              </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
         </div>
-
-        {isMonthGridOpen ? (
-          <div className="grid grid-cols-7 gap-2 animate-slide-down pb-4">
-             {['D', 'L', 'M', 'X', 'J', 'V', 'S'].map(d => <span key={d} className="text-[10px] font-black text-slate-300 text-center">{d}</span>)}
-             {calendarDays.map(day => {
-               const isSelected = isSameDay(day, selectedDate);
-               const isCurrentMonth = isSameMonth(day, currentDate);
-               const hasEvents = events.some(e => isSameDay(parseISO(e.date), day));
-               const isMyTurn = events.some(e => isSameDay(parseISO(e.date), day) && e.assignments && Object.values(e.assignments).flat().includes(currentUser?.displayName));
-               const isAyuno = events.some(e => isSameDay(parseISO(e.date), day) && e.type === 'ayuno');
-               
-               return (
-                 <button key={day.toString()} 
-                   onClick={() => { setSelectedDate(day); setIsMonthGridOpen(false); document.getElementById(`event-${format(day, 'yyyy-MM-dd')}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}
-                   className={`aspect-square rounded-2xl flex flex-col items-center justify-center relative transition-all
-                   ${!isCurrentMonth ? 'opacity-10' : ''}
-                   ${isSelected ? 'bg-slate-900 text-white shadow-lg scale-110' : 'hover:bg-slate-50 text-slate-600'}
-                   ${isMyTurn && !isSelected ? 'border-2 border-brand-500' : ''}`}>
-                   <span className="text-xs font-black">{format(day, 'd')}</span>
-                   {hasEvents && !isSelected && <div className={`w-1 h-1 rounded-full absolute bottom-2 ${isAyuno ? 'bg-amber-500' : 'bg-brand-500'}`}></div>}
-                   {isAyuno && !isSelected && <div className="absolute top-1 left-0 right-0 h-0.5 bg-amber-500/30"></div>}
-                 </button>
-               );
-             })}
-          </div>
-        ) : (
-          <div className="flex justify-between gap-2 overflow-x-auto no-scrollbar py-2">
-            {weekDays.map(day => {
-              const isSelected = isSameDay(day, selectedDate);
-              const hasEvents = events.some(e => isSameDay(parseISO(e.date), day));
-              const isLimpieza = events.some(e => isSameDay(parseISO(e.date), day) && e.type === 'limpieza');
-              
-              return (
-                <button key={day.toString()} 
-                  onClick={() => { setSelectedDate(day); document.getElementById(`event-${format(day, 'yyyy-MM-dd')}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}
-                  className={`flex-1 min-w-[45px] py-4 rounded-[22px] flex flex-col items-center gap-1 transition-all
-                  ${isSelected ? 'bg-slate-900 text-white shadow-xl scale-105' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}>
-                  <span className="text-[8px] font-black uppercase opacity-60">{format(day, 'EEE', { locale: es })}</span>
-                  <span className="text-sm font-black">{format(day, 'd')}</span>
-                  {hasEvents && !isSelected && <div className={`w-1 h-1 rounded-full ${isLimpieza ? 'bg-emerald-500' : 'bg-brand-500'}`}></div>}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
     );
   };
 
   return (
-    <div className="pb-36 bg-slate-50 min-h-screen animate-fade-in relative font-outfit">
+    <div className="pb-36 pt-4 bg-slate-50 min-h-screen animate-fade-in relative font-outfit">
       
-      {/* TABS DE FILTRO */}
-      <div className="px-6 pt-6 mb-4 flex justify-between items-center">
-         <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Agenda</h1>
-         <div className="flex bg-white p-1 rounded-3xl border-2 border-slate-100 shadow-sm">
-            <button onClick={() => setFilterType('mine')} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${filterType === 'mine' ? 'bg-brand-600 text-white shadow-lg' : 'text-slate-400'}`}><UserCheck size={16}/> Mis Turnos</button>
-            <button onClick={() => setFilterType('all')} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${filterType === 'all' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400'}`}><Globe size={16}/> Global</button>
-         </div>
+      {/* HEADER SUPERIOR */}
+      <div className="px-6 flex justify-between items-center mb-8">
+        <div className="text-left">
+            <h1 className="text-4xl font-black text-slate-900 uppercase tracking-tighter leading-none">Agenda</h1>
+            <div className="h-2 w-12 bg-brand-500 rounded-full mt-2"></div>
+        </div>
+        <div className="flex gap-2">
+           <button onClick={() => setViewMode(viewMode === 'list' ? 'calendar' : 'list')} className="p-4 bg-white rounded-[22px] border-2 border-slate-50 shadow-sm text-slate-400 active:scale-90 transition-all">
+             {viewMode === 'list' ? <CalIcon size={24}/> : <List size={24}/>}
+           </button>
+        </div>
       </div>
 
-      {renderHybridHeader()}
+      {/* PESTAÑAS (DE VUELTA A LO CLÁSICO) */}
+      <div className="px-6 mb-10">
+        <div className="bg-white p-1.5 rounded-[30px] shadow-sm border-2 border-slate-50 flex gap-1">
+          <button onClick={() => setFilterType('mine')} 
+            className={`flex-1 py-4 rounded-[25px] text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2
+            ${filterType === 'mine' ? 'bg-brand-600 text-white shadow-xl' : 'text-slate-400 hover:bg-slate-50'}`}>
+            <UserCheck size={18}/> Mis Turnos
+          </button>
+          <button onClick={() => setFilterType('all')} 
+            className={`flex-1 py-4 rounded-[25px] text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2
+            ${filterType === 'all' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-400 hover:bg-slate-50'}`}>
+            <Globe size={18}/> Global
+          </button>
+        </div>
+      </div>
 
       {['pastor', 'lider'].includes(userRole) && events.some(e => !e.published && isSameMonth(new Date(e.date + 'T00:00:00'), currentDate)) && (
           <div className="mx-6 bg-amber-500 p-6 rounded-[35px] mb-8 flex items-center justify-between shadow-xl shadow-amber-200/40 animate-pulse">
@@ -353,29 +334,36 @@ export default function CalendarPage() {
           </div>
       )}
 
-      <div className="flex-1 px-6">
-        {loading ? <div className="py-24 text-center opacity-20"><Loader2 className="animate-spin mx-auto" size={48}/></div> : (
-          <div className="space-y-12 pb-24" ref={listRef}>
+      {/* SELECTOR DE MES */}
+      <div className="px-6 flex items-center justify-between bg-white mx-5 p-5 rounded-[30px] border border-slate-100 mb-10 shadow-sm">
+        <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-3 text-slate-300 bg-slate-50 rounded-2xl active:scale-75 transition-transform"><ChevronLeft size={24} /></button>
+        <h2 className="text-lg font-black text-slate-900 capitalize tracking-tighter">{format(currentDate, 'MMMM yyyy', { locale: es })}</h2>
+        <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-3 text-slate-300 bg-slate-50 rounded-2xl active:scale-75 transition-transform"><ChevronRight size={24} /></button>
+      </div>
+
+      <div className="flex-1">
+        {loading ? <div className="py-24 text-center opacity-20"><Loader2 className="animate-spin mx-auto" size={48}/></div> : (viewMode === 'calendar' ? renderMonthView() : (
+          <div className="space-y-12 px-6 pb-20">
             {processedEvents.upcoming.length > 0 && (
               <div className="space-y-6">
                 <div className="flex items-center gap-4">
-                  <span className="text-[10px] font-black text-brand-600 uppercase tracking-[0.2em] whitespace-nowrap">Lo que viene</span>
-                  <div className="h-[2px] flex-1 bg-brand-100 rounded-full"></div>
+                  <span className="text-[10px] font-black text-brand-600 uppercase tracking-widest whitespace-nowrap">Lo que viene</span>
+                  <div className="h-[1px] flex-1 bg-brand-100"></div>
                 </div>
                 {processedEvents.upcoming.map(ev => renderEventCard(ev, false))}
               </div>
             )}
             {processedEvents.past.length > 0 && (
-              <div className="space-y-6 opacity-60">
+              <div className="space-y-6">
                 <div className="flex items-center gap-4">
-                  <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] whitespace-nowrap">Anteriormente</span>
-                  <div className="h-[2px] flex-1 bg-slate-100 rounded-full"></div>
+                  <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest whitespace-nowrap">Ya realizado</span>
+                  <div className="h-[1px] flex-1 bg-slate-100"></div>
                 </div>
                 {processedEvents.past.map(ev => renderEventCard(ev, true))}
               </div>
             )}
           </div>
-        )}
+        ))}
       </div>
 
       {['pastor', 'lider'].includes(userRole) && (
