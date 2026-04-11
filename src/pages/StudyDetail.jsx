@@ -2,13 +2,13 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { db, auth } from '../firebase';
 import { 
-  doc, getDoc, collection, query, where, onSnapshot, orderBy, deleteDoc 
+  doc, getDoc, collection, query, where, onSnapshot, orderBy, deleteDoc, updateDoc, increment 
 } from 'firebase/firestore';
 import { 
   ChevronLeft, Play, FileText, CheckCircle, Lock, Users, 
   BarChart3, Award, Clock, Search, ArrowRight, Loader2, GraduationCap,
   MessageSquare, User, Star, Edit3, Trash2, Plus, X, ChevronRight, HelpCircle,
-  AlertCircle // ✅ Icono para Reprobados
+  AlertCircle 
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -22,47 +22,47 @@ export default function StudyDetail() {
   const [studentsProgress, setStudentsProgress] = useState([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState('lessons'); 
-  const [selectedStudent, setSelectedStudent] = useState(null);
+  const [selectedStudentId, setSelectedStudentId] = useState(null); // Guardamos el ID para mantenerlo real-time
 
   const isPastor = dbUser?.role === 'pastor';
   const isInstructor = isPastor || dbUser?.role === 'lider';
 
   useEffect(() => {
     const fetchStudyData = async () => {
-      const studySnap = await getDoc(doc(db, 'studies', id));
-      if (studySnap.exists()) {
-        setStudy({ id: studySnap.id, ...studySnap.data() });
-      } else {
-        navigate('/estudio');
-      }
+      // 1. Escuchar la Serie (para el lessonCount real)
+      const unsubStudy = onSnapshot(doc(db, 'studies', id), (snap) => {
+        if (snap.exists()) setStudy({ id: snap.id, ...snap.data() });
+        else navigate('/estudio');
+      });
 
+      // 2. Cargar clases
       const lessonsQ = query(
         collection(db, 'lessons'), 
         where('studyId', '==', id),
         orderBy('order', 'asc')
       );
-      
       const unsubLessons = onSnapshot(lessonsQ, (snap) => {
         setLessons(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       });
 
+      // 3. Cargar progreso de alumnos (Real-time)
       const progressQ = query(collection(db, 'userProgress'), where('studyId', '==', id));
       const unsubProgress = onSnapshot(progressQ, (snap) => {
         setStudentsProgress(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       });
 
       setLoading(false);
-      return () => { unsubLessons(); unsubProgress(); };
+      return () => { unsubStudy(); unsubLessons(); unsubProgress(); };
     };
     fetchStudyData();
   }, [id, navigate]);
 
-  // ✅ CÁLCULO DE ESTADÍSTICAS (Actualizado a tiempo real)
+  // ✅ ESTADÍSTICAS REALES (Sincronizadas con la lógica de Aprobación)
   const stats = useMemo(() => {
     if (studentsProgress.length === 0) return { avg: 0, completed: 0 };
     let totalSum = 0;
     let count = 0;
-    let completed = 0;
+    let completedCount = 0;
 
     studentsProgress.forEach(p => {
       if (p.grades) {
@@ -71,22 +71,31 @@ export default function StudyDetail() {
           count++;
         });
       }
-      if (p.completedLessons?.length >= lessons.length && lessons.length > 0) completed++;
+      // Un alumno está graduado si aprobó todas las clases existentes
+      const approvedCount = Object.values(p.grades || {}).filter(g => g >= 7).length;
+      if (approvedCount >= lessons.length && lessons.length > 0) completedCount++;
     });
 
     return {
       avg: count > 0 ? (totalSum / count).toFixed(1) : 0,
-      completed
+      completed: completedCount
     };
   }, [studentsProgress, lessons]);
 
+  // ✅ BUSCAR ALUMNO SELECCIONADO EN TIEMPO REAL
+  const selectedStudent = useMemo(() => 
+    studentsProgress.find(s => s.userId === selectedStudentId),
+    [studentsProgress, selectedStudentId]
+  );
+
   const handleDeleteLesson = async (lessonId, e) => {
     e.stopPropagation();
-    if (!window.confirm("¿Eliminar clase?")) return;
+    if (!window.confirm("¿Eliminar clase? Se actualizará el contador de la serie.")) return;
     try {
       await deleteDoc(doc(db, 'lessons', lessonId));
+      await updateDoc(doc(db, 'studies', id), { lessonCount: increment(-1) });
       toast.success("Clase eliminada");
-    } catch (e) { toast.error("Error"); }
+    } catch (e) { toast.error("Error al eliminar"); }
   };
 
   if (loading || !study) return <div className="min-h-screen flex items-center justify-center bg-white"><Loader2 className="animate-spin text-brand-600" size={40}/></div>;
@@ -122,7 +131,7 @@ export default function StudyDetail() {
               </div>
             </div>
           </div>
-          <GraduationCap className="absolute -right-6 -top-6 w-32 h-32 text-slate-50 -rotate-12" />
+          <GraduationCap className="absolute -right-6 -top-6 w-32 h-32 text-slate-50 -rotate-12 opacity-50" />
         </div>
       </div>
 
@@ -136,20 +145,24 @@ export default function StudyDetail() {
         </div>
       )}
 
-      {/* VISTA 1: LISTADO DE CLASES */}
+      {/* VISTA 1: LISTADO DE CLASES (Alumno / Instructor) */}
       {viewMode === 'lessons' ? (
         <div className="px-6 space-y-4 animate-slide-up">
+          <div className="flex justify-between items-center px-2 mb-2">
+             <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Plan de Estudio</h3>
+             <span className="text-[10px] font-bold text-brand-600 bg-brand-50 px-3 py-1 rounded-full uppercase">{study.lessonCount || 0} Clases</span>
+          </div>
           {lessons.map((lesson, index) => {
             const userProg = studentsProgress.find(p => p.userId === auth.currentUser?.uid);
             const lessonGrade = userProg?.grades?.[lesson.id];
-            const isCompleted = userProg?.completedLessons?.includes(lesson.id);
+            const isCompleted = lessonGrade !== undefined;
             const isPassed = lessonGrade >= 7;
             const isLocked = index > 0 && !isInstructor && !userProg?.completedLessons?.includes(lessons[index-1]?.id);
 
             return (
               <div key={lesson.id} onClick={() => !isLocked && navigate(`/estudio/clase/${lesson.id}`)} className={`bg-white p-6 rounded-[35px] border-2 transition-all flex items-center gap-5 relative ${isLocked ? 'opacity-50 grayscale' : 'active:scale-95 cursor-pointer border-white shadow-sm'}`}>
                 <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border-2 
-                  ${isLocked ? 'bg-slate-100 text-slate-300' : 
+                  ${isLocked ? 'bg-slate-100 text-slate-300 border-slate-100' : 
                     isCompleted ? (isPassed ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100') : 
                     'bg-brand-50 text-brand-600 border-brand-100'}`}>
                   {isLocked ? <Lock size={20}/> : 
@@ -158,8 +171,8 @@ export default function StudyDetail() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <h4 className="font-black text-slate-800 text-sm uppercase truncate mb-1">{lesson.title}</h4>
-                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">
-                    {isCompleted ? (isPassed ? 'Aprobada' : 'Reprobada') : (isLocked ? 'Bloqueada' : 'Pendiente')}
+                  <p className={`text-[9px] font-black uppercase tracking-widest ${isCompleted ? (isPassed ? 'text-emerald-500' : 'text-rose-500') : 'text-slate-400'}`}>
+                    {isCompleted ? (isPassed ? `Aprobada (${lessonGrade}/10)` : `Reprobada (${lessonGrade}/10)`) : (isLocked ? 'Bloqueada' : 'Pendiente')}
                   </p>
                 </div>
                 {isInstructor && (
@@ -173,7 +186,7 @@ export default function StudyDetail() {
           })}
         </div>
       ) : (
-        /* VISTA 2: ANALÍTICAS */
+        /* VISTA 2: EL OJO DEL PASTOR (LISTA DE ALUMNOS) */
         <div className="px-6 space-y-6 animate-slide-up">
            <div className="bg-slate-900 rounded-[35px] p-8 text-white relative overflow-hidden shadow-2xl">
             <div className="relative z-10 flex flex-col gap-6">
@@ -183,53 +196,61 @@ export default function StudyDetail() {
                </div>
                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-white/10">
                   <div><p className="text-[8px] font-black text-slate-400 uppercase mb-1">Nota Promedio</p><p className="text-xl font-black text-brand-400">{stats.avg}</p></div>
-                  <div><p className="text-[8px] font-black text-slate-400 uppercase mb-1">Finalizados</p><p className="text-xl font-black text-emerald-400">{stats.completed}</p></div>
+                  <div><p className="text-[8px] font-black text-slate-400 uppercase mb-1">Graduados</p><p className="text-xl font-black text-emerald-400">{stats.completed}</p></div>
                </div>
             </div>
             <BarChart3 className="absolute -right-4 -bottom-4 text-white/5 w-32 h-32 rotate-12" />
           </div>
 
           <div className="space-y-3">
-            {studentsProgress.map((p) => (
-              <div key={p.id} onClick={() => setSelectedStudent(p)} className="bg-white p-5 rounded-[30px] border-2 border-white shadow-sm flex items-center gap-4 active:scale-95 transition-all cursor-pointer">
-                <div className="w-12 h-12 rounded-2xl overflow-hidden shrink-0 border-2 border-slate-50 bg-slate-100">
-                  <img src={p.userPhoto || `https://ui-avatars.com/api/?name=${p.userName}`} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-black text-slate-800 text-xs uppercase truncate">{p.userName}</h4>
-                  <div className="flex items-center gap-2 mt-2">
-                    <div className="h-1 flex-1 bg-slate-50 rounded-full overflow-hidden border border-slate-100">
-                      <div className="h-full bg-brand-500" style={{width: `${(p.completedLessons?.length / (lessons.length || 1)) * 100}%`}}></div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Progreso de Alumnos</p>
+            {studentsProgress.map((p) => {
+              const perc = ((p.completedLessons?.length || 0) / (lessons.length || 1)) * 100;
+              return (
+                <div key={p.id} onClick={() => setSelectedStudentId(p.userId)} className="bg-white p-5 rounded-[30px] border-2 border-white shadow-sm flex items-center gap-4 active:scale-95 transition-all cursor-pointer">
+                  <div className="w-12 h-12 rounded-2xl overflow-hidden shrink-0 border-2 border-slate-50 bg-slate-100">
+                    <img src={p.userPhoto || `https://ui-avatars.com/api/?name=${p.userName}`} className="w-full h-full object-cover" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-black text-slate-800 text-xs uppercase truncate">{p.userName}</h4>
+                    <div className="flex items-center gap-2 mt-2">
+                       <div className="h-1 flex-1 bg-slate-50 rounded-full overflow-hidden border border-slate-100">
+                          <div className="h-full bg-brand-500 transition-all duration-1000" style={{width: `${perc}%`}}></div>
+                       </div>
+                       <span className="text-[8px] font-black text-slate-400">{Math.round(perc)}%</span>
                     </div>
                   </div>
+                  <ChevronRight size={18} className="text-slate-200" />
                 </div>
-                <ChevronRight size={18} className="text-slate-200" />
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* MODAL: DETALLE DEL ALUMNO (Ojo del Pastor Pro) */}
+      {/* 🛡️ MODAL: AUDITORÍA DETALLADA (Ojo del Pastor Pro) */}
       {selectedStudent && (
         <div className="fixed inset-0 z-[200] bg-slate-900/90 backdrop-blur-md flex items-end justify-center">
-          <div className="bg-white w-full max-w-md rounded-t-[50px] animate-slide-up max-h-[90vh] flex flex-col relative">
-             <button onClick={() => setSelectedStudent(null)} className="absolute top-6 right-6 p-2.5 bg-slate-100 rounded-full text-slate-400"><X size={20}/></button>
+          <div className="bg-white w-full max-w-md rounded-t-[50px] animate-slide-up max-h-[90vh] flex flex-col relative border-t-4 border-brand-500 shadow-2xl">
+             <button onClick={() => setSelectedStudentId(null)} className="absolute top-6 right-6 p-2.5 bg-slate-100 rounded-full text-slate-400 active:scale-90 transition-all shadow-sm"><X size={20}/></button>
              
              <div className="p-8 border-b border-slate-50 flex flex-col items-center">
-                <div className="w-20 h-20 rounded-[30px] overflow-hidden border-4 border-slate-50 shadow-xl mb-4">
-                   <img src={selectedStudent.userPhoto || `https://ui-avatars.com/api/?name=${selectedStudent.userName}`} className="w-full h-full object-cover" />
+                <div className="relative">
+                  <div className="w-20 h-20 rounded-[30px] overflow-hidden border-4 border-white shadow-2xl mb-4 bg-slate-100">
+                     <img src={selectedStudent.userPhoto || `https://ui-avatars.com/api/?name=${selectedStudent.userName}`} className="w-full h-full object-cover" />
+                  </div>
+                  <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-emerald-500 rounded-2xl border-4 border-white flex items-center justify-center text-white shadow-lg"><CheckCircle size={14}/></div>
                 </div>
-                <h3 className="font-black text-slate-900 uppercase text-lg text-center leading-none">{selectedStudent.userName}</h3>
-                <div className="flex gap-2 mt-3">
-                  <span className="px-3 py-1 bg-slate-900 text-white text-[9px] font-black rounded-full uppercase">Alumni</span>
-                  <span className="px-3 py-1 bg-brand-50 text-brand-600 text-[9px] font-black rounded-full uppercase tracking-tighter">
-                    {Object.keys(selectedStudent.grades || {}).length} Clases hechas
+                <h3 className="font-black text-slate-900 uppercase text-lg text-center leading-none mt-2">{selectedStudent.userName}</h3>
+                <div className="flex gap-2 mt-4">
+                  <span className="px-4 py-1.5 bg-slate-900 text-white text-[9px] font-black rounded-xl uppercase shadow-lg shadow-slate-900/20">Alumno</span>
+                  <span className="px-4 py-1.5 bg-brand-50 text-brand-600 text-[9px] font-black rounded-xl uppercase tracking-tighter border border-brand-100">
+                    {Object.keys(selectedStudent.grades || {}).length} Clases Realizadas
                   </span>
                 </div>
              </div>
 
-             <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar">
+             <div className="flex-1 overflow-y-auto p-6 space-y-5 no-scrollbar bg-slate-50/30">
                 {lessons.map((l) => {
                   const grade = selectedStudent.grades?.[l.id];
                   const details = selectedStudent.details?.[l.id];
@@ -237,38 +258,41 @@ export default function StudyDetail() {
                   const isAprobada = hasGrade && grade >= 7;
 
                   return (
-                    <div key={l.id} className={`p-6 rounded-[35px] border-2 transition-all ${hasGrade ? (isAprobada ? 'bg-emerald-50/30 border-emerald-50' : 'bg-rose-50/30 border-rose-50') : 'bg-slate-50 border-slate-50'}`}>
+                    <div key={l.id} className={`p-6 rounded-[40px] border-2 transition-all shadow-sm ${hasGrade ? (isAprobada ? 'bg-white border-emerald-100' : 'bg-white border-rose-100') : 'bg-slate-50/50 border-slate-100 border-dashed'}`}>
                        <div className="flex justify-between items-start mb-4">
-                          <div className="flex-1">
-                             <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Capítulo {l.order}</p>
-                             <h4 className="text-xs font-black text-slate-800 uppercase leading-tight">{l.title}</h4>
+                          <div className="flex-1 min-w-0 pr-4">
+                             <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Capítulo {l.order}</p>
+                             <h4 className="text-xs font-black text-slate-800 uppercase leading-tight truncate">{l.title}</h4>
                           </div>
-                          <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase ${!hasGrade ? 'bg-slate-200 text-slate-400' : (isAprobada ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white')}`}>
+                          <div className={`px-4 py-2 rounded-2xl text-[10px] font-black uppercase shadow-sm ${!hasGrade ? 'bg-slate-200 text-slate-400' : (isAprobada ? 'bg-emerald-500 text-white shadow-emerald-200' : 'bg-rose-500 text-white shadow-rose-200')}`}>
                              {hasGrade ? `${grade}/10` : 'Pendiente'}
                           </div>
                        </div>
                        
-                       {/* DETALLE DE RESPUESTAS (Fase 4: Auditoría) */}
+                       {/* 🎯 DESGLOSE DE RESPUESTAS (Punto 1 solicitado) */}
                        {details && (
-                         <div className="space-y-3 mt-4 pt-4 border-t border-slate-200/50">
-                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Auditoría de respuestas:</p>
+                         <div className="space-y-3 mt-4 pt-4 border-t border-slate-100">
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2"><Search size={12}/> Auditoría de Examen:</p>
                             {l.quiz.questions.map((q, qIdx) => {
                               const userAnswerIdx = details[qIdx];
                               const isCorrect = userAnswerIdx === q.correctAnswer;
                               return (
-                                <div key={qIdx} className="bg-white/50 p-3 rounded-2xl border border-slate-100">
-                                   <div className="flex gap-2 items-start mb-1">
-                                      {isCorrect ? <CheckCircle size={14} className="text-emerald-500 shrink-0 mt-0.5"/> : <AlertCircle size={14} className="text-rose-500 shrink-0 mt-0.5"/>}
-                                      <p className="text-[10px] font-bold text-slate-700 leading-snug">{q.text}</p>
+                                <div key={qIdx} className={`p-4 rounded-3xl border ${isCorrect ? 'bg-emerald-50/40 border-emerald-50' : 'bg-rose-50/40 border-rose-50'}`}>
+                                   <div className="flex gap-3 items-start mb-2">
+                                      {isCorrect ? <CheckCircle size={16} className="text-emerald-500 shrink-0 mt-0.5"/> : <AlertCircle size={16} className="text-rose-500 shrink-0 mt-0.5"/>}
+                                      <p className="text-[10px] font-bold text-slate-700 leading-tight">{q.text}</p>
                                    </div>
-                                   <div className="pl-6 flex flex-col gap-0.5">
+                                   <div className="pl-7 space-y-1">
                                       <p className={`text-[9px] font-black uppercase ${isCorrect ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                        Respuesta: {q.options[userAnswerIdx] || 'Sin respuesta'}
+                                        Respuesta Alumno: <span className="font-medium text-slate-600">{q.options[userAnswerIdx] || 'No respondió'}</span>
                                       </p>
                                       {!isCorrect && (
-                                        <p className="text-[9px] font-black text-slate-400 uppercase">
-                                          Correcta: {q.options[q.correctAnswer]}
-                                        </p>
+                                        <div className="flex items-center gap-1">
+                                          <CheckCircle size={10} className="text-emerald-500"/>
+                                          <p className="text-[9px] font-black text-emerald-600 uppercase">
+                                            La correcta era: <span className="font-medium text-slate-600">{q.options[q.correctAnswer]}</span>
+                                          </p>
+                                        </div>
                                       )}
                                    </div>
                                 </div>

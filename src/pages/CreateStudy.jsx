@@ -7,7 +7,8 @@ import {
 } from 'firebase/firestore';
 import { 
   X, Save, Camera, Loader2, User, Search,
-  Check, ChevronLeft, Trash2, GraduationCap
+  Check, ChevronLeft, Trash2, GraduationCap,
+  Tag // ✅ Añadido icono para categorías
 } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { toast } from 'sonner';
@@ -23,9 +24,20 @@ export default function CreateStudy() {
   const [users, setUsers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
 
+  // ✅ LISTA DE CATEGORÍAS (Punto 3 del Plan)
+  const categories = [
+    "Estudios Bíblicos", 
+    "Colaboradores", 
+    "Profético", 
+    "Jóvenes", 
+    "Matrimonios", 
+    "Liderazgo"
+  ];
+
   const [formData, setFormData] = useState({
     title: '',
     description: '',
+    category: 'Estudios Bíblicos', // ✅ Nuevo campo
     instructorName: '',
     instructorId: '',
     instructorPhoto: '',
@@ -48,17 +60,16 @@ export default function CreateStudy() {
   // 1. CARGAR DATOS SI ES EDICIÓN + LISTA DE USUARIOS PARA SELECTOR
   useEffect(() => {
     const fetchData = async () => {
-      // Cargar usuarios para el selector
       const uSnap = await getDocs(query(collection(db, 'users'), orderBy('displayName')));
       setUsers(uSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
       if (id) {
         const docSnap = await getDoc(doc(db, 'studies', id));
         if (docSnap.exists()) {
-          setFormData({ ...docSnap.data() });
+          // Cargamos los datos existentes (incluyendo category si ya existía)
+          setFormData(prev => ({ ...prev, ...docSnap.data() }));
         }
       } else {
-        // Por defecto, el instructor es el Pastor que crea
         setFormData(prev => ({
           ...prev,
           instructorName: dbUser?.displayName || '',
@@ -94,14 +105,12 @@ export default function CreateStudy() {
     setLoading(true);
     try {
       if (id) {
-        // EDITAR
         await updateDoc(doc(db, 'studies', id), {
           ...formData,
           updatedAt: serverTimestamp()
         });
         toast.success("Serie actualizada");
       } else {
-        // CREAR
         await addDoc(collection(db, 'studies'), {
           ...formData,
           createdAt: serverTimestamp(),
@@ -184,9 +193,31 @@ export default function CreateStudy() {
                  onChange={e => setFormData({...formData, description: e.target.value})}
                />
             </div>
+
+            {/* ✅ NUEVO: SELECTOR DE CATEGORÍA */}
+            <div className="space-y-2 pt-2">
+               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 flex items-center gap-2">
+                 <Tag size={12}/> Categoría de la Serie
+               </label>
+               <div className="flex flex-wrap gap-2">
+                 {categories.map((cat) => (
+                   <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setFormData({...formData, category: cat})}
+                    className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all border-2
+                      ${formData.category === cat 
+                        ? 'bg-slate-900 border-slate-900 text-white shadow-lg' 
+                        : 'bg-white border-slate-100 text-slate-400'}`}
+                   >
+                     {cat}
+                   </button>
+                 ))}
+               </div>
+            </div>
           </div>
 
-          {/* SELECTOR DE DOCENTE (Punto 2) */}
+          {/* SELECTOR DE DOCENTE */}
           <div className="bg-white p-6 rounded-[35px] shadow-sm border border-slate-100 space-y-4">
              <div className="flex justify-between items-center px-2">
                 <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Docente de la Serie</h3>

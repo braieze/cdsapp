@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Outlet, useLocation } from 'react-router-dom'; // ✅ Importamos useLocation
+import { Outlet, useLocation } from 'react-router-dom';
 import { auth, db } from '../firebase';
 import { doc, onSnapshot } from 'firebase/firestore'; 
 import BottomNavigation from '../components/BottomNavigation';
@@ -9,16 +9,24 @@ export default function MainLayout() {
   const [dbUser, setDbUser] = useState(null); 
   const [fetchingUser, setFetchingUser] = useState(true);
   const user = auth.currentUser;
-  const location = useLocation(); // ✅ Hook para saber dónde estamos
+  const location = useLocation();
 
-  // 🎯 Detectamos si estamos en una ruta de estudio para ocultar la nav
-  const isStudyPage = location.pathname.includes('/estudio');
+  // 🎯 LÓGICA DE VISIBILIDAD DE NAVEGACIÓN (Punto 2)
+  // Mostramos el menú SIEMPRE, EXCEPTO cuando:
+  // 1. Estamos en el detalle de una serie (/estudio/ID_DE_SERIE)
+  // 2. Estamos en una clase (/estudio/clase/ID_DE_CLASE)
+  // 3. Estamos creando/editando (/estudio/crear o /estudio/nueva-clase)
+  
+  const hideNav = location.pathname.includes('/estudio/') || 
+                  location.pathname.includes('/editar-clase/') ||
+                  location.pathname.includes('/nueva-clase/');
 
   useEffect(() => {
     if (!user) {
       setFetchingUser(false);
       return;
     }
+
     const userRef = doc(db, 'users', user.uid);
     const unsubscribe = onSnapshot(userRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -29,6 +37,7 @@ export default function MainLayout() {
       console.error("Error escuchando usuario:", error);
       setFetchingUser(false);
     });
+
     return () => unsubscribe();
   }, [user]);
 
@@ -41,14 +50,14 @@ export default function MainLayout() {
   }
 
   return (
-    // ✅ Cambiamos el padding inferior dinámicamente (pb-36 solo si NO es estudio)
-    <div className={`min-h-[100dvh] bg-slate-50 font-outfit text-slate-800 ${isStudyPage ? 'pb-0' : 'pb-36'}`}>
+    // ✅ pb-36 se mantiene solo si el menú está visible
+    <div className={`min-h-[100dvh] bg-slate-50 font-outfit text-slate-800 transition-all duration-300 ${hideNav ? 'pb-0' : 'pb-36'}`}>
       <main className="max-w-md mx-auto animate-fade-in relative bg-slate-50">
         <Outlet context={{ dbUser }} /> 
       </main>
 
-      {/* ✅ Ocultamos la navegación si estamos en estudios */}
-      {!isStudyPage && <BottomNavigation dbUser={dbUser} />}
+      {/* ✅ Solo renderiza el BottomNavigation si NO estamos en un detalle/clase */}
+      {!hideNav && <BottomNavigation dbUser={dbUser} />}
     </div>
   );
 }
