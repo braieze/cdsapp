@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react';
 import { 
   X, Image as ImageIcon, Send, Loader2, Link as LinkIcon, 
-  BarChart2, Plus, Trash2, Save, Archive, HandHeart, // ✅ Cambiado a HandHeart
-  Anchor, Sun, CloudRain, Smile, Layers 
+  BarChart2, Plus, Trash2, Save, Archive, HandHeart, 
+  Anchor, Sun, CloudRain, Smile, Layers, Eye, Lock, Globe // ✅ Nuevos iconos
 } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { db, auth } from '../firebase'; 
 import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 
-// Opciones de ánimo para devocionales
 const MOOD_OPTIONS = [
   { id: 'Fortaleza', icon: Anchor, color: 'text-blue-500', bg: 'bg-blue-50' },
   { id: 'Gozo', icon: Sun, color: 'text-amber-500', bg: 'bg-amber-50' },
@@ -25,6 +24,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [type, setType] = useState('Noticia');
+  const [visibility, setVisibility] = useState('publico'); // ✅ NUEVO ESTADO
   const [isArchived, setIsArchived] = useState(false);
   const [mood, setMood] = useState(''); 
   const [seriesName, setSeriesName] = useState(''); 
@@ -42,6 +42,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
       setLink(postToEdit.link || '');
       setLinkText(postToEdit.linkText || '');
       setType(postToEdit.type || 'Noticia');
+      setVisibility(postToEdit.visibility || 'publico'); // ✅ Carga visibilidad
       setPreview(postToEdit.image || null);
       setIsArchived(postToEdit.isArchived || false);
       setMood(postToEdit.mood || '');
@@ -55,14 +56,19 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
   const resetForm = () => {
     setText(''); setTitle(''); setLink(''); setLinkText('');
     setImage(null); setPreview(null); setShowPoll(false); setPollOptions(['', '']);
-    setIsArchived(false); setType('Noticia'); setMood(''); setSeriesName('');
+    setIsArchived(false); setType('Noticia'); setVisibility('publico'); 
+    setMood(''); setSeriesName('');
   };
 
+  // ✅ FUNCIÓN NOTIFICACIÓN MEJORADA (Fix Error 400 y Deep Link)
   const sendPushNotification = async (notifTitle, notifContent, postUrl) => {
     try {
       const APP_ID = "742a62cd-6d15-427f-8bab-5b8759fabd0a";
       const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
       if (!REST_API_KEY) return;
+
+      // Si es privado para servidores, no mandamos push masivo (o podrías segmentarlo después)
+      if (visibility === 'servidores') return;
 
       await fetch("https://onesignal.com/api/v1/notifications", {
         method: "POST",
@@ -70,11 +76,12 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         body: JSON.stringify({
           app_id: APP_ID,
           included_segments: ["Total Subscriptions"], 
-          headings: { en: notifTitle, es: notifTitle },
-          contents: { en: notifContent, es: notifContent },
-          data: { route: postUrl },
+          headings: { en: notifTitle, es: notifTitle }, // ✅ Fix 400 (en/es)
+          contents: { en: notifContent, es: notifContent }, // ✅ Fix 400 (en/es)
+          data: { route: postUrl }, // ✅ Deep Link al post específico
           large_icon: "https://cdsapp.vercel.app/logo.png",
-          priority: 10
+          priority: 10,
+          android_visibility: 1
         })
       });
     } catch (error) { console.error("Error notif:", error); }
@@ -114,6 +121,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         linkText: linkText || 'Ver más', 
         image: imageUrl, 
         type: type,
+        visibility: visibility, // ✅ SE GUARDA LA VISIBILIDAD
         isArchived: isArchived,
         mood: (type === 'Devocional' || type === 'Oración') ? mood : '', 
         seriesName: type === 'Devocional' ? seriesName : '', 
@@ -122,6 +130,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
       if (postToEdit) {
         const postRef = doc(db, 'posts', postToEdit.id);
         await updateDoc(postRef, { ...commonData, updatedAt: serverTimestamp() });
+        // Si se desarchiva, avisamos
         if (postToEdit.isArchived && !isArchived) {
             const cleanContent = text.length > 80 ? text.substring(0, 80) + "..." : text;
             await sendPushNotification(commonData.title, cleanContent, `/post/${postToEdit.id}`);
@@ -148,10 +157,12 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           poll: finalPoll,
           isPinned: false,
           createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
           likes: [],
           commentsCount: 0
         });
 
+        // Notificación de nuevo post
         if (!isArchived) {
             const cleanContent = text.length > 80 ? text.substring(0, 80) + "..." : text;
             await sendPushNotification(commonData.title, cleanContent, `/post/${docRef.id}`);
@@ -180,6 +191,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         </div>
 
         <div className="flex-1 space-y-6">
+          {/* SELECTOR DE TIPO */}
           <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
             {['Noticia', 'Devocional', 'Oración', 'Urgente'].map(t => (
               <button 
@@ -194,9 +206,28 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
             ))}
           </div>
 
+          {/* ✅ NUEVO: SELECTOR DE VISIBILIDAD (Segmentación) */}
+          <div className="space-y-2">
+             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 flex items-center gap-2"><Eye size={12}/> Visibilidad del post</label>
+             <div className="flex gap-2">
+                <button 
+                  onClick={() => setVisibility('publico')}
+                  className={`flex-1 py-3 rounded-2xl text-[9px] font-black uppercase transition-all border-2 flex items-center justify-center gap-2 ${visibility === 'publico' ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg' : 'bg-white text-slate-300 border-slate-100'}`}
+                >
+                  <Globe size={12}/> Toda la Iglesia
+                </button>
+                <button 
+                  onClick={() => setVisibility('servidores')}
+                  className={`flex-1 py-3 rounded-2xl text-[9px] font-black uppercase transition-all border-2 flex items-center justify-center gap-2 ${visibility === 'servidores' ? 'bg-amber-500 border-amber-500 text-white shadow-lg' : 'bg-white text-slate-300 border-slate-100'}`}
+                >
+                  <Lock size={12}/> Solo Servidores
+                </button>
+             </div>
+          </div>
+
           <div className="space-y-4">
             <input 
-              type="text" placeholder="Título impactante..." value={title} onChange={(e) => setTitle(e.target.value)}
+              type="text" placeholder="Título del mensaje..." value={title} onChange={(e) => setTitle(e.target.value)}
               className="w-full p-5 bg-slate-50 rounded-[24px] border-2 border-slate-50 font-black text-slate-800 focus:outline-none focus:border-brand-500 uppercase text-sm"
             />
 
@@ -210,7 +241,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
                       value={seriesName} onChange={e => setSeriesName(e.target.value)}
                     />
                  </div>
-                 
                  <div className="p-5 bg-slate-50 rounded-[30px] border-2 border-slate-100">
                     <p className="text-[9px] font-black text-slate-400 uppercase mb-4 ml-2 text-left">¿Ánimo del devocional?</p>
                     <div className="grid grid-cols-4 gap-2">
@@ -275,7 +305,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
             )}
 
             <div className="p-6 bg-slate-50 rounded-[35px] border-2 border-slate-100 space-y-4">
-              <p className="text-[9px] font-black text-slate-400 uppercase ml-2">Enlace (Opcional)</p>
+              <p className="text-[9px] font-black text-slate-400 uppercase ml-2">Enlace Externo</p>
               <div className="flex gap-3 text-left">
                 <input type="text" placeholder="https://..." value={link} onChange={e => setLink(e.target.value)} className="flex-1 p-4 bg-white rounded-2xl border-2 border-slate-50 text-[10px] outline-none font-bold text-brand-600 shadow-sm" />
                 <input type="text" placeholder="Botón" value={linkText} onChange={e => setLinkText(e.target.value)} className="w-1/3 p-4 bg-white rounded-2xl border-2 border-slate-50 text-[10px] outline-none font-black uppercase shadow-sm" />

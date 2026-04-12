@@ -5,7 +5,8 @@ import {
   MessageCircle, MoreVertical, X, Edit3, Trash2, 
   PlusCircle, AlertTriangle, Calendar, Heart, Send, 
   AlertCircle, CheckCircle, Flame, HandHeart, ThumbsUp, 
-  Archive, ChevronDown, Sparkles, Smile, Frown, Sun, CloudRain, Anchor, HelpCircle
+  Archive, ChevronDown, Sparkles, Smile, Frown, Sun, CloudRain, Anchor, HelpCircle,
+  Wallet, Video, Music // ✅ Nuevos iconos para los widgets
 } from 'lucide-react';
 import CreatePostModal from '../components/CreatePostModal';
 import TopBar from '../components/TopBar';
@@ -25,21 +26,17 @@ const MOODS = [
   { id: 'Paz', label: 'Paz', icon: Smile, color: 'bg-emerald-500' },
 ];
 
-// --- 💬 SUB-COMPONENTE: PREVIEW DE COMENTARIOS CORREGIDO (Punto 1) ---
+// --- 💬 SUB-COMPONENTE: PREVIEW DE COMENTARIOS (Sincronizado) ---
 function CommentPreview({ postId, count, onClick }) {
   const [previewComments, setPreviewComments] = useState([]);
-  const [realCount, setRealCount] = useState(count); // ✅ Estado local para el conteo real
+  const [realCount, setRealCount] = useState(count); 
   
   useEffect(() => {
     if (!postId) return;
-    
-    // Escuchamos los últimos 2 comentarios
     const qPreview = query(collection(db, `posts/${postId}/comments`), orderBy('createdAt', 'desc'), limit(2));
-    const unsubPreview = onSnapshot(qPreview, (snap) => {
-      setPreviewComments(snap.docs.map(d => d.data()));
-    });
+    const unsubPreview = onSnapshot(qPreview, (snap) => setPreviewComments(snap.docs.map(d => d.data())));
 
-    // ✅ FIX: Escuchamos el TAMAÑO REAL de la colección (No más ceros falsos)
+    // ✅ FIX: Escuchamos el TAMAÑO REAL siempre para evitar el "0" falso
     const unsubCount = onSnapshot(collection(db, `posts/${postId}/comments`), (snap) => {
       setRealCount(snap.size);
     });
@@ -47,14 +44,12 @@ function CommentPreview({ postId, count, onClick }) {
     return () => { unsubPreview(); unsubCount(); };
   }, [postId]);
 
-  // Si no hay comentarios de verdad, no mostramos nada
   if (realCount === 0 && previewComments.length === 0) return null;
 
   return (
     <div className="mt-4 bg-slate-50/50 rounded-2xl p-4 border border-slate-100 cursor-pointer active:scale-[0.98] transition-all" onClick={(e) => { e.stopPropagation(); onClick(); }}>
       <div className="flex items-center gap-2 mb-3">
         <MessageCircle size={12} className="text-brand-600" />
-        {/* ✅ Usamos realCount aquí */}
         <span className="text-[10px] font-black uppercase tracking-widest text-brand-600">{realCount} Comentarios</span>
       </div>
       <div className="space-y-2">
@@ -89,11 +84,15 @@ export default function Home() {
   const { dbUser } = useOutletContext();
   const currentUser = auth.currentUser;
   
+  // ✅ DEFINICIÓN DE PERMISOS
   const isPastor = dbUser?.role === 'pastor';
-  const isModerator = isPastor || dbUser?.role === 'lider';
-  const isMiembro = dbUser?.role === 'miembro'; // ✅ Nuevo detector
-  
-  const canCreatePost = isModerator || dbUser?.area === 'recepcion';
+  const isLider = dbUser?.role === 'lider';
+  const isStaff = isPastor || isLider;
+  const isAlabanza = dbUser?.area?.toLowerCase() === 'alabanza' || isPastor;
+  const isMultimedia = dbUser?.area?.toLowerCase() === 'multimedia' || isPastor;
+  const isMiembro = dbUser?.role === 'miembro';
+
+  const canCreatePost = isStaff || dbUser?.area === 'recepcion';
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBirthdayModalOpen, setIsBirthdayModalOpen] = useState(false);
@@ -106,19 +105,29 @@ export default function Home() {
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [editingPost, setEditingPost] = useState(null);
 
+  // ✅ ACCESOS RÁPIDOS FILTRADOS (Punto 2)
+  const quickActions = useMemo(() => {
+    const actions = [
+      { id: 'ofrendar', label: 'Ofrendar', icon: HandHeart, path: '/ofrendar', color: 'text-rose-600', bg: 'bg-rose-50', visible: true },
+      { id: 'series', label: 'Series', icon: GraduationCap, path: '/estudio', color: 'text-emerald-600', bg: 'bg-emerald-50', visible: true },
+      { id: 'agenda', label: 'Agenda', icon: Calendar, path: '/calendario', color: 'text-orange-600', bg: 'bg-orange-50', visible: isStaff },
+      { id: 'servicios', label: 'Servicios', icon: Briefcase, path: '/servicios', color: 'text-blue-600', bg: 'bg-blue-50', visible: isStaff },
+      { id: 'tesoreria', label: 'Tesorería', icon: Wallet, path: '/tesoreria', color: 'text-slate-900', bg: 'bg-slate-200', visible: isPastor },
+      { id: 'cancionero', label: 'Canciones', icon: Music, path: '/apps', color: 'text-pink-600', bg: 'bg-pink-50', visible: isAlabanza },
+    ];
+    return actions.filter(a => a.visible);
+  }, [isStaff, isPastor, isAlabanza]);
+
   useEffect(() => {
     const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const postsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      // ✅ SEGMENTACIÓN INTELIGENTE (Punto 2)
-      // Si soy miembro, quito los posts que son solo para servidores
+      // ✅ FILTRADO DE CONTENIDO PRIVADO
       let finalPosts = postsData;
       if (isMiembro) {
         finalPosts = postsData.filter(p => p.visibility !== 'servidores');
       }
-
-      // Si no soy pastor, quito los archivados
       if (!isPastor) {
         finalPosts = finalPosts.filter(p => !p.isArchived);
       }
@@ -150,7 +159,6 @@ export default function Home() {
     const reactionsArr = reactions || [];
     const myIdx = reactionsArr.findIndex(r => r.uid === currentUser.uid);
     let newReactions = [...reactionsArr];
-    
     if (myIdx >= 0) {
       if (newReactions[myIdx].emoji === emoji) newReactions.splice(myIdx, 1);
       else newReactions[myIdx].emoji = emoji;
@@ -170,15 +178,12 @@ export default function Home() {
 
   const filteredPosts = useMemo(() => {
     let result = posts;
-    if (filter === 'Archivados') {
-      result = posts.filter(p => p.isArchived === true);
-    } else {
+    if (filter === 'Archivados') result = posts.filter(p => p.isArchived === true);
+    else {
       result = posts.filter(p => p.isArchived !== true);
       if (filter !== 'Todo') result = result.filter(p => p.type === filter);
     }
-    if (selectedMood && filter === 'Devocional') {
-      result = result.filter(p => p.mood === selectedMood);
-    }
+    if (selectedMood && filter === 'Devocional') result = result.filter(p => p.mood === selectedMood);
     return result;
   }, [filter, posts, selectedMood]);
 
@@ -189,7 +194,7 @@ export default function Home() {
       <TopBar />
 
       <div className="px-5 mt-6 space-y-6">
-          {/* CUMPLEÑOS (Visible para todos, crea comunidad) */}
+          {/* CUMPLEÑOS */}
           <div onClick={() => birthdays.length > 0 && setIsBirthdayModalOpen(true)} 
                className={`p-1 rounded-[35px] transition-all active:scale-95 ${birthdays.length > 0 ? 'bg-gradient-to-r from-brand-500 to-indigo-500 shadow-xl' : 'bg-white border border-slate-100'}`}>
             <div className={`flex items-center justify-between p-4 rounded-[30px] ${birthdays.length > 0 ? 'bg-white/90 backdrop-blur-sm' : 'bg-white'}`}>
@@ -207,12 +212,26 @@ export default function Home() {
             </div>
           </div>
 
+          {/* ✅ WIDGETS DE ACCESO RÁPIDO (Segmentados) */}
+          <div className="grid grid-cols-4 gap-3">
+             {quickActions.map(action => (
+               <button 
+                key={action.id} 
+                onClick={() => navigate(action.path)}
+                className="flex flex-col items-center gap-2 group active:scale-90 transition-all"
+               >
+                 <div className={`w-full aspect-square rounded-[22px] ${action.bg} flex items-center justify-center shadow-sm border-2 border-white`}>
+                    <action.icon className={`${action.color}`} size={24} strokeWidth={2.5} />
+                 </div>
+                 <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">{action.label}</span>
+               </button>
+             ))}
+          </div>
+
           {/* TABS MODERNAS */}
           <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
             {['Todo', 'Devocional', 'Oración', 'Noticia', 'Archivados'].map((cat) => {
               if (cat === 'Archivados' && !isPastor) return null;
-              // ✅ Los Miembros quizás no necesiten ver "Noticia" si son solo avisos internos del staff
-              // Pero por ahora lo dejamos, el filtro principal está en el contenido del post
               return (
                 <button key={cat} onClick={() => { setFilter(cat); setVisibleCount(4); setSelectedMood(null); }} 
                   className={`py-3 px-6 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border-2 whitespace-nowrap ${
@@ -230,9 +249,7 @@ export default function Home() {
           {filter === 'Devocional' && (
             <div className="flex gap-3 overflow-x-auto no-scrollbar px-1 animate-slide-up">
                {MOODS.map(m => (
-                 <button 
-                  key={m.id} 
-                  onClick={() => setSelectedMood(selectedMood === m.id ? null : m.id)}
+                 <button key={m.id} onClick={() => setSelectedMood(selectedMood === m.id ? null : m.id)}
                   className={`flex flex-col items-center gap-2 transition-all active:scale-90 min-w-[70px] ${selectedMood === m.id ? 'scale-110' : 'opacity-40 grayscale'}`}
                  >
                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white shadow-lg ${m.color}`}>
@@ -263,22 +280,14 @@ export default function Home() {
 
               return (
               <div key={post.id} className={`relative mx-4 transition-all group ${
-                isDevocional 
-                ? 'h-[420px] rounded-[45px] overflow-hidden shadow-2xl' 
-                : isOracion 
-                ? 'bg-purple-50 border-2 border-purple-100 rounded-[35px] p-1 shadow-sm'
+                isDevocional ? 'h-[420px] rounded-[45px] overflow-hidden shadow-2xl' 
+                : isOracion ? 'bg-purple-50 border-2 border-purple-100 rounded-[35px] p-1 shadow-sm'
                 : 'bg-white border border-slate-100 rounded-[35px] shadow-sm'
               }`}>
-                
                 {isDevocional ? (
                   <div className="absolute inset-0 w-full h-full" onClick={() => navigate(`/post/${post.id}`)}>
-                    {post.image ? (
-                      <img src={post.image} className="w-full h-full object-cover" alt="Portada" referrerPolicy="no-referrer" />
-                    ) : (
-                      <div className="w-full h-full bg-gradient-to-br from-indigo-600 to-brand-900" />
-                    )}
+                    {post.image ? <img src={post.image} className="w-full h-full object-cover" alt="Portada" referrerPolicy="no-referrer" /> : <div className="w-full h-full bg-gradient-to-br from-indigo-600 to-brand-900" />}
                     <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
-                    
                     <div className="absolute inset-0 p-8 flex flex-col justify-end text-left">
                        <div className="flex items-center gap-2 mb-4">
                           <div className="px-3 py-1 bg-brand-500 rounded-full text-[8px] font-black text-white uppercase tracking-widest">Devocional</div>
@@ -314,33 +323,23 @@ export default function Home() {
                           <button onClick={() => setMenuOpenId(menuOpenId === post.id ? null : post.id)} className="p-2 text-slate-300 bg-slate-50 rounded-xl active:text-slate-900"><MoreVertical size={20}/></button>
                           {menuOpenId === post.id && (
                             <div className="absolute right-0 top-12 bg-white shadow-2xl rounded-2xl border border-slate-100 py-2 w-52 z-50 animate-scale-in origin-top-right">
-                              {isPastor && (
-                                <button onClick={() => handleArchive(post.id, post.isArchived)} className="w-full text-left px-5 py-4 text-[9px] font-black uppercase tracking-widest text-amber-600 hover:bg-amber-50 flex items-center gap-3 border-b border-slate-50">
-                                  <Archive size={14}/> {post.isArchived ? 'Desarchivar' : 'Archivar post'}
-                                </button>
-                              )}
-                              <button onClick={() => { setEditingPost(post); setIsModalOpen(true); setMenuOpenId(null); }} className="w-full text-left px-5 py-4 text-[9px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50 flex items-center gap-3">
-                                <Edit3 size={14}/> Editar
-                              </button>
+                              {isPastor && <button onClick={() => handleArchive(post.id, post.isArchived)} className="w-full text-left px-5 py-4 text-[9px] font-black uppercase tracking-widest text-amber-600 hover:bg-amber-50 flex items-center gap-3 border-b border-slate-50"><Archive size={14}/> {post.isArchived ? 'Desarchivar' : 'Archivar post'}</button>}
+                              <button onClick={() => { setEditingPost(post); setIsModalOpen(true); setMenuOpenId(null); }} className="w-full text-left px-5 py-4 text-[9px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50 flex items-center gap-3"><Edit3 size={14}/> Editar</button>
                             </div>
                           )}
                         </div>
                       )}
                     </div>
-
                     <div className="text-left mb-4" onClick={() => navigate(`/post/${post.id}`)}>
                       {isOracion && <div className="text-purple-600 mb-2"><HandHeart size={24}/></div>}
                       <h2 className={`text-xl font-black uppercase tracking-tighter leading-tight mb-2 ${isOracion ? 'text-purple-900' : 'text-slate-900'}`}>{post.title}</h2>
                       <div className="text-[14px] text-slate-700 whitespace-pre-wrap leading-relaxed font-medium line-clamp-4">{post.content}</div>
                     </div>
-
                     {post.image && !isDevocional && (
                       <div className="mt-4 -mx-6 bg-slate-100 cursor-pointer overflow-hidden shadow-inner" onClick={() => navigate(`/post/${post.id}`)}>
                         <img src={post.image} className="w-full h-auto max-h-[400px] object-cover block" loading="lazy" referrerPolicy="no-referrer"/>
                       </div>
                     )}
-                    
-                    {/* ✅ PREVIEW DE COMENTARIOS (Corregido con lógica real-time interna) */}
                     <CommentPreview postId={post.id} count={post.commentsCount || 0} onClick={() => navigate(`/post/${post.id}`)} />
                   </div>
                 )}
@@ -362,7 +361,6 @@ export default function Home() {
                               )
                            })}
                         </div>
-                        
                         <button onClick={() => navigate(`/post/${post.id}`)} className="p-3 bg-brand-50 text-brand-600 rounded-2xl active:scale-95 transition-all relative">
                           <MessageCircle size={22} />
                           {post.commentsCount > 0 && <span className="absolute -top-1 -right-1 bg-brand-600 text-white text-[8px] font-black w-5 h-5 flex items-center justify-center rounded-full border-2 border-white">{post.commentsCount}</span>}
@@ -386,7 +384,7 @@ export default function Home() {
 
       {canCreatePost && (
         <button onClick={() => { setEditingPost(null); setIsModalOpen(true); }} 
-          className="fixed bottom-28 right-6 w-16 h-16 bg-slate-900 text-white rounded-[26px] shadow-2xl flex items-center justify-center active:scale-90 z-40 transition-all border-4 border-white">
+          className="fixed bottom-28 right-6 w-16 h-16 bg-slate-900 text-white rounded-[24px] shadow-2xl flex items-center justify-center active:scale-90 z-40 transition-all border-4 border-white">
           <PlusCircle size={32} />
         </button>
       )}
