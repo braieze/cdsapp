@@ -6,7 +6,8 @@ import {
   PlusCircle, AlertTriangle, Calendar, Heart, Send, 
   AlertCircle, CheckCircle, Flame, HandHeart, ThumbsUp, 
   Archive, ChevronDown, Sparkles, Smile, Frown, Sun, CloudRain, Anchor, HelpCircle,
-  Wallet, Video, Music, GraduationCap // ✅ Nuevos iconos para los widgets
+  Wallet, Video, Music, GraduationCap, 
+  Briefcase // ✅ Agregado aquí para que no de más error
 } from 'lucide-react';
 import CreatePostModal from '../components/CreatePostModal';
 import TopBar from '../components/TopBar';
