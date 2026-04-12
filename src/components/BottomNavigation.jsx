@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
-  Home, CalendarDays, Briefcase, LayoutGrid, UserCircle 
+  Home, CalendarDays, Briefcase, LayoutGrid, UserCircle, 
+  BookOpen, HandHeart // ✅ Iconos para la vista de Miembro
 } from 'lucide-react';
 import { auth, db } from '../firebase';
 import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
@@ -13,9 +14,11 @@ export default function BottomNavigation({ dbUser }) {
 
   const [badges, setBadges] = useState({ agenda: 0, servicios: 0, apps: 0, perfil: 0 });
 
+  // ✅ DEFINICIÓN DE ROLES SEGÚN TU REGLA
   const isPastor = dbUser?.role === 'pastor';
   const isLider = dbUser?.role === 'lider';
-  const isServidor = isPastor || isLider;
+  const isServidor = isPastor || isLider; // Staff
+  const isMiembro = dbUser?.role === 'miembro';
 
   // 1. DETECCIÓN PWA (Mantenida)
   useEffect(() => {
@@ -27,12 +30,12 @@ export default function BottomNavigation({ dbUser }) {
 
   // 2. LÓGICA DE SERVICIOS Y AGENDA (Mantenida e intacta)
   useEffect(() => {
-    if (!currentUser || !dbUser) return;
+    if (!currentUser || !dbUser || !isServidor) return; // Solo el staff procesa badges de servicio
 
     const unsubscribes = [];
     const readIds = dbUser.readNotifications || [];
-
     const qEvents = query(collection(db, 'events'), orderBy('date', 'asc'));
+
     const unsubEvents = onSnapshot(qEvents, (snapshot) => {
       let pendingTasks = 0;
       let teamIssues = 0;
@@ -45,81 +48,69 @@ export default function BottomNavigation({ dbUser }) {
         const eventDate = new Date(event.date + 'T00:00:00');
         
         if (eventDate >= now) {
-          if ((dbUser.role === 'pastor' || dbUser.role === 'lider') && event.published === false) {
-            agendaAlerts++;
-          }
-
+          if (isServidor && event.published === false) agendaAlerts++;
           const isPublished = event.published !== false;
-          if (isPublished && !readIds.includes(`ev-${eventId}`) && !readIds.includes(`asg-${eventId}`)) {
-            agendaAlerts++;
-          }
+          if (isPublished && !readIds.includes(`ev-${eventId}`) && !readIds.includes(`asg-${eventId}`)) agendaAlerts++;
         }
 
         if (eventDate >= now) {
           const isAssigned = event.assignments && Object.values(event.assignments).some(arr => Array.isArray(arr) && arr.includes(currentUser.displayName));
           const myStatus = event.confirmations?.[currentUser.displayName];
-          
           if (isAssigned && !myStatus) pendingTasks++;
-          if ((dbUser.role === 'lider' || dbUser.role === 'pastor') && event.confirmations) {
+          if (isServidor && event.confirmations) {
             teamIssues += Object.values(event.confirmations).filter(s => s === 'declined').length;
-          }
-
-          if (isAssigned) {
-            const unsubChat = onSnapshot(collection(db, `events/${eventId}/notes`), (chatSnap) => {
-              const unreadMsg = chatSnap.docs.filter(d => !d.data().readBy?.includes(currentUser.uid)).length;
-              setBadges(prev => ({ 
-                ...prev, 
-                servicios: pendingTasks + teamIssues + unreadMsg 
-              }));
-            });
-            unsubscribes.push(unsubChat);
           }
         }
       });
       
-      setBadges(prev => ({ 
-        ...prev, 
-        servicios: pendingTasks + teamIssues,
-        agenda: agendaAlerts 
-      }));
+      setBadges(prev => ({ ...prev, servicios: pendingTasks + teamIssues, agenda: agendaAlerts }));
     });
     unsubscribes.push(unsubEvents);
 
+    return () => unsubscribes.forEach(unsub => unsub());
+  }, [currentUser, dbUser, isServidor]);
+
+  useEffect(() => {
+    if (!dbUser) return;
     const isIncomplete = !dbUser.photoURL || !dbUser.phone || !dbUser.ministerio ? 1 : 0;
     setBadges(prev => ({ ...prev, perfil: isIncomplete }));
+  }, [dbUser]);
 
-    return () => unsubscribes.forEach(unsub => unsub());
-  }, [currentUser, dbUser]);
-
-  // 3. 🎯 LÓGICA DE FILTRADO (Solo los 5 iconos originales)
-  const allItems = [
-    { path: '/', icon: Home, label: 'Inicio', visible: true },
-    { path: '/calendario', icon: CalendarDays, label: 'Agenda', badge: badges.agenda, visible: isServidor },
-    { path: '/servicios', icon: Briefcase, label: 'Servicios', badge: badges.servicios, visible: isServidor },
-    { path: '/apps', icon: LayoutGrid, label: 'Apps', badge: badges.apps, visible: true },
-    { path: '/perfil', icon: UserCircle, label: 'Perfil', badge: badges.perfil, visible: true }
+  // 3. 🎯 EL FILTRO MAESTRO DE NAVEGACIÓN
+  // Definimos qué ve cada uno según tu esquema exacto
+  const navItems = isMiembro ? [
+    // 🏠 VISTA MIEMBRO (Solo 4 cosas)
+    { path: '/', icon: Home, label: 'Inicio' },
+    { path: '/ofrendar', icon: HandHeart, label: 'Ofrendar' },
+    { path: '/estudio', icon: BookOpen, label: 'Series' },
+    { path: '/perfil', icon: UserCircle, label: 'Perfil', badge: badges.perfil }
+  ] : [
+    // 🛠️ VISTA SERVIDOR / PASTOR (Los 5 originales)
+    { path: '/', icon: Home, label: 'Inicio' },
+    { path: '/calendario', icon: CalendarDays, label: 'Agenda', badge: badges.agenda },
+    { path: '/servicios', icon: Briefcase, label: 'Servicios', badge: badges.servicios },
+    { path: '/apps', icon: LayoutGrid, label: 'Apps', badge: badges.apps },
+    { path: '/perfil', icon: UserCircle, label: 'Perfil', badge: badges.perfil }
   ];
-
-  const visibleItems = allItems.filter(item => item.visible);
 
   return (
     <nav className="fixed bottom-0 w-full bg-white border-t border-slate-100 z-50 h-24 pb-6 shadow-[0_-4px_30px_-10px_rgba(0,0,0,0.1)] flex items-center">
       <div className="max-w-md mx-auto flex justify-between w-full px-2">
-        {visibleItems.map((item) => {
+        {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = path === item.path;
           return (
             <Link key={item.path} to={item.path} className="flex-1 flex flex-col items-center justify-center transition-transform active:scale-95 relative group">
-              {isActive && <div className="absolute -top-5 w-12 h-1.5 bg-brand-600 rounded-b-full shadow-sm"></div>}
+              {isActive && <div className="absolute -top-5 w-10 h-1.5 bg-brand-600 rounded-b-full shadow-sm"></div>}
               <div className="relative p-1.5">
-                <Icon size={30} strokeWidth={isActive ? 2.5 : 2} className={`transition-all duration-300 ${isActive ? 'text-brand-600 -translate-y-1' : 'text-slate-400'}`} />
+                <Icon size={28} strokeWidth={isActive ? 2.5 : 2} className={`transition-all duration-300 ${isActive ? 'text-brand-600 -translate-y-1' : 'text-slate-400'}`} />
                 {item.badge > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-black px-1.5 h-5 min-w-[20px] flex items-center justify-center rounded-full border-2 border-white animate-bounce shadow-md">
                     {item.badge}
                   </span>
                 )}
               </div>
-              <span className={`text-[11px] font-bold tracking-wide ${isActive ? 'text-brand-600' : 'text-slate-400'}`}>{item.label}</span>
+              <span className={`text-[10px] font-bold tracking-tight ${isActive ? 'text-brand-600' : 'text-slate-400'}`}>{item.label}</span>
             </Link>
           );
         })}

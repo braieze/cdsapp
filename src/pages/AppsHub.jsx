@@ -22,24 +22,24 @@ export default function AppsHub() {
     window.location.reload(true);
   };
 
-  // ✅ DEFINICIÓN DE APPS CON SEGMENTACIÓN ESTRICTA (Punto 2 y 3)
+  // ✅ DEFINICIÓN DE APPS CON SEGMENTACIÓN ESTRICTA (Reglas de Braian)
   const allApps = [
-    // 📅 Agenda: Solo para el Staff (Pastores y Líderes/Servidores)
+    // 📅 Agenda: Solo Staff (Pastor y Líderes)
     { id: 'calendario', name: 'Agenda', icon: Calendar, color: 'text-orange-600', bg: 'bg-orange-50', path: '/calendario', roles: ['pastor', 'lider'] },
     
-    // 👥 Directorio: Solo para el Staff
+    // 👥 Directorio: Solo Staff
     { id: 'directorio', name: 'Directorio', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50', path: '/directorio', roles: ['pastor', 'lider'] },
     
-    // 💝 Ofrendar: Para todos
+    // 💝 Ofrendar: Visible para Todos
     { id: 'ofrendar_user', name: 'Ofrendar', icon: HeartHandshake, color: 'text-brand-600', bg: 'bg-brand-50', path: '/ofrendar', roles: ['todos'] },
     
-    // 🔐 Tesorería: Solo Pastor y área específica
+    // 🔐 Tesorería: Solo Pastor y área Tesorería
     { id: 'tesoreria_admin', name: 'Tesorería', icon: Wallet, color: 'text-slate-900', bg: 'bg-slate-200', path: '/tesoreria', roles: ['pastor', 'tesorero'] },
     
-    // 📜 Historial: Solo para el Staff
+    // 📜 Historial: Solo Staff
     { id: 'historial', name: 'Historial', icon: History, color: 'text-indigo-600', bg: 'bg-indigo-50', path: '/historial', roles: ['pastor', 'lider'] },
     
-    // 🔄 Actualizar: Para todos
+    // 🔄 Actualizar: Visible para Todos
     { 
       id: 'refresh', 
       name: updateAvailable ? '¡Nueva Versión!' : 'Actualizar', 
@@ -51,7 +51,7 @@ export default function AppsHub() {
       roles: ['todos']
     },
 
-    // 🎓 Academia: Para todos
+    // 🎓 Academia (Series): Visible para Todos
     { id: 'classroom', name: 'Series', icon: GraduationCap, color: 'text-emerald-600', bg: 'bg-emerald-50', path: '/estudio', roles: ['todos'] },
 
     // 🎵 Cancionero: Solo Pastor o Área Alabanza
@@ -61,11 +61,20 @@ export default function AppsHub() {
     { id: 'multimedia', name: 'Multimedia', icon: Video, color: 'text-cyan-600', bg: 'bg-cyan-50', path: '#', roles: ['pastor', 'multimedia'] },
   ];
 
-  // 🕵️‍♂️ FILTRADO LÓGICO MEJORADO
+  // 🕵️‍♂️ FILTRADO LÓGICO MEJORADO (Basado en la regla de Braian)
   const visibleApps = allApps.filter(app => {
     const userRole = dbUser?.role?.toLowerCase();
     const userArea = dbUser?.area?.toLowerCase();
 
+    // Regla Miembro: Solo ve lo marcado como 'todos'
+    if (userRole === 'miembro') {
+      return app.roles.includes('todos');
+    }
+
+    // Regla Pastor: Ve todo
+    if (userRole === 'pastor') return true;
+
+    // Regla Servidores/Áreas: Ven lo general + su área + lo de líder
     return (
       app.roles.includes('todos') || 
       app.roles.includes(userRole) ||
@@ -81,8 +90,8 @@ export default function AppsHub() {
           <p className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mt-1 font-black">Panel de Control</p>
         </div>
         <div className="flex flex-col items-end">
-            <span className="text-[9px] text-slate-400 font-black uppercase mb-1">Acceso: {dbUser?.area || dbUser?.role || 'Miembro'}</span>
-            <span className="text-[10px] text-slate-300 font-bold uppercase tracking-widest bg-white px-3 py-1 rounded-full shadow-sm border border-slate-100">v1.3.0</span>
+            <span className="text-[9px] text-slate-400 font-black uppercase mb-1">Acceso: {dbUser?.area && dbUser.area !== 'ninguna' ? dbUser.area : dbUser?.role || 'Miembro'}</span>
+            <span className="text-[10px] text-slate-300 font-bold uppercase tracking-widest bg-white px-3 py-1 rounded-full shadow-sm border border-slate-100">v1.3.1</span>
         </div>
       </div>
 
