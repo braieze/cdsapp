@@ -216,6 +216,8 @@ export default function App() {
           <Route path="estudio/:id/nueva-clase" element={<CreateLesson />} />
           <Route path="estudio/:id/editar-clase/:lessonId" element={<CreateLesson />} />
           <Route path="estudio/clase/:lessonId" element={<LessonView />} />
+
+	  <Route path="/demo-control" element={<PresentationPanel />} />
         </Route>
         
         <Route path="*" element={<Navigate to="/" replace />} />
