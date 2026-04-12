@@ -49,10 +49,8 @@ export default function TopBar({ title, subtitle }) {
             setUserRole(data.role || 'miembro');
             setReadIds(data.readNotifications || []); 
             
-            // ✅ FIX ÁREAS: Sincronización de Tag con OneSignal
             if (isNative) {
                 const areaTag = (data.area || 'ninguna').toLowerCase();
-                // Usamos la sintaxis universal para asegurar compatibilidad
                 OneSignal.sendTag("area", areaTag);
                 console.log("Tag Enviado:", areaTag);
             }
@@ -61,7 +59,6 @@ export default function TopBar({ title, subtitle }) {
       }
     });
 
-    // ✅ FIX DEEP LINKING: Listener para cuando tocan la notificación
     if (isNative) {
       OneSignal.Notifications.addEventListener('click', (event) => {
         const data = event.notification.additionalData;
@@ -110,7 +107,7 @@ export default function TopBar({ title, subtitle }) {
             setIsSubscribed(true);
             toast.success("¡Activadas!");
         } else {
-            const result = await Notification.permission;
+            const result = await Notification.requestPermission();
             if (result === 'granted' && messaging) {
                 const token = await getToken(messaging, { vapidKey: VAPID_KEY });
                 if (token) {
@@ -156,7 +153,6 @@ export default function TopBar({ title, subtitle }) {
     toast.info("Plantilla cargada");
   };
 
-  // ✅ ENVÍO DE NOTIFICACIÓN SEGMENTADA MEJORADO
   const sendManualPush = async () => {
     if (!pushData.title || !pushData.body) return toast.error("Completa título y mensaje");
     setLoadingAction(true);
@@ -167,9 +163,8 @@ export default function TopBar({ title, subtitle }) {
         app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
         headings: { en: pushData.title, es: pushData.title },
         contents: { en: pushData.body, es: pushData.body },
-        // ✅ FIX LINK EXTERNO: Si hay link, se pone en 'url' para que el SO abra la App (Meet/IG)
         url: pushData.link || null, 
-        data: { route: pushData.targetPath }, // ✅ Ruta interna
+        data: { route: pushData.targetPath }, 
         large_icon: "https://cdsapp.vercel.app/logo.png",
         priority: 10,
         android_accent_color: "FF0000",
@@ -179,7 +174,6 @@ export default function TopBar({ title, subtitle }) {
       if (pushData.targetArea === 'todos') {
         payload.included_segments = ["Total Subscriptions"];
       } else {
-        // Usamos tags en minúsculas para evitar errores de coincidencia
         payload.filters = [{ field: "tag", key: "area", relation: "=", value: pushData.targetArea.toLowerCase() }];
       }
 
@@ -198,23 +192,36 @@ export default function TopBar({ title, subtitle }) {
     finally { setLoadingAction(false); }
   };
 
-  // CARGA DE NOTIFICACIONES LOCALES
+  // ✅ CARGA DE NOTIFICACIONES LOCALES (CON FILTRO DE SEGURIDAD)
   useEffect(() => {
     if (!activeUser) return;
-    const unsubNotifs = onSnapshot(query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(15)), (snap) => {
-        setNotifications(snap.docs.map(d => ({
-            id: d.id,
+    
+    const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(20));
+    
+    const unsubNotifs = onSnapshot(q, (snap) => {
+        const allPosts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        
+        // 🎯 FILTRO CRUCIAL: Solo mostramos lo público a los miembros
+        const filteredForUser = allPosts.filter(p => {
+            const isPublic = p.visibility === 'publico' || !p.visibility;
+            if (userRole === 'miembro') return isPublic;
+            return true; // Staff ve todo
+        });
+
+        setNotifications(filteredForUser.map(post => ({
+            id: post.id,
             type: 'post',
-            title: d.data().title || 'Nueva publicación',
-            subtitle: d.data().type,
-            timestamp: d.data().createdAt?.toMillis() || Date.now(),
-            link: `/post/${d.id}`,
-            icon: d.data().type === 'Devocional' ? BookOpen : Megaphone,
-            color: d.data().type === 'Urgente' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
+            title: post.title || 'Nueva publicación',
+            subtitle: post.type,
+            timestamp: post.createdAt?.toMillis() || Date.now(),
+            link: `/post/${post.id}`,
+            icon: post.type === 'Devocional' ? BookOpen : Megaphone,
+            color: post.type === 'Urgente' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600',
+            isUrgent: post.type === 'Urgente'
         })));
     });
     return () => unsubNotifs();
-  }, [activeUser]);
+  }, [activeUser, userRole]); // Escuchamos el rol para actualizar el filtro
 
   useEffect(() => {
     const unread = notifications.filter(n => !readIds.includes(n.id)).length;

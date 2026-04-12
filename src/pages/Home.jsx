@@ -6,7 +6,7 @@ import {
   PlusCircle, AlertTriangle, Calendar, Heart, Send, 
   AlertCircle, CheckCircle, Flame, HandHeart, ThumbsUp, 
   Archive, ChevronDown, Sparkles, Smile, Frown, Sun, CloudRain, Anchor, HelpCircle,
-  Wallet, Video, Music, GraduationCap, Briefcase // ✅ Importados todos
+  Wallet, Video, Music, GraduationCap, Briefcase 
 } from 'lucide-react';
 import CreatePostModal from '../components/CreatePostModal';
 import TopBar from '../components/TopBar';
@@ -38,7 +38,7 @@ function CommentPreview({ postId, count, onClick }) {
     const qPreview = query(collection(db, `posts/${postId}/comments`), orderBy('createdAt', 'desc'), limit(2));
     const unsubPreview = onSnapshot(qPreview, (snap) => setPreviewComments(snap.docs.map(d => d.data())));
 
-    // 2. ✅ FIX: Escuchamos el TAMAÑO REAL de la colección para que nunca marque 0 si hay datos
+    // 2. ✅ FIX: Escuchamos el TAMAÑO REAL de la colección
     const unsubCount = onSnapshot(collection(db, `posts/${postId}/comments`), (snap) => {
       setRealCount(snap.size);
     });
@@ -86,12 +86,11 @@ export default function Home() {
   const { dbUser } = useOutletContext();
   const currentUser = auth.currentUser;
   
-  // ✅ DEFINICIÓN DE PERMISOS (Corregida para evitar ReferenceError)
+  // ✅ PERMISOS DEFINIDOS
   const isPastor = dbUser?.role === 'pastor';
   const isLider = dbUser?.role === 'lider';
   const isStaff = isPastor || isLider;
-  const isModerator = isStaff; // ✅ Definido para que el menú de post funcione
-  const isAlabanza = dbUser?.area?.toLowerCase() === 'alabanza' || isPastor;
+  const isModerator = isStaff; // ✅ Fix para el menú de los posts
   const isMiembro = dbUser?.role === 'miembro';
 
   const canCreatePost = isStaff || dbUser?.area === 'recepcion';
@@ -107,25 +106,12 @@ export default function Home() {
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [editingPost, setEditingPost] = useState(null);
 
-  // ✅ ACCESOS RÁPIDOS FILTRADOS (Dinámicos)
-  const quickActions = useMemo(() => {
-    const actions = [
-      { id: 'ofrendar', label: 'Ofrendar', icon: HandHeart, path: '/ofrendar', color: 'text-rose-600', bg: 'bg-rose-50', visible: true },
-      { id: 'series', label: 'Series', icon: GraduationCap, path: '/estudio', color: 'text-emerald-600', bg: 'bg-emerald-50', visible: true },
-      { id: 'agenda', label: 'Agenda', icon: Calendar, path: '/calendario', color: 'text-orange-600', bg: 'bg-orange-50', visible: isStaff },
-      { id: 'servicios', label: 'Servicios', icon: Briefcase, path: '/servicios', color: 'text-blue-600', bg: 'bg-blue-50', visible: isStaff },
-      { id: 'tesoreria', label: 'Tesorería', icon: Wallet, path: '/tesoreria', color: 'text-slate-900', bg: 'bg-slate-200', visible: isPastor },
-      { id: 'cancionero', label: 'Canciones', icon: Music, path: '/apps', color: 'text-pink-600', bg: 'bg-pink-50', visible: isAlabanza },
-    ];
-    return actions.filter(a => a.visible);
-  }, [isStaff, isPastor, isAlabanza]);
-
   useEffect(() => {
     const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const postsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      // ✅ FILTRADO DE CONTENIDO PRIVADO (Segmentación)
+      // ✅ FILTRADO DE SEGURIDAD: Miembros no ven posts de servidores
       let finalPosts = postsData;
       if (isMiembro) {
         finalPosts = postsData.filter(p => p.visibility !== 'servidores');
@@ -214,19 +200,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* WIDGETS DE ACCESO RÁPIDO */}
-          <div className="grid grid-cols-4 gap-3">
-             {quickActions.map(action => (
-               <button key={action.id} onClick={() => navigate(action.path)} className="flex flex-col items-center gap-2 group active:scale-90 transition-all">
-                 <div className={`w-full aspect-square rounded-[22px] ${action.bg} flex items-center justify-center shadow-sm border-2 border-white`}>
-                    <action.icon className={`${action.color}`} size={24} strokeWidth={2.5} />
-                 </div>
-                 <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">{action.label}</span>
-               </button>
-             ))}
-          </div>
-
-          {/* TABS MODERNAS */}
+          {/* TABS MODERNAS (Directo después de cumpleaños) */}
           <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
             {['Todo', 'Devocional', 'Oración', 'Noticia', 'Archivados'].map((cat) => {
               if (cat === 'Archivados' && !isPastor) return null;
@@ -282,7 +256,6 @@ export default function Home() {
                 : isOracion ? 'bg-purple-50 border-2 border-purple-100 rounded-[35px] p-1 shadow-sm'
                 : 'bg-white border border-slate-100 rounded-[35px] shadow-sm'
               }`}>
-                
                 {isDevocional ? (
                   <div className="absolute inset-0 w-full h-full" onClick={() => navigate(`/post/${post.id}`)}>
                     {post.image ? <img src={post.image} className="w-full h-full object-cover" alt="Portada" referrerPolicy="no-referrer" /> : <div className="w-full h-full bg-gradient-to-br from-indigo-600 to-brand-900" />}
@@ -333,7 +306,6 @@ export default function Home() {
                     {post.image && <div className="mt-4 -mx-6 bg-slate-100 cursor-pointer overflow-hidden shadow-inner" onClick={() => navigate(`/post/${post.id}`)}>
                       <img src={post.image} className="w-full h-auto max-h-[400px] object-cover block" loading="lazy" referrerPolicy="no-referrer"/>
                     </div>}
-                    {/* ✅ PREVIEW DE COMENTARIOS SINCRONIZADO */}
                     <CommentPreview postId={post.id} count={post.commentsCount || 0} onClick={() => navigate(`/post/${post.id}`)} />
                   </div>
                 )}
@@ -364,15 +336,6 @@ export default function Home() {
                 )}
               </div>
             )})
-        )}
-
-        {filteredPosts.length > visibleCount && !loading && (
-          <button onClick={() => setVisibleCount(prev => prev + 4)} className="w-full py-8 flex flex-col items-center gap-2 group active:scale-95 transition-all">
-            <div className="p-5 bg-white border-2 border-slate-100 rounded-full shadow-xl text-slate-300 group-hover:text-brand-600 group-hover:border-brand-100">
-               <ChevronDown size={32} className="animate-bounce" />
-            </div>
-            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-400">Ver más contenido</span>
-          </button>
         )}
       </div>
 

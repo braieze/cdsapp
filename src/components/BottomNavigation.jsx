@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
-  Home, CalendarDays, Briefcase, LayoutGrid, UserCircle, 
-  BookOpen, Heart, HandHeart // ✅ Iconos para nuevas secciones
+  Home, CalendarDays, Briefcase, LayoutGrid, UserCircle 
 } from 'lucide-react';
 import { auth, db } from '../firebase';
 import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
@@ -17,7 +16,6 @@ export default function BottomNavigation({ dbUser }) {
   const isPastor = dbUser?.role === 'pastor';
   const isLider = dbUser?.role === 'lider';
   const isServidor = isPastor || isLider;
-  const isMiembro = dbUser?.role === 'miembro';
 
   // 1. DETECCIÓN PWA (Mantenida)
   useEffect(() => {
@@ -93,16 +91,12 @@ export default function BottomNavigation({ dbUser }) {
     return () => unsubscribes.forEach(unsub => unsub());
   }, [currentUser, dbUser]);
 
-  // 3. 🎯 LÓGICA DE FILTRADO DE ITEMS SEGÚN TU REGLA
-  // Regla: Miembro solo ve Inicio, Ofrendar, Series, Perfil.
-  // Regla: Servidor ve lo de arriba + Agenda, Servicios, Apps.
+  // 3. 🎯 LÓGICA DE FILTRADO (Solo los 5 iconos originales)
   const allItems = [
     { path: '/', icon: Home, label: 'Inicio', visible: true },
-    { path: '/ofrendar', icon: HandHeart, label: 'Ofrendar', visible: isMiembro }, // Solo directo para Miembros
-    { path: '/estudio', icon: BookOpen, label: 'Series', visible: true },
     { path: '/calendario', icon: CalendarDays, label: 'Agenda', badge: badges.agenda, visible: isServidor },
     { path: '/servicios', icon: Briefcase, label: 'Servicios', badge: badges.servicios, visible: isServidor },
-    { path: '/apps', icon: LayoutGrid, label: 'Apps', badge: badges.apps, visible: isServidor },
+    { path: '/apps', icon: LayoutGrid, label: 'Apps', badge: badges.apps, visible: true },
     { path: '/perfil', icon: UserCircle, label: 'Perfil', badge: badges.perfil, visible: true }
   ];
 
@@ -116,16 +110,16 @@ export default function BottomNavigation({ dbUser }) {
           const isActive = path === item.path;
           return (
             <Link key={item.path} to={item.path} className="flex-1 flex flex-col items-center justify-center transition-transform active:scale-95 relative group">
-              {isActive && <div className="absolute -top-5 w-10 h-1.5 bg-brand-600 rounded-b-full shadow-sm"></div>}
+              {isActive && <div className="absolute -top-5 w-12 h-1.5 bg-brand-600 rounded-b-full shadow-sm"></div>}
               <div className="relative p-1.5">
-                <Icon size={26} strokeWidth={isActive ? 2.5 : 2} className={`transition-all duration-300 ${isActive ? 'text-brand-600 -translate-y-1' : 'text-slate-400'}`} />
+                <Icon size={30} strokeWidth={isActive ? 2.5 : 2} className={`transition-all duration-300 ${isActive ? 'text-brand-600 -translate-y-1' : 'text-slate-400'}`} />
                 {item.badge > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-black px-1.5 h-5 min-w-[20px] flex items-center justify-center rounded-full border-2 border-white animate-bounce shadow-md">
                     {item.badge}
                   </span>
                 )}
               </div>
-              <span className={`text-[9px] font-bold tracking-tight ${isActive ? 'text-brand-600' : 'text-slate-400'}`}>{item.label}</span>
+              <span className={`text-[11px] font-bold tracking-wide ${isActive ? 'text-brand-600' : 'text-slate-400'}`}>{item.label}</span>
             </Link>
           );
         })}
