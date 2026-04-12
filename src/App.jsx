@@ -34,6 +34,8 @@ import StudyDetail from './pages/StudyDetail';
 import CreateLesson from './pages/CreateLesson';
 import LessonView from './pages/LessonView';
 
+import PresentationPanel from './pages/PresentationPanel'; // ✅ Asegurate que la ruta sea correcta
+
 // --- 🧭 MANEJADOR DE NAVEGACIÓN PRO (Deep Linking Fix) ---
 function NavigationHandler() {
   const navigate = useNavigate();
