@@ -27,42 +27,50 @@ import Directory from './pages/Directory';
 import Ofrendar from './pages/Ofrendar'; 
 import Tesoreria from './pages/Tesoreria';
 
-// ✅ NUEVAS IMPORTACIONES: ACADEMIA CDS
+// ✅ ACADEMIA CDS
 import StudyHub from './pages/StudyHub';
 import CreateStudy from './pages/CreateStudy'; 
 import StudyDetail from './pages/StudyDetail';
 import CreateLesson from './pages/CreateLesson';
 import LessonView from './pages/LessonView';
 
-// --- MANEJADOR DE NAVEGACIÓN ---
+// --- 🧭 MANEJADOR DE NAVEGACIÓN PRO (Deep Linking Fix) ---
 function NavigationHandler() {
   const navigate = useNavigate();
   const location = useLocation();
   const isNative = Capacitor.isNativePlatform();
 
   useEffect(() => {
+    // Estilos globales para Android
     if (isNative && Capacitor.getPlatform() === 'android') {
       const style = document.createElement('style');
-      style.innerHTML = `
-        img { 
-          display: block; 
-          max-width: 100%; 
-          content-visibility: auto; 
-        }
-        .mini-avatar { image-rendering: -webkit-optimize-contrast; }
-      `;
+      style.innerHTML = `img { display: block; max-width: 100%; content-visibility: auto; }`;
       document.head.appendChild(style);
     }
 
+    // 📱 LÓGICA NATIVA (Android/iOS)
     if (isNative) {
       const handleNotificationClick = (event) => {
+        // Obtenemos los datos sin importar si vienen anidados
         const data = event.notification.additionalData;
+        console.log("DEBUG NOTIF NATIVA:", data);
+
         if (data?.url) {
           window.open(data.url, '_blank');
           return;
         }
+
         const route = data?.route;
-        if (route) navigate(route);
+        if (route) {
+          // ✅ FIX: Aseguramos que la ruta empiece con "/"
+          const finalRoute = route.startsWith('/') ? route : `/${route}`;
+          
+          // ✅ FIX TIMING: Delay para que el Router esté listo
+          setTimeout(() => {
+            console.log("Navegando a:", finalRoute);
+            navigate(finalRoute);
+          }, 400);
+        }
       };
 
       OneSignal.Notifications.addEventListener("click", handleNotificationClick);
@@ -80,20 +88,29 @@ function NavigationHandler() {
         backListener.remove();
       };
     } 
+    // 💻 LÓGICA WEB
     else {
       const handleWebClick = (event) => {
         const data = event.notification.data;
+        console.log("DEBUG NOTIF WEB:", data);
+
         if (data?.url) {
           window.open(data.url, '_blank');
           return;
         }
+
         const route = data?.route;
-        if (route) navigate(route);
+        if (route) {
+          const finalRoute = route.startsWith('/') ? route : `/${route}`;
+          setTimeout(() => {
+            navigate(finalRoute);
+          }, 400);
+        }
       };
       OneSignalWeb.Notifications.addEventListener("click", handleWebClick);
       return () => OneSignalWeb.Notifications.removeEventListener("click", handleWebClick);
     }
-  }, [navigate, location, isNative]);
+  }, [navigate, location.pathname, isNative]); // Escuchamos cambios de path
 
   return null;
 }
@@ -103,6 +120,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const isNative = Capacitor.isNativePlatform();
 
+  // 1. INICIALIZAR ONESIGNAL
   useEffect(() => {
     const initNotifications = async () => {
       try {
@@ -116,7 +134,7 @@ export default function App() {
             serviceWorkerPath: "OneSignalSDKWorker.js",
           });
         }
-      } catch (e) { /* silent */ }
+      } catch (e) { console.error("Error init notif:", e); }
     };
 
     initNotifications();
@@ -132,6 +150,7 @@ export default function App() {
     return () => unsubscribe();
   }, [isNative]);
 
+  // 2. SINCRONIZACIÓN DE PERFIL Y LOGIN NOTIFICACIONES
   const syncMaster = async (currentUser) => {
     try {
       const userRef = doc(db, 'users', currentUser.uid);
@@ -148,13 +167,14 @@ export default function App() {
         });
       }
 
+      // Login en OneSignal con el UID de Firebase para segmentación personalizada
       if (isNative) {
         OneSignal.login(currentUser.uid);
       } else {
         await OneSignalWeb.login(currentUser.uid);
       }
 
-    } catch (error) { /* silent */ }
+    } catch (error) { console.error("Error en syncMaster:", error); }
   };
 
   if (loading) {
@@ -167,8 +187,10 @@ export default function App() {
 
   return (
     <HashRouter>
+      {/* El NavigationHandler debe estar DENTRO del Router pero antes de las Routes */}
       <NavigationHandler /> 
       <Toaster richColors position="top-center" expand={false} />
+      
       <Routes>
         <Route path="/login" element={!user ? <Login /> : <Navigate to="/" replace />} />
         <Route path="/ofrendar" element={<Ofrendar />} /> 
@@ -186,21 +208,14 @@ export default function App() {
           <Route path="directorio" element={<Directory />} />
           <Route path="tesoreria" element={<Tesoreria />} /> 
 
-          {/* 🎓 SECCIÓN ACADEMIA / SERIES CORREGIDA */}
+          {/* 🎓 ACADEMIA */}
           <Route path="estudio" element={<StudyHub />} />
-          
-          {/* ✅ Rutas de Creación y Edición de Series */}
           <Route path="estudio/crear" element={<CreateStudy />} /> 
           <Route path="estudio/crear/:id" element={<CreateStudy />} /> 
-          
-          {/* ✅ Detalle y Gestión de Clases */}
           <Route path="estudio/:id" element={<StudyDetail />} />
           <Route path="estudio/:id/nueva-clase" element={<CreateLesson />} />
           <Route path="estudio/:id/editar-clase/:lessonId" element={<CreateLesson />} />
-          
-          {/* ✅ Visualización de la Clase */}
           <Route path="estudio/clase/:lessonId" element={<LessonView />} />
-
         </Route>
         
         <Route path="*" element={<Navigate to="/" replace />} />
