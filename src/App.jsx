@@ -53,7 +53,6 @@ function NavigationHandler() {
     // 📱 LÓGICA NATIVA (Android/iOS)
     if (isNative) {
       const handleNotificationClick = (event) => {
-        // Obtenemos los datos sin importar si vienen anidados
         const data = event.notification.additionalData;
         console.log("DEBUG NOTIF NATIVA:", data);
 
@@ -64,10 +63,7 @@ function NavigationHandler() {
 
         const route = data?.route;
         if (route) {
-          // ✅ FIX: Aseguramos que la ruta empiece con "/"
           const finalRoute = route.startsWith('/') ? route : `/${route}`;
-          
-          // ✅ FIX TIMING: Delay para que el Router esté listo
           setTimeout(() => {
             console.log("Navegando a:", finalRoute);
             navigate(finalRoute);
@@ -112,7 +108,7 @@ function NavigationHandler() {
       OneSignalWeb.Notifications.addEventListener("click", handleWebClick);
       return () => OneSignalWeb.Notifications.removeEventListener("click", handleWebClick);
     }
-  }, [navigate, location.pathname, isNative]); // Escuchamos cambios de path
+  }, [navigate, location.pathname, isNative]);
 
   return null;
 }
@@ -152,7 +148,7 @@ export default function App() {
     return () => unsubscribe();
   }, [isNative]);
 
-  // 2. SINCRONIZACIÓN DE PERFIL Y LOGIN NOTIFICACIONES
+  // 2. SINCRONIZACIÓN DE PERFIL
   const syncMaster = async (currentUser) => {
     try {
       const userRef = doc(db, 'users', currentUser.uid);
@@ -169,7 +165,6 @@ export default function App() {
         });
       }
 
-      // Login en OneSignal con el UID de Firebase para segmentación personalizada
       if (isNative) {
         OneSignal.login(currentUser.uid);
       } else {
@@ -189,14 +184,18 @@ export default function App() {
 
   return (
     <HashRouter>
-      {/* El NavigationHandler debe estar DENTRO del Router pero antes de las Routes */}
       <NavigationHandler /> 
       <Toaster richColors position="top-center" expand={false} />
       
       <Routes>
+        {/* 🔓 RUTAS PÚBLICAS */}
         <Route path="/login" element={!user ? <Login /> : <Navigate to="/" replace />} />
         <Route path="/ofrendar" element={<Ofrendar />} /> 
         
+        {/* 🧙‍♂️ RUTA MÁGICA DE DEMO (Salió del Layout para funcionar 100%) */}
+        <Route path="/demo-control" element={<PresentationPanel />} />
+
+        {/* 🔐 RUTAS PROTEGIDAS CON LAYOUT (MENÚ INFERIOR) */}
         <Route element={user ? <MainLayout /> : <Navigate to="/login" replace />}>
           <Route index element={<Home />} />
           <Route path="post/:postId" element={<PostDetail />} />
@@ -218,8 +217,6 @@ export default function App() {
           <Route path="estudio/:id/nueva-clase" element={<CreateLesson />} />
           <Route path="estudio/:id/editar-clase/:lessonId" element={<CreateLesson />} />
           <Route path="estudio/clase/:lessonId" element={<LessonView />} />
-
-	  <Route path="/demo-control" element={<PresentationPanel />} />
         </Route>
         
         <Route path="*" element={<Navigate to="/" replace />} />
