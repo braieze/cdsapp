@@ -60,30 +60,42 @@ export default function CreateLesson() {
 
   // ✅ FUNCIÓN PARA ENVIAR NOTIFICACIÓN PUSH
   const sendLessonNotification = async (studyTitle) => {
-    try {
-      const payload = {
-        app_id: ONESIGNAL_APP_ID,
-        included_segments: ["Total Subscriptions"],
-        headings: { es: "🎬 ¡Nuevo Capítulo Disponible!" },
-        contents: { es: `${lessonData.title} - Se creó un nuevo capítulo de la serie: ${studyTitle}` },
-        data: { route: `/estudio/${id}` }, // Deep linking al detalle de la serie
-        large_icon: "https://cdsapp.vercel.app/logo.png",
-        priority: 10,
-        android_accent_color: "FF0000"
-      };
+  try {
+    const payload = {
+      app_id: ONESIGNAL_APP_ID,
+      included_segments: ["Total Subscriptions"],
+      // ✅ IMPORTANTE: Agregar siempre 'en' además de 'es'
+      headings: { 
+        en: "🎬 ¡Nuevo Capítulo Disponible!", 
+        es: "🎬 ¡Nuevo Capítulo Disponible!" 
+      },
+      contents: { 
+        en: `${lessonData.title} - Se creó un nuevo capítulo de la serie: ${studyTitle}`,
+        es: `${lessonData.title} - Se creó un nuevo capítulo de la serie: ${studyTitle}`
+      },
+      data: { route: `/estudio/${id}` },
+      large_icon: "https://cdsapp.vercel.app/logo.png",
+      priority: 10,
+      android_accent_color: "FF0000"
+    };
 
-      await fetch("https://onesignal.com/api/v1/notifications", {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json; charset=utf-8", 
-          "Authorization": `Basic ${REST_API_KEY}` 
-        },
-        body: JSON.stringify(payload)
-      });
-    } catch (e) {
-      console.error("Error enviando push de clase:", e);
+    const response = await fetch("https://onesignal.com/api/v1/notifications", {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json; charset=utf-8", 
+        "Authorization": `Basic ${REST_API_KEY}` 
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("Detalle del error OneSignal:", errorData);
     }
-  };
+  } catch (e) {
+    console.error("Error enviando push:", e);
+  }
+};
 
   const handleGalleryUpload = async (e) => {
     const files = Array.from(e.target.files);
