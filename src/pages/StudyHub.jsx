@@ -2,12 +2,12 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { db, auth } from '../firebase';
 import { 
-  collection, query, onSnapshot, orderBy, where 
+  collection, query, onSnapshot, orderBy, where, getDocs // ✅ Añadido getDocs para el conteo real
 } from 'firebase/firestore';
 import { 
   BookOpen, Play, CheckCircle, TrendingUp, Plus, 
   ChevronRight, GraduationCap, Loader2, Star, Clock, User,
-  Search, Filter, Tag, X // ✅ Nuevos iconos
+  Search, Filter, Tag, X 
 } from 'lucide-react';
 
 export default function StudyHub() {
@@ -25,17 +25,33 @@ export default function StudyHub() {
 
   const categories = ["Todas", "Estudios Bíblicos", "Colaboradores", "Profético", "Jóvenes", "Matrimonios", "Liderazgo"];
 
-  // 1. CARGAR LAS SERIES
+  // 1. CARGAR LAS SERIES CON CONTEO REAL (Fix Punto 1)
   useEffect(() => {
     const q = query(collection(db, 'studies'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setStudies(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    
+    // Escuchamos las series
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const studiesData = [];
+      
+      // 🎯 FIX: En lugar de confiar en study.lessonCount, contamos los docs reales en 'lessons'
+      for (const docSnap of snapshot.docs) {
+        const study = { id: docSnap.id, ...docSnap.data() };
+        const lessonsQ = query(collection(db, 'lessons'), where('studyId', '==', study.id));
+        const lessonsSnap = await getDocs(lessonsQ);
+        studiesData.push({ 
+          ...study, 
+          realLessonCount: lessonsSnap.size // Este es el número real infalible
+        });
+      }
+      
+      setStudies(studiesData);
       setLoading(false);
     });
+    
     return () => unsubscribe();
   }, []);
 
-  // 2. CARGAR PROGRESO REAL DEL USUARIO (Sincronización Total)
+  // 2. CARGAR PROGRESO REAL DEL USUARIO
   useEffect(() => {
     if (!currentUser) return;
     const q = query(collection(db, 'userProgress'), where('userId', '==', currentUser.uid));
@@ -59,23 +75,23 @@ export default function StudyHub() {
     });
   }, [studies, searchTerm, selectedCategory]);
 
-  // 4. CÁLCULO DE PROGRESO REAL (Punto 3 del Plan)
+  // 4. CÁLCULO DE PROGRESO REAL (Sincronizado con conteo real)
   const calculateProgress = (studyId, totalLessons) => {
     const progress = userProgress[studyId];
     if (!progress || !totalLessons || totalLessons === 0) return 0;
-    // Solo contamos las clases aprobadas para el progreso
+    // Solo contamos las clases que tienen nota registrada
     const completed = progress.completedLessons?.length || 0;
     return Math.round((completed / totalLessons) * 100);
   };
 
-  // 5. ENCONTRAR ÚLTIMA SERIE VISTA (Para el banner superior)
+  // 5. ENCONTRAR ÚLTIMA SERIE VISTA
   const lastStudy = useMemo(() => {
     const active = Object.values(userProgress).sort((a,b) => b.updatedAt?.seconds - a.updatedAt?.seconds)[0];
     return active ? studies.find(s => s.id === active.studyId) : null;
   }, [userProgress, studies]);
 
   return (
-    <div className="pb-40 pt-6 bg-slate-50 min-h-screen animate-fade-in font-outfit text-left">
+    <div className="pb-40 pt-6 bg-slate-50 min-h-screen animate-fade-in font-outfit text-left relative overflow-x-hidden">
       
       {/* HEADER */}
       <div className="px-6 flex justify-between items-center mb-8">
@@ -111,7 +127,7 @@ export default function StudyHub() {
         </div>
       </div>
 
-      {/* BUSCADOR Y FILTROS (Fase 3) */}
+      {/* BUSCADOR Y FILTROS */}
       <div className="px-6 mb-8 space-y-4">
          <div className="relative group">
             <Search className="absolute left-5 top-5 text-slate-300 group-focus-within:text-brand-500 transition-colors" size={20}/>
@@ -161,14 +177,14 @@ export default function StudyHub() {
         ) : (
           <div className="space-y-8">
             {filteredStudies.map((study) => {
-              const progress = calculateProgress(study.id, study.lessonCount);
+              // 🎯 Usamos el conteo real aquí
+              const progress = calculateProgress(study.id, study.realLessonCount);
               return (
                 <div 
                   key={study.id}
                   onClick={() => navigate(`/estudio/${study.id}`)}
                   className="bg-white rounded-[45px] border-2 border-white shadow-sm overflow-hidden active:scale-[0.98] transition-all cursor-pointer group"
                 >
-                  {/* Portada */}
                   <div className="h-48 w-full bg-slate-200 relative overflow-hidden">
                     <img 
                       src={study.coverImage || "https://images.unsplash.com/photo-1504052434139-441ae7420e92?auto=format&fit=crop"} 
@@ -176,7 +192,7 @@ export default function StudyHub() {
                       alt="Cover"
                     />
                     <div className="absolute top-4 left-4 bg-slate-900/80 backdrop-blur-md px-4 py-2 rounded-2xl text-white text-[9px] font-black uppercase flex items-center gap-2">
-                      <BookOpen size={12} className="text-brand-400" /> {study.lessonCount || 0} Capítulos
+                      <BookOpen size={12} className="text-brand-400" /> {study.realLessonCount || 0} Capítulos
                     </div>
                     {study.category && (
                       <div className="absolute bottom-4 left-4 bg-brand-500/90 backdrop-blur-md px-3 py-1.5 rounded-xl text-white text-[8px] font-black uppercase flex items-center gap-1 shadow-lg">
@@ -206,13 +222,11 @@ export default function StudyHub() {
                           <p className="text-[11px] font-black text-slate-800 uppercase">{study.instructorName}</p>
                         </div>
                       </div>
-                      
                       <div className="bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-xl text-[8px] font-black uppercase flex items-center gap-1">
                         <CheckCircle size={10} fill="currentColor" className="text-white" /> Oficial
                       </div>
                     </div>
 
-                    {/* ✅ BARRA DE PROGRESO REAL (Arreglada) */}
                     <div className="mt-8 space-y-2">
                       <div className="flex justify-between items-end">
                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Mi Avance Académico</span>
@@ -233,11 +247,11 @@ export default function StudyHub() {
         )}
       </div>
 
-      {/* BOTÓN PASTOR */}
+      {/* ✅ BOTÓN PASTOR CORREGIDO (Z-Index y posición) */}
       {(dbUser?.role === 'pastor' || dbUser?.role === 'lider') && (
         <button 
           onClick={() => navigate('/estudio/crear')}
-          className="fixed bottom-10 right-6 w-16 h-16 bg-slate-900 text-white rounded-[24px] shadow-2xl flex items-center justify-center active:scale-90 transition-all z-40 border-4 border-white"
+          className="fixed bottom-10 right-6 w-16 h-16 bg-slate-900 text-white rounded-[24px] shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex items-center justify-center active:scale-90 transition-all z-[60] border-4 border-white"
         >
           <Plus size={32} />
         </button>

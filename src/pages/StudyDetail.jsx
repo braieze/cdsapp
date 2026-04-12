@@ -22,14 +22,14 @@ export default function StudyDetail() {
   const [studentsProgress, setStudentsProgress] = useState([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState('lessons'); 
-  const [selectedStudentId, setSelectedStudentId] = useState(null); // Guardamos el ID para mantenerlo real-time
+  const [selectedStudentId, setSelectedStudentId] = useState(null);
 
   const isPastor = dbUser?.role === 'pastor';
   const isInstructor = isPastor || dbUser?.role === 'lider';
 
   useEffect(() => {
     const fetchStudyData = async () => {
-      // 1. Escuchar la Serie (para el lessonCount real)
+      // 1. Escuchar la Serie
       const unsubStudy = onSnapshot(doc(db, 'studies', id), (snap) => {
         if (snap.exists()) setStudy({ id: snap.id, ...snap.data() });
         else navigate('/estudio');
@@ -45,7 +45,7 @@ export default function StudyDetail() {
         setLessons(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       });
 
-      // 3. Cargar progreso de alumnos (Real-time)
+      // 3. Cargar progreso de todos los alumnos
       const progressQ = query(collection(db, 'userProgress'), where('studyId', '==', id));
       const unsubProgress = onSnapshot(progressQ, (snap) => {
         setStudentsProgress(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -57,7 +57,13 @@ export default function StudyDetail() {
     fetchStudyData();
   }, [id, navigate]);
 
-  // ✅ ESTADÍSTICAS REALES (Sincronizadas con la lógica de Aprobación)
+  // ✅ FUENTE DE VERDAD PARA EL ALUMNO SELECCIONADO
+  const selectedStudent = useMemo(() => 
+    studentsProgress.find(s => s.userId === selectedStudentId),
+    [studentsProgress, selectedStudentId]
+  );
+
+  // ✅ ESTADÍSTICAS REALES
   const stats = useMemo(() => {
     if (studentsProgress.length === 0) return { avg: 0, completed: 0 };
     let totalSum = 0;
@@ -71,9 +77,9 @@ export default function StudyDetail() {
           count++;
         });
       }
-      // Un alumno está graduado si aprobó todas las clases existentes
-      const approvedCount = Object.values(p.grades || {}).filter(g => g >= 7).length;
-      if (approvedCount >= lessons.length && lessons.length > 0) completedCount++;
+      // Un alumno aprobó la serie si tiene tantas notas aprobadas como clases existen
+      const approvedOnes = Object.values(p.grades || {}).filter(g => g >= 7).length;
+      if (approvedOnes >= lessons.length && lessons.length > 0) completedCount++;
     });
 
     return {
@@ -82,17 +88,12 @@ export default function StudyDetail() {
     };
   }, [studentsProgress, lessons]);
 
-  // ✅ BUSCAR ALUMNO SELECCIONADO EN TIEMPO REAL
-  const selectedStudent = useMemo(() => 
-    studentsProgress.find(s => s.userId === selectedStudentId),
-    [studentsProgress, selectedStudentId]
-  );
-
   const handleDeleteLesson = async (lessonId, e) => {
     e.stopPropagation();
-    if (!window.confirm("¿Eliminar clase? Se actualizará el contador de la serie.")) return;
+    if (!window.confirm("¿Eliminar clase?")) return;
     try {
       await deleteDoc(doc(db, 'lessons', lessonId));
+      // Actualizamos el contador manual por si acaso, aunque la UI ahora usa lessons.length
       await updateDoc(doc(db, 'studies', id), { lessonCount: increment(-1) });
       toast.success("Clase eliminada");
     } catch (e) { toast.error("Error al eliminar"); }
@@ -145,12 +146,13 @@ export default function StudyDetail() {
         </div>
       )}
 
-      {/* VISTA 1: LISTADO DE CLASES (Alumno / Instructor) */}
+      {/* VISTA 1: CLASES */}
       {viewMode === 'lessons' ? (
         <div className="px-6 space-y-4 animate-slide-up">
           <div className="flex justify-between items-center px-2 mb-2">
              <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Plan de Estudio</h3>
-             <span className="text-[10px] font-bold text-brand-600 bg-brand-50 px-3 py-1 rounded-full uppercase">{study.lessonCount || 0} Clases</span>
+             {/* ✅ FIX CONTADOR: Usamos lessons.length en lugar del dato de la serie */}
+             <span className="text-[10px] font-bold text-brand-600 bg-brand-50 px-3 py-1 rounded-full uppercase">{lessons.length} Capítulos</span>
           </div>
           {lessons.map((lesson, index) => {
             const userProg = studentsProgress.find(p => p.userId === auth.currentUser?.uid);
@@ -162,12 +164,12 @@ export default function StudyDetail() {
             return (
               <div key={lesson.id} onClick={() => !isLocked && navigate(`/estudio/clase/${lesson.id}`)} className={`bg-white p-6 rounded-[35px] border-2 transition-all flex items-center gap-5 relative ${isLocked ? 'opacity-50 grayscale' : 'active:scale-95 cursor-pointer border-white shadow-sm'}`}>
                 <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border-2 
-                  ${isLocked ? 'bg-slate-100 text-slate-300 border-slate-100' : 
+                  ${isLocked ? 'bg-slate-100 text-slate-300' : 
                     isCompleted ? (isPassed ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100') : 
                     'bg-brand-50 text-brand-600 border-brand-100'}`}>
                   {isLocked ? <Lock size={20}/> : 
                    isCompleted ? (isPassed ? <CheckCircle size={22} /> : <AlertCircle size={22} />) : 
-                   <span className="font-black text-lg">{lesson.order}</span>}
+                   <span className="font-black text-lg">{lesson.order || index + 1}</span>}
                 </div>
                 <div className="flex-1 min-w-0">
                   <h4 className="font-black text-slate-800 text-sm uppercase truncate mb-1">{lesson.title}</h4>
@@ -186,7 +188,7 @@ export default function StudyDetail() {
           })}
         </div>
       ) : (
-        /* VISTA 2: EL OJO DEL PASTOR (LISTA DE ALUMNOS) */
+        /* VISTA 2: ANALÍTICAS */
         <div className="px-6 space-y-6 animate-slide-up">
            <div className="bg-slate-900 rounded-[35px] p-8 text-white relative overflow-hidden shadow-2xl">
             <div className="relative z-10 flex flex-col gap-6">
@@ -203,22 +205,16 @@ export default function StudyDetail() {
           </div>
 
           <div className="space-y-3">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Progreso de Alumnos</p>
             {studentsProgress.map((p) => {
-              const perc = ((p.completedLessons?.length || 0) / (lessons.length || 1)) * 100;
-              return (
+               const finishedClasses = Object.keys(p.grades || {}).length;
+               return (
                 <div key={p.id} onClick={() => setSelectedStudentId(p.userId)} className="bg-white p-5 rounded-[30px] border-2 border-white shadow-sm flex items-center gap-4 active:scale-95 transition-all cursor-pointer">
-                  <div className="w-12 h-12 rounded-2xl overflow-hidden shrink-0 border-2 border-slate-50 bg-slate-100">
+                  <div className="w-12 h-12 rounded-2xl overflow-hidden shrink-0 border-2 border-slate-50 bg-slate-100 shadow-sm">
                     <img src={p.userPhoto || `https://ui-avatars.com/api/?name=${p.userName}`} className="w-full h-full object-cover" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <h4 className="font-black text-slate-800 text-xs uppercase truncate">{p.userName}</h4>
-                    <div className="flex items-center gap-2 mt-2">
-                       <div className="h-1 flex-1 bg-slate-50 rounded-full overflow-hidden border border-slate-100">
-                          <div className="h-full bg-brand-500 transition-all duration-1000" style={{width: `${perc}%`}}></div>
-                       </div>
-                       <span className="text-[8px] font-black text-slate-400">{Math.round(perc)}%</span>
-                    </div>
+                    <p className="text-[9px] font-black text-slate-400 uppercase mt-1">{finishedClasses} / {lessons.length} Clases hechas</p>
                   </div>
                   <ChevronRight size={18} className="text-slate-200" />
                 </div>
@@ -228,7 +224,7 @@ export default function StudyDetail() {
         </div>
       )}
 
-      {/* 🛡️ MODAL: AUDITORÍA DETALLADA (Ojo del Pastor Pro) */}
+      {/* 🛡️ MODAL: AUDITORÍA (Sincronizado) */}
       {selectedStudent && (
         <div className="fixed inset-0 z-[200] bg-slate-900/90 backdrop-blur-md flex items-end justify-center">
           <div className="bg-white w-full max-w-md rounded-t-[50px] animate-slide-up max-h-[90vh] flex flex-col relative border-t-4 border-brand-500 shadow-2xl">
@@ -243,8 +239,9 @@ export default function StudyDetail() {
                 </div>
                 <h3 className="font-black text-slate-900 uppercase text-lg text-center leading-none mt-2">{selectedStudent.userName}</h3>
                 <div className="flex gap-2 mt-4">
-                  <span className="px-4 py-1.5 bg-slate-900 text-white text-[9px] font-black rounded-xl uppercase shadow-lg shadow-slate-900/20">Alumno</span>
-                  <span className="px-4 py-1.5 bg-brand-50 text-brand-600 text-[9px] font-black rounded-xl uppercase tracking-tighter border border-brand-100">
+                  <span className="px-4 py-1.5 bg-slate-900 text-white text-[9px] font-black rounded-xl uppercase">Alumno</span>
+                  {/* ✅ SINCRO: Calculamos el largo de grades directamente */}
+                  <span className="px-4 py-1.5 bg-brand-50 text-brand-600 text-[9px] font-black rounded-xl uppercase">
                     {Object.keys(selectedStudent.grades || {}).length} Clases Realizadas
                   </span>
                 </div>
@@ -269,32 +266,20 @@ export default function StudyDetail() {
                           </div>
                        </div>
                        
-                       {/* 🎯 DESGLOSE DE RESPUESTAS (Punto 1 solicitado) */}
                        {details && (
                          <div className="space-y-3 mt-4 pt-4 border-t border-slate-100">
-                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2"><Search size={12}/> Auditoría de Examen:</p>
                             {l.quiz.questions.map((q, qIdx) => {
                               const userAnswerIdx = details[qIdx];
                               const isCorrect = userAnswerIdx === q.correctAnswer;
                               return (
-                                <div key={qIdx} className={`p-4 rounded-3xl border ${isCorrect ? 'bg-emerald-50/40 border-emerald-50' : 'bg-rose-50/40 border-rose-50'}`}>
-                                   <div className="flex gap-3 items-start mb-2">
-                                      {isCorrect ? <CheckCircle size={16} className="text-emerald-500 shrink-0 mt-0.5"/> : <AlertCircle size={16} className="text-rose-500 shrink-0 mt-0.5"/>}
+                                <div key={qIdx} className={`p-3 rounded-2xl border ${isCorrect ? 'bg-emerald-50/20 border-emerald-50' : 'bg-rose-50/20 border-rose-50'}`}>
+                                   <div className="flex gap-2 items-start mb-1">
+                                      {isCorrect ? <CheckCircle size={14} className="text-emerald-500 mt-0.5"/> : <AlertCircle size={14} className="text-rose-500 mt-0.5"/>}
                                       <p className="text-[10px] font-bold text-slate-700 leading-tight">{q.text}</p>
                                    </div>
-                                   <div className="pl-7 space-y-1">
-                                      <p className={`text-[9px] font-black uppercase ${isCorrect ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                        Respuesta Alumno: <span className="font-medium text-slate-600">{q.options[userAnswerIdx] || 'No respondió'}</span>
-                                      </p>
-                                      {!isCorrect && (
-                                        <div className="flex items-center gap-1">
-                                          <CheckCircle size={10} className="text-emerald-500"/>
-                                          <p className="text-[9px] font-black text-emerald-600 uppercase">
-                                            La correcta era: <span className="font-medium text-slate-600">{q.options[q.correctAnswer]}</span>
-                                          </p>
-                                        </div>
-                                      )}
-                                   </div>
+                                   <p className={`text-[9px] font-black uppercase pl-6 ${isCorrect ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                      Tú: {q.options[userAnswerIdx] || 'N/A'}
+                                   </p>
                                 </div>
                               );
                             })}
@@ -308,9 +293,12 @@ export default function StudyDetail() {
         </div>
       )}
 
-      {/* BOTÓN FLOTANTE */}
+      {/* ✅ FIX BOTÓN MÁS: Posición fija y Z-Index alto */}
       {isInstructor && viewMode === 'lessons' && (
-        <button onClick={() => navigate(`/estudio/${id}/nueva-clase`)} className="fixed bottom-28 right-6 w-16 h-16 bg-slate-900 text-white rounded-[24px] shadow-2xl flex items-center justify-center active:scale-90 transition-all z-40 border-4 border-white">
+        <button 
+          onClick={() => navigate(`/estudio/${id}/nueva-clase`)} 
+          className="fixed bottom-10 right-6 w-16 h-16 bg-slate-900 text-white rounded-[24px] shadow-2xl flex items-center justify-center active:scale-90 transition-all z-[60] border-4 border-white"
+        >
           <Plus size={28} />
         </button>
       )}

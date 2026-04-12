@@ -24,11 +24,11 @@ export default function CreateLesson() {
     title: '',
     videoUrl: '',
     pdfUrl: '',
-    introduction: '', // Nuevo: Texto largo
+    introduction: '', 
     duration: '',
-    order: 1, // Se calculará automático
-    externalLink: { name: '', url: '', description: '' }, // Nuevo: Link extra
-    gallery: [], // Nuevo: Array de fotos
+    order: 1, 
+    externalLink: { name: '', url: '', description: '' }, 
+    gallery: [], 
     quiz: {
       questions: [
         { text: '', options: ['', '', '', ''], correctAnswer: 0 }
@@ -40,15 +40,16 @@ export default function CreateLesson() {
   const CLOUD_NAME = "djmkggzjp"; 
   const UPLOAD_PRESET = "ml_default"; 
 
-  // 1. CARGAR DATOS (Auto-orden o Edición)
+  // ✅ CLAVES DE ONESIGNAL (Mismas de TopBar)
+  const ONESIGNAL_APP_ID = "742a62cd-6d15-427f-8bab-5b8759fabd0a";
+  const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
+
   useEffect(() => {
     const fetchData = async () => {
       if (lessonId) {
-        // MODO EDICIÓN
         const lSnap = await getDoc(doc(db, 'lessons', lessonId));
         if (lSnap.exists()) setLessonData({ ...lSnap.data() });
       } else {
-        // MODO NUEVO: Calcular orden automático
         const q = query(collection(db, 'lessons'), where('studyId', '==', id));
         const snap = await getDocs(q);
         setLessonData(prev => ({ ...prev, order: snap.size + 1 }));
@@ -57,14 +58,38 @@ export default function CreateLesson() {
     fetchData();
   }, [id, lessonId]);
 
-  // 2. GESTIÓN DE GALERÍA DE IMÁGENES
+  // ✅ FUNCIÓN PARA ENVIAR NOTIFICACIÓN PUSH
+  const sendLessonNotification = async (studyTitle) => {
+    try {
+      const payload = {
+        app_id: ONESIGNAL_APP_ID,
+        included_segments: ["Total Subscriptions"],
+        headings: { es: "🎬 ¡Nuevo Capítulo Disponible!" },
+        contents: { es: `${lessonData.title} - Se creó un nuevo capítulo de la serie: ${studyTitle}` },
+        data: { route: `/estudio/${id}` }, // Deep linking al detalle de la serie
+        large_icon: "https://cdsapp.vercel.app/logo.png",
+        priority: 10,
+        android_accent_color: "FF0000"
+      };
+
+      await fetch("https://onesignal.com/api/v1/notifications", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json; charset=utf-8", 
+          "Authorization": `Basic ${REST_API_KEY}` 
+        },
+        body: JSON.stringify(payload)
+      });
+    } catch (e) {
+      console.error("Error enviando push de clase:", e);
+    }
+  };
+
   const handleGalleryUpload = async (e) => {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
-    
     setUploading(true);
     const newImages = [];
-    
     try {
       for (const file of files) {
         const options = { maxSizeMB: 0.5, maxWidthOrHeight: 1000, useWebWorker: true };
@@ -72,21 +97,13 @@ export default function CreateLesson() {
         const data = new FormData();
         data.append("file", compressedFile);
         data.append("upload_preset", UPLOAD_PRESET);
-        
-        const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { 
-          method: "POST", 
-          body: data 
-        });
+        const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { method: "POST", body: data });
         const fileData = await res.json();
         newImages.push(fileData.secure_url);
       }
       setLessonData(prev => ({ ...prev, gallery: [...prev.gallery, ...newImages] }));
       toast.success(`${newImages.length} fotos añadidas`);
-    } catch (error) {
-      toast.error("Error al subir imágenes");
-    } finally {
-      setUploading(false);
-    }
+    } catch (error) { toast.error("Error al subir imágenes"); } finally { setUploading(false); }
   };
 
   const removeGalleryImage = (idx) => {
@@ -94,15 +111,8 @@ export default function CreateLesson() {
     setLessonData({ ...lessonData, gallery: filtered });
   };
 
-  // 3. LOGICA DEL QUIZ (Mantenida y mejorada)
   const handleAddQuestion = () => {
-    setLessonData({
-      ...lessonData,
-      quiz: {
-        ...lessonData.quiz,
-        questions: [...lessonData.quiz.questions, { text: '', options: ['', '', '', ''], correctAnswer: 0 }]
-      }
-    });
+    setLessonData({ ...lessonData, quiz: { ...lessonData.quiz, questions: [...lessonData.quiz.questions, { text: '', options: ['', '', '', ''], correctAnswer: 0 }] } });
   };
 
   const handleRemoveQuestion = (index) => {
@@ -122,7 +132,6 @@ export default function CreateLesson() {
     setLessonData({ ...lessonData, quiz: { ...lessonData.quiz, questions: newQuestions } });
   };
 
-  // 4. GUARDAR CAMBIOS
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!lessonData.title || !lessonData.videoUrl) return toast.warning("Título y Video obligatorios");
@@ -130,29 +139,26 @@ export default function CreateLesson() {
     setLoading(true);
     try {
       if (lessonId) {
-        // ACTUALIZAR
-        await updateDoc(doc(db, 'lessons', lessonId), {
-          ...lessonData,
-          updatedAt: serverTimestamp()
-        });
+        await updateDoc(doc(db, 'lessons', lessonId), { ...lessonData, updatedAt: serverTimestamp() });
         toast.success("Clase actualizada");
       } else {
-        // CREAR NUEVA
-        await addDoc(collection(db, 'lessons'), {
-          ...lessonData,
-          studyId: id,
-          createdAt: serverTimestamp()
-        });
-        // Actualizar contador en la serie
+        // 1. Añadimos la clase
+        await addDoc(collection(db, 'lessons'), { ...lessonData, studyId: id, createdAt: serverTimestamp() });
+        
+        // 2. Actualizamos el contador en la serie
         await updateDoc(doc(db, 'studies', id), { lessonCount: increment(1) });
-        toast.success("Clase creada");
+
+        // 3. Obtenemos el nombre de la serie para la notificación
+        const studySnap = await getDoc(doc(db, 'studies', id));
+        const studyTitle = studySnap.exists() ? studySnap.data().title : "la Academia";
+
+        // 4. DISPARAMOS NOTIFICACIÓN
+        await sendLessonNotification(studyTitle);
+        
+        toast.success("Clase publicada y notificación enviada");
       }
       navigate(`/estudio/${id}`);
-    } catch (error) {
-      toast.error("Error al guardar");
-    } finally {
-      setLoading(false);
-    }
+    } catch (error) { toast.error("Error al guardar"); } finally { setLoading(false); }
   };
 
   return (
@@ -165,8 +171,6 @@ export default function CreateLesson() {
       </div>
 
       <form onSubmit={handleSubmit} className="px-6 space-y-6">
-        
-        {/* SECCIÓN 1: CONTENIDO PRINCIPAL */}
         <div className="bg-white p-7 rounded-[40px] shadow-sm border border-slate-100 space-y-6">
           <div className="space-y-1">
             <label className="text-[10px] font-black text-brand-600 uppercase tracking-widest ml-2">Título de la Clase</label>
@@ -193,7 +197,6 @@ export default function CreateLesson() {
           </div>
         </div>
 
-        {/* SECCIÓN 2: MULTIMEDIA Y LINKS */}
         <div className="bg-white p-7 rounded-[40px] shadow-sm border border-slate-100 space-y-6">
           <div className="space-y-1">
             <label className="text-[10px] font-black text-red-500 uppercase tracking-widest ml-2 flex items-center gap-2"><Play size={12}/> Link Video (YouTube)</label>
@@ -205,7 +208,6 @@ export default function CreateLesson() {
             <input className="w-full p-4 bg-slate-50 rounded-2xl font-bold text-xs outline-none" placeholder="Pega el link del PDF (Drive/Dropbox)..." value={lessonData.pdfUrl} onChange={e => setLessonData({...lessonData, pdfUrl: e.target.value})} />
           </div>
 
-          {/* GALERÍA DE FOTOS (Nuevo) */}
           <div className="space-y-3">
             <label className="text-[10px] font-black text-emerald-600 uppercase tracking-widest ml-2 flex items-center gap-2"><ImageIcon size={12}/> Galería de Imágenes Extras</label>
             <div className="flex flex-wrap gap-3">
@@ -222,7 +224,6 @@ export default function CreateLesson() {
             </div>
           </div>
 
-          {/* LINK EXTERNO EXTRA (Nuevo) */}
           <div className="pt-4 border-t border-slate-50 space-y-4">
              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 flex items-center gap-2"><LinkIcon size={12}/> Recurso Web Externo</label>
              <input className="w-full p-4 bg-slate-50 rounded-2xl font-bold text-xs outline-none" placeholder="Nombre del recurso (Ej: Biblia Online)" value={lessonData.externalLink.name} onChange={e => setLessonData({...lessonData, externalLink: {...lessonData.externalLink, name: e.target.value}})} />
@@ -230,7 +231,6 @@ export default function CreateLesson() {
           </div>
         </div>
 
-        {/* CONSTRUCTOR DE EXAMEN */}
         <div className="space-y-4">
           <div className="flex justify-between items-center px-4">
             <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Evaluación de la Clase</h3>
@@ -242,7 +242,6 @@ export default function CreateLesson() {
           {lessonData.quiz.questions.map((q, qIdx) => (
             <div key={qIdx} className="bg-white p-7 rounded-[40px] border-2 border-white shadow-sm space-y-5 relative animate-scale-in">
               <button type="button" onClick={() => handleRemoveQuestion(qIdx)} className="absolute top-6 right-6 text-rose-300 hover:text-rose-500 transition-colors"><Trash2 size={20}/></button>
-              
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <span className="w-6 h-6 bg-slate-900 text-white text-[10px] rounded-full flex items-center justify-center font-black">{qIdx + 1}</span>
@@ -250,17 +249,11 @@ export default function CreateLesson() {
                 </div>
                 <input className="w-full p-4 bg-slate-50 rounded-2xl font-bold text-sm outline-none border-2 border-transparent focus:border-slate-200" placeholder="Escribe la pregunta..." value={q.text} onChange={e => handleQuestionChange(qIdx, 'text', e.target.value)} />
               </div>
-
               <div className="space-y-3">
                 <p className="text-[9px] font-black text-slate-300 uppercase mb-1">Opciones de respuesta</p>
                 {q.options.map((opt, oIdx) => (
                   <div key={oIdx} className="flex items-center gap-3">
-                    <button 
-                      type="button"
-                      onClick={() => handleQuestionChange(qIdx, 'correctAnswer', oIdx)}
-                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border-2 transition-all
-                      ${q.correctAnswer === oIdx ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg' : 'bg-slate-50 border-slate-100 text-slate-300'}`}
-                    >
+                    <button type="button" onClick={() => handleQuestionChange(qIdx, 'correctAnswer', oIdx)} className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border-2 transition-all ${q.correctAnswer === oIdx ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg' : 'bg-slate-50 border-slate-100 text-slate-300'}`}>
                       {q.correctAnswer === oIdx ? <CheckCircle2 size={20}/> : <div className="w-3 h-3 rounded-full border-2 border-slate-200"></div>}
                     </button>
                     <input className="flex-1 p-3 bg-slate-50 rounded-xl font-bold text-xs outline-none" placeholder={`Opción ${oIdx + 1}`} value={opt} onChange={e => handleOptionChange(qIdx, oIdx, e.target.value)} />
@@ -271,11 +264,7 @@ export default function CreateLesson() {
           ))}
         </div>
 
-        <button 
-          type="submit"
-          disabled={loading || uploading}
-          className="w-full bg-slate-900 text-white font-black py-6 rounded-[35px] shadow-2xl flex items-center justify-center gap-3 uppercase text-xs tracking-[0.3em] active:scale-95 transition-all disabled:opacity-50"
-        >
+        <button type="submit" disabled={loading || uploading} className="w-full bg-slate-900 text-white font-black py-6 rounded-[35px] shadow-2xl flex items-center justify-center gap-3 uppercase text-xs tracking-[0.3em] active:scale-95 transition-all disabled:opacity-50">
           {loading ? <Loader2 className="animate-spin" size={20}/> : <><Save size={20}/> {lessonId ? 'Guardar Cambios' : 'Publicar Clase'}</>}
         </button>
       </form>
