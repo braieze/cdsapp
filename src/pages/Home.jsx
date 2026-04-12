@@ -6,8 +6,7 @@ import {
   PlusCircle, AlertTriangle, Calendar, Heart, Send, 
   AlertCircle, CheckCircle, Flame, HandHeart, ThumbsUp, 
   Archive, ChevronDown, Sparkles, Smile, Frown, Sun, CloudRain, Anchor, HelpCircle,
-  Wallet, Video, Music, GraduationCap, 
-  Briefcase // ✅ Agregado aquí para que no de más error
+  Wallet, Video, Music, GraduationCap, Briefcase // ✅ Importados todos
 } from 'lucide-react';
 import CreatePostModal from '../components/CreatePostModal';
 import TopBar from '../components/TopBar';
@@ -27,17 +26,19 @@ const MOODS = [
   { id: 'Paz', label: 'Paz', icon: Smile, color: 'bg-emerald-500' },
 ];
 
-// --- 💬 SUB-COMPONENTE: PREVIEW DE COMENTARIOS (Sincronizado) ---
+// --- 💬 SUB-COMPONENTE: PREVIEW DE COMENTARIOS (Fix del 0) ---
 function CommentPreview({ postId, count, onClick }) {
   const [previewComments, setPreviewComments] = useState([]);
   const [realCount, setRealCount] = useState(count); 
   
   useEffect(() => {
     if (!postId) return;
+    
+    // 1. Escuchamos la vista previa (últimos 2)
     const qPreview = query(collection(db, `posts/${postId}/comments`), orderBy('createdAt', 'desc'), limit(2));
     const unsubPreview = onSnapshot(qPreview, (snap) => setPreviewComments(snap.docs.map(d => d.data())));
 
-    // ✅ FIX: Escuchamos el TAMAÑO REAL siempre para evitar el "0" falso
+    // 2. ✅ FIX: Escuchamos el TAMAÑO REAL de la colección para que nunca marque 0 si hay datos
     const unsubCount = onSnapshot(collection(db, `posts/${postId}/comments`), (snap) => {
       setRealCount(snap.size);
     });
@@ -85,12 +86,12 @@ export default function Home() {
   const { dbUser } = useOutletContext();
   const currentUser = auth.currentUser;
   
-  // ✅ DEFINICIÓN DE PERMISOS
+  // ✅ DEFINICIÓN DE PERMISOS (Corregida para evitar ReferenceError)
   const isPastor = dbUser?.role === 'pastor';
   const isLider = dbUser?.role === 'lider';
   const isStaff = isPastor || isLider;
+  const isModerator = isStaff; // ✅ Definido para que el menú de post funcione
   const isAlabanza = dbUser?.area?.toLowerCase() === 'alabanza' || isPastor;
-  const isMultimedia = dbUser?.area?.toLowerCase() === 'multimedia' || isPastor;
   const isMiembro = dbUser?.role === 'miembro';
 
   const canCreatePost = isStaff || dbUser?.area === 'recepcion';
@@ -106,7 +107,7 @@ export default function Home() {
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [editingPost, setEditingPost] = useState(null);
 
-  // ✅ ACCESOS RÁPIDOS FILTRADOS (Punto 2)
+  // ✅ ACCESOS RÁPIDOS FILTRADOS (Dinámicos)
   const quickActions = useMemo(() => {
     const actions = [
       { id: 'ofrendar', label: 'Ofrendar', icon: HandHeart, path: '/ofrendar', color: 'text-rose-600', bg: 'bg-rose-50', visible: true },
@@ -124,7 +125,7 @@ export default function Home() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const postsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      // ✅ FILTRADO DE CONTENIDO PRIVADO
+      // ✅ FILTRADO DE CONTENIDO PRIVADO (Segmentación)
       let finalPosts = postsData;
       if (isMiembro) {
         finalPosts = postsData.filter(p => p.visibility !== 'servidores');
@@ -213,14 +214,10 @@ export default function Home() {
             </div>
           </div>
 
-          {/* ✅ WIDGETS DE ACCESO RÁPIDO (Segmentados) */}
+          {/* WIDGETS DE ACCESO RÁPIDO */}
           <div className="grid grid-cols-4 gap-3">
              {quickActions.map(action => (
-               <button 
-                key={action.id} 
-                onClick={() => navigate(action.path)}
-                className="flex flex-col items-center gap-2 group active:scale-90 transition-all"
-               >
+               <button key={action.id} onClick={() => navigate(action.path)} className="flex flex-col items-center gap-2 group active:scale-90 transition-all">
                  <div className={`w-full aspect-square rounded-[22px] ${action.bg} flex items-center justify-center shadow-sm border-2 border-white`}>
                     <action.icon className={`${action.color}`} size={24} strokeWidth={2.5} />
                  </div>
@@ -285,6 +282,7 @@ export default function Home() {
                 : isOracion ? 'bg-purple-50 border-2 border-purple-100 rounded-[35px] p-1 shadow-sm'
                 : 'bg-white border border-slate-100 rounded-[35px] shadow-sm'
               }`}>
+                
                 {isDevocional ? (
                   <div className="absolute inset-0 w-full h-full" onClick={() => navigate(`/post/${post.id}`)}>
                     {post.image ? <img src={post.image} className="w-full h-full object-cover" alt="Portada" referrerPolicy="no-referrer" /> : <div className="w-full h-full bg-gradient-to-br from-indigo-600 to-brand-900" />}
@@ -299,10 +297,6 @@ export default function Home() {
                        <button className="bg-white text-black py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all">
                          <BookOpen size={16}/> Ver Devocional
                        </button>
-                    </div>
-                    <div className="absolute top-6 left-6 flex items-center gap-3">
-                       <img src={profileImg} className="w-10 h-10 rounded-xl border-2 border-white/30" alt="autor" referrerPolicy="no-referrer" />
-                       <span className="text-white text-[10px] font-black uppercase tracking-widest">{post.authorName.split(' ')[0]}</span>
                     </div>
                   </div>
                 ) : (
@@ -336,11 +330,10 @@ export default function Home() {
                       <h2 className={`text-xl font-black uppercase tracking-tighter leading-tight mb-2 ${isOracion ? 'text-purple-900' : 'text-slate-900'}`}>{post.title}</h2>
                       <div className="text-[14px] text-slate-700 whitespace-pre-wrap leading-relaxed font-medium line-clamp-4">{post.content}</div>
                     </div>
-                    {post.image && !isDevocional && (
-                      <div className="mt-4 -mx-6 bg-slate-100 cursor-pointer overflow-hidden shadow-inner" onClick={() => navigate(`/post/${post.id}`)}>
-                        <img src={post.image} className="w-full h-auto max-h-[400px] object-cover block" loading="lazy" referrerPolicy="no-referrer"/>
-                      </div>
-                    )}
+                    {post.image && <div className="mt-4 -mx-6 bg-slate-100 cursor-pointer overflow-hidden shadow-inner" onClick={() => navigate(`/post/${post.id}`)}>
+                      <img src={post.image} className="w-full h-auto max-h-[400px] object-cover block" loading="lazy" referrerPolicy="no-referrer"/>
+                    </div>}
+                    {/* ✅ PREVIEW DE COMENTARIOS SINCRONIZADO */}
                     <CommentPreview postId={post.id} count={post.commentsCount || 0} onClick={() => navigate(`/post/${post.id}`)} />
                   </div>
                 )}
@@ -349,14 +342,14 @@ export default function Home() {
                   <div className="px-6 py-5 border-t border-slate-100 bg-white/50 rounded-b-[35px]">
                     <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 flex-1 overflow-x-auto no-scrollbar pb-1">
-                           {[ {e: '❤️'}, {e: '🔥'}, {e: '🙏'}, {e: '👍'}].map(item => {
+                           {['❤️', '🔥', '🙏', '👍'].map(e => {
                               const reactions = post.reactions || [];
-                              const count = reactions.filter(r => r.emoji === item.e).length;
-                              const isSelected = reactions.some(r => r.uid === currentUser?.uid && r.emoji === item.e);
+                              const count = reactions.filter(r => r.emoji === e).length;
+                              const isSelected = reactions.some(r => r.uid === currentUser?.uid && r.emoji === e);
                               return (
-                                <button key={item.e} onClick={() => handleReaction(post.id, post.reactions, item.e)} 
+                                <button key={e} onClick={() => handleReaction(post.id, post.reactions, e)} 
                                   className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all active:scale-75 shadow-sm border ${isSelected ? 'bg-slate-900 border-slate-900' : 'bg-white border-slate-100'}`}>
-                                  <span className="text-lg">{item.e}</span>
+                                  <span className="text-lg">{e}</span>
                                   {count > 0 && <span className={`text-[10px] font-black ${isSelected ? 'text-white' : 'text-slate-900'}`}>{count}</span>}
                                 </button>
                               )
@@ -385,7 +378,7 @@ export default function Home() {
 
       {canCreatePost && (
         <button onClick={() => { setEditingPost(null); setIsModalOpen(true); }} 
-          className="fixed bottom-28 right-6 w-16 h-16 bg-slate-900 text-white rounded-[24px] shadow-2xl flex items-center justify-center active:scale-90 z-40 transition-all border-4 border-white">
+          className="fixed bottom-28 right-6 w-16 h-16 bg-slate-900 text-white rounded-[26px] shadow-2xl flex items-center justify-center active:scale-90 z-40 transition-all border-4 border-white">
           <PlusCircle size={32} />
         </button>
       )}
