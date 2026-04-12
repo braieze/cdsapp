@@ -24,22 +24,22 @@ export default function AppsHub() {
 
   // ✅ DEFINICIÓN DE APPS CON SEGMENTACIÓN ESTRICTA (Reglas de Braian)
   const allApps = [
-    // 📅 Agenda: Solo Staff (Pastor y Líderes)
-    { id: 'calendario', name: 'Agenda', icon: Calendar, color: 'text-orange-600', bg: 'bg-orange-50', path: '/calendario', roles: ['pastor', 'lider'] },
+    // 📅 Agenda
+    { id: 'calendario', name: 'Agenda', icon: Calendar, color: 'text-orange-600', bg: 'bg-orange-50', path: '/calendario', roles: ['pastor', 'lider', 'servidor'] },
     
-    // 👥 Directorio: Solo Staff
-    { id: 'directorio', name: 'Directorio', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50', path: '/directorio', roles: ['pastor', 'lider'] },
+    // 👥 Directorio
+    { id: 'directorio', name: 'Directorio', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50', path: '/directorio', roles: ['pastor', 'lider', 'servidor'] },
     
-    // 💝 Ofrendar: Visible para Todos
+    // 💝 Ofrendar
     { id: 'ofrendar_user', name: 'Ofrendar', icon: HeartHandshake, color: 'text-brand-600', bg: 'bg-brand-50', path: '/ofrendar', roles: ['todos'] },
     
-    // 🔐 Tesorería: Solo Pastor y área Tesorería
+    // 🔐 Tesorería: Solo Pastor y área específica
     { id: 'tesoreria_admin', name: 'Tesorería', icon: Wallet, color: 'text-slate-900', bg: 'bg-slate-200', path: '/tesoreria', roles: ['pastor', 'tesorero'] },
     
-    // 📜 Historial: Solo Staff
-    { id: 'historial', name: 'Historial', icon: History, color: 'text-indigo-600', bg: 'bg-indigo-50', path: '/historial', roles: ['pastor', 'lider'] },
+    // 📜 Historial
+    { id: 'historial', name: 'Historial', icon: History, color: 'text-indigo-600', bg: 'bg-indigo-50', path: '/historial', roles: ['pastor', 'lider', 'servidor'] },
     
-    // 🔄 Actualizar: Visible para Todos
+    // 🔄 Actualizar
     { 
       id: 'refresh', 
       name: updateAvailable ? '¡Nueva Versión!' : 'Actualizar', 
@@ -51,14 +51,14 @@ export default function AppsHub() {
       roles: ['todos']
     },
 
-    // 🎓 Academia (Series): Visible para Todos
+    // 🎓 Series (Academia)
     { id: 'classroom', name: 'Series', icon: GraduationCap, color: 'text-emerald-600', bg: 'bg-emerald-50', path: '/estudio', roles: ['todos'] },
 
-    // 🎵 Cancionero: Solo Pastor o Área Alabanza
-    { id: 'alabanza', name: 'Cancionero', icon: Music, color: 'text-pink-600', bg: 'bg-pink-50', path: '#', roles: ['pastor', 'alabanza'] },
+    // 🎵 Cancionero
+    { id: 'alabanza', name: 'Cancionero', icon: Music, color: 'text-pink-600', bg: 'bg-pink-50', path: '#', roles: ['pastor', 'lider', 'alabanza', 'multimedia'] },
     
-    // 🎬 Multimedia: Solo Pastor o Área Multimedia
-    { id: 'multimedia', name: 'Multimedia', icon: Video, color: 'text-cyan-600', bg: 'bg-cyan-50', path: '#', roles: ['pastor', 'multimedia'] },
+    // 🎬 Multimedia
+    { id: 'multimedia', name: 'Multimedia', icon: Video, color: 'text-cyan-600', bg: 'bg-cyan-50', path: '#', roles: ['pastor', 'lider', 'multimedia', 'alabanza'] },
   ];
 
   // 🕵️‍♂️ FILTRADO LÓGICO MEJORADO (Basado en la regla de Braian)
@@ -66,15 +66,21 @@ export default function AppsHub() {
     const userRole = dbUser?.role?.toLowerCase();
     const userArea = dbUser?.area?.toLowerCase();
 
-    // Regla Miembro: Solo ve lo marcado como 'todos'
+    // 1. REGLA PASTOR: Tiene la Master Key (Ve todo)
+    if (userRole === 'pastor') return true;
+
+    // 2. REGLA MIEMBRO: Solo ve Ofrendar, Actualizar y Series
     if (userRole === 'miembro') {
       return app.roles.includes('todos');
     }
 
-    // Regla Pastor: Ve todo
-    if (userRole === 'pastor') return true;
+    // 3. REGLA LIDER: Ve todo lo de staff + Cancionero y Multimedia (sin Tesorería)
+    if (userRole === 'lider') {
+      return app.roles.includes('lider') || app.roles.includes('todos');
+    }
 
-    // Regla Servidores/Áreas: Ven lo general + su área + lo de líder
+    // 4. REGLA SERVIDOR GENERAL Y ÁREAS ESPECÍFICAS
+    // Un servidor ve lo de staff. Si es de Alabanza/Multimedia suma sus herramientas.
     return (
       app.roles.includes('todos') || 
       app.roles.includes(userRole) ||
@@ -91,7 +97,7 @@ export default function AppsHub() {
         </div>
         <div className="flex flex-col items-end">
             <span className="text-[9px] text-slate-400 font-black uppercase mb-1">Acceso: {dbUser?.area && dbUser.area !== 'ninguna' ? dbUser.area : dbUser?.role || 'Miembro'}</span>
-            <span className="text-[10px] text-slate-300 font-bold uppercase tracking-widest bg-white px-3 py-1 rounded-full shadow-sm border border-slate-100">v1.3.1</span>
+            <span className="text-[10px] text-slate-300 font-bold uppercase tracking-widest bg-white px-3 py-1 rounded-full shadow-sm border border-slate-100">v1.4.0</span>
         </div>
       </div>
 
@@ -129,7 +135,7 @@ export default function AppsHub() {
         })}
       </div>
 
-      {/* BANNER DE SOPORTE (Visible para todos) */}
+      {/* BANNER DE SOPORTE */}
       <div className="mt-12 bg-slate-900 rounded-[35px] p-6 text-white shadow-2xl relative overflow-hidden border-b-4 border-brand-600">
         <div className="relative z-10">
           <div className="bg-brand-500 w-10 h-1 rounded-full mb-3"></div>
@@ -148,7 +154,7 @@ export default function AppsHub() {
         <Heart className="absolute -right-6 -bottom-6 text-brand-600 opacity-20 rotate-12" size={140} />
       </div>
       
-      {/* SELLO DE SEGURIDAD (Solo Staff) */}
+      {/* SELLO DE SEGURIDAD */}
       {['pastor', 'lider'].includes(dbUser?.role) && (
           <div className="mt-8 flex items-center justify-center gap-2 opacity-30">
               <ShieldCheck size={14} className="text-slate-400"/>

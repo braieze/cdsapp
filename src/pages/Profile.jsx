@@ -4,7 +4,8 @@ import { doc, getDoc, updateDoc, onSnapshot, setDoc } from 'firebase/firestore';
 import {
   User, Save, Edit3, Shield, Briefcase, LogOut, Camera,
   Loader2, CreditCard, X, Download, Phone, Calendar as CalendarIcon, 
-  MapPin, Heart, ChevronRight, Settings, Plus, Trash2
+  MapPin, Heart, ChevronRight, Settings, Plus, Trash2,
+  Lock // ✅ Añadido icono para el bloqueo de área
 } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import imageCompression from 'browser-image-compression';
@@ -22,7 +23,7 @@ export default function Profile() {
   const [showCredential, setShowCredential] = useState(false);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
-  // Estados para Áreas Dinámicas (Sincronizado con Directorio)
+  // Estados para Áreas Dinámicas
   const [officialAreas, setOfficialAreas] = useState(['ninguna']);
   const [isManagingAreas, setIsManagingAreas] = useState(false);
   const [newAreaInput, setNewAreaInput] = useState('');
@@ -34,6 +35,12 @@ export default function Profile() {
     phone: '', address: '', birthday: '', dni: '',
     bloodType: '', emergencyName: '', emergencyPhone: '', area: 'ninguna'
   });
+
+  // 🛡️ Lógica de Roles
+  const userRole = userData?.role || 'miembro';
+  const isPastor = userRole === 'pastor';
+  const isLider = userRole === 'lider';
+  const isStaff = isPastor || isLider;
 
   // 1. Cargar datos del usuario
   useEffect(() => {
@@ -61,7 +68,7 @@ export default function Profile() {
     fetchUserData();
   }, [currentUser]);
 
-  // 2. Cargar Áreas Oficiales (Misma lógica que Directorio)
+  // 2. Cargar Áreas Oficiales
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'metadata', 'areas'), (docSnap) => {
       if (docSnap.exists()) {
@@ -92,8 +99,14 @@ export default function Profile() {
 
   const handleSave = async () => {
     try {
-      await updateDoc(doc(db, 'users', currentUser.uid), { ...formData });
-      setUserData({ ...userData, ...formData });
+      // 🎯 Protegemos el campo area en el envío si no es Staff
+      const dataToSave = { ...formData };
+      if (!isStaff) {
+          dataToSave.area = userData.area || 'ninguna';
+      }
+
+      await updateDoc(doc(db, 'users', currentUser.uid), dataToSave);
+      setUserData({ ...userData, ...dataToSave });
       setIsEditing(false);
     } catch (e) { console.error(e); }
   };
@@ -131,7 +144,6 @@ export default function Profile() {
   if (loading) return <div className="flex flex-col items-center justify-center py-32 opacity-20"><Loader2 className="animate-spin text-slate-900 mb-4" size={48} /></div>;
 
   const displayPhoto = userData?.photoURL || `https://ui-avatars.com/api/?name=${currentUser?.displayName}&background=0f172a&color=fff`;
-  const userRole = userData?.role || 'Miembro';
 
   return (
     <div className="pb-32 bg-slate-50 min-h-screen relative animate-fade-in font-outfit text-left">
@@ -144,8 +156,7 @@ export default function Profile() {
             <span className="text-white font-black text-5xl tracking-tighter italic">CDS</span>
             <span className="text-brand-400 font-black text-[10px] uppercase tracking-[0.4em] mt-2 text-center">Identidad Ministerial</span>
           </div>
-          {/* Botón Gestor Áreas (Solo Pastor) */}
-          {userRole === 'pastor' && (
+          {isPastor && (
             <button onClick={() => setIsManagingAreas(true)} className="absolute top-12 right-6 p-2.5 bg-white/10 text-white rounded-2xl active:scale-75 transition-all border border-white/10">
                 <Settings size={20} />
             </button>
@@ -206,16 +217,27 @@ export default function Profile() {
                 <label className="text-[9px] font-black text-slate-400 uppercase ml-3">WhatsApp de Contacto</label>
                 <input disabled={!isEditing} type="tel" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} className="w-full bg-slate-50 p-4 rounded-[20px] text-sm font-bold border-2 border-transparent focus:border-brand-500 outline-none disabled:text-slate-500 transition-all" placeholder="11..." />
               </div>
+
+              {/* ✅ MINISTERIO / ÁREA BLOQUEADO PARA MIEMBROS */}
               <div className="space-y-2">
-                <label className="text-[9px] font-black text-slate-400 uppercase ml-3">Ministerio / Área</label>
+                <label className="text-[9px] font-black text-slate-400 uppercase ml-3 flex items-center gap-2">
+                   Ministerio / Área {!isStaff && <Lock size={10} className="text-rose-400"/>}
+                </label>
                 <select 
-                    disabled={!isEditing} 
+                    disabled={!isEditing || !isStaff} // 🔒 BLOQUEO MAESTRO
                     value={formData.area} 
                     onChange={e => setFormData({ ...formData, area: e.target.value })} 
-                    className="w-full bg-slate-50 p-4 rounded-[20px] text-sm font-black uppercase border-2 border-transparent focus:border-brand-500 outline-none disabled:text-slate-500 transition-all"
+                    className={`w-full p-4 rounded-[20px] text-sm font-black uppercase border-2 border-transparent outline-none transition-all ${
+                       !isStaff 
+                       ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
+                       : 'bg-slate-50 focus:border-brand-500'
+                    }`}
                 >
                     {officialAreas.map(a => <option key={a} value={a.toLowerCase()}>{a}</option>)}
                 </select>
+                {!isStaff && isEditing && (
+                    <p className="text-[8px] font-bold text-rose-400 uppercase ml-3 mt-1">Este campo solo es editable por un líder o pastor</p>
+                )}
               </div>
             </div>
 
@@ -282,10 +304,9 @@ export default function Profile() {
         </div>
       )}
 
-      {/* MODAL CREDENCIAL DIGITAL (PREMIUM & RESPONSIVE) */}
+      {/* MODAL CREDENCIAL DIGITAL */}
       {showCredential && (
         <div className="fixed inset-0 z-[600] bg-slate-900/95 backdrop-blur-xl flex flex-col items-center justify-center p-6 animate-fade-in overflow-y-auto">
-          {/* Botón Cerrar X */}
           <button onClick={() => setShowCredential(false)} className="absolute top-10 right-8 text-white p-4 bg-white/10 rounded-full active:scale-75 transition-all border border-white/20 z-[700]">
             <X size={32} />
           </button>
