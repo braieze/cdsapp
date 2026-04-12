@@ -8,7 +8,7 @@ import {
 import { 
   X, Save, Camera, Loader2, User, Search,
   Check, ChevronLeft, Trash2, GraduationCap,
-  Tag // ✅ Añadido icono para categorías
+  Tag, Eye, Lock // ✅ Iconos para visibilidad
 } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { toast } from 'sonner';
@@ -24,7 +24,10 @@ export default function CreateStudy() {
   const [users, setUsers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // ✅ LISTA DE CATEGORÍAS (Punto 3 del Plan)
+  // ✅ CONFIGURACIÓN ONESIGNAL
+  const ONESIGNAL_APP_ID = "742a62cd-6d15-427f-8bab-5b8759fabd0a";
+  const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
+
   const categories = [
     "Estudios Bíblicos", 
     "Colaboradores", 
@@ -37,7 +40,8 @@ export default function CreateStudy() {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    category: 'Estudios Bíblicos', // ✅ Nuevo campo
+    category: 'Estudios Bíblicos',
+    visibility: 'publico', // ✅ Nuevo: 'publico' o 'servidores'
     instructorName: '',
     instructorId: '',
     instructorPhoto: '',
@@ -57,7 +61,6 @@ export default function CreateStudy() {
     }
   }, [dbUser, navigate]);
 
-  // 1. CARGAR DATOS SI ES EDICIÓN + LISTA DE USUARIOS PARA SELECTOR
   useEffect(() => {
     const fetchData = async () => {
       const uSnap = await getDocs(query(collection(db, 'users'), orderBy('displayName')));
@@ -66,7 +69,6 @@ export default function CreateStudy() {
       if (id) {
         const docSnap = await getDoc(doc(db, 'studies', id));
         if (docSnap.exists()) {
-          // Cargamos los datos existentes (incluyendo category si ya existía)
           setFormData(prev => ({ ...prev, ...docSnap.data() }));
         }
       } else {
@@ -80,6 +82,37 @@ export default function CreateStudy() {
     };
     fetchData();
   }, [id, dbUser]);
+
+  // ✅ FUNCIÓN NOTIFICACIÓN (Ajustada para evitar Error 400)
+  const sendNewStudyNotification = async (newId) => {
+    try {
+      if (formData.visibility !== 'publico') return; // Solo avisar si es pública
+
+      const payload = {
+        app_id: ONESIGNAL_APP_ID,
+        included_segments: ["Total Subscriptions"],
+        headings: { 
+          en: "📖 ¡Nueva Serie disponible!", 
+          es: "📖 ¡Nueva Serie disponible!" 
+        },
+        contents: { 
+          en: `${formData.title}. Dictado por ${formData.instructorName}. ¡Inscríbete ahora!`,
+          es: `${formData.title}. Dictado por ${formData.instructorName}. ¡Inscríbete ahora!`,
+        },
+        data: { route: `/estudio/${newId}` },
+        large_icon: "https://cdsapp.vercel.app/logo.png"
+      };
+
+      await fetch("https://onesignal.com/api/v1/notifications", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json; charset=utf-8", 
+          "Authorization": `Basic ${REST_API_KEY}` 
+        },
+        body: JSON.stringify(payload)
+      });
+    } catch (e) { console.error("Push Error:", e); }
+  };
 
   const handlePhotoUpload = async (e) => {
     const file = e.target.files[0];
@@ -111,12 +144,14 @@ export default function CreateStudy() {
         });
         toast.success("Serie actualizada");
       } else {
-        await addDoc(collection(db, 'studies'), {
+        const docRef = await addDoc(collection(db, 'studies'), {
           ...formData,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
-        toast.success("Serie creada correctamente");
+        // Enviar notificación solo si es nueva serie
+        await sendNewStudyNotification(docRef.id);
+        toast.success("Serie creada y enviada");
       }
       navigate('/estudio');
     } catch (error) { toast.error("Error al guardar"); } finally { setLoading(false); }
@@ -173,6 +208,32 @@ export default function CreateStudy() {
 
         <div className="space-y-4">
           <div className="bg-white p-6 rounded-[35px] shadow-sm border border-slate-100 space-y-5">
+            
+            {/* ✅ SELECTOR DE VISIBILIDAD */}
+            <div className="space-y-2">
+               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 flex items-center gap-2">
+                 <Eye size={12}/> ¿Quién puede ver esta serie?
+               </label>
+               <div className="flex gap-2">
+                 <button
+                  type="button"
+                  onClick={() => setFormData({...formData, visibility: 'publico'})}
+                  className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all border-2 flex items-center justify-center gap-2
+                    ${formData.visibility === 'publico' ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg' : 'bg-white border-slate-50 text-slate-400'}`}
+                 >
+                   <Check size={14}/> Toda la Iglesia
+                 </button>
+                 <button
+                  type="button"
+                  onClick={() => setFormData({...formData, visibility: 'servidores'})}
+                  className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all border-2 flex items-center justify-center gap-2
+                    ${formData.visibility === 'servidores' ? 'bg-amber-500 border-amber-500 text-white shadow-lg' : 'bg-white border-slate-50 text-slate-400'}`}
+                 >
+                   <Lock size={14}/> Solo Servidores
+                 </button>
+               </div>
+            </div>
+
             <div className="space-y-1.5">
                <label className="text-[10px] font-black text-brand-600 uppercase tracking-widest ml-2">Título de la Serie</label>
                <input 
@@ -194,7 +255,7 @@ export default function CreateStudy() {
                />
             </div>
 
-            {/* ✅ NUEVO: SELECTOR DE CATEGORÍA */}
+            {/* SELECTOR DE CATEGORÍA */}
             <div className="space-y-2 pt-2">
                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 flex items-center gap-2">
                  <Tag size={12}/> Categoría de la Serie

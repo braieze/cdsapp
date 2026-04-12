@@ -2,12 +2,12 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { db, auth } from '../firebase';
 import { 
-  collection, query, onSnapshot, orderBy, where, getDocs // ✅ Añadido getDocs para el conteo real
+  collection, query, onSnapshot, orderBy, where, getDocs // ✅ Mantenemos getDocs para el conteo real
 } from 'firebase/firestore';
 import { 
   BookOpen, Play, CheckCircle, TrendingUp, Plus, 
   ChevronRight, GraduationCap, Loader2, Star, Clock, User,
-  Search, Filter, Tag, X 
+  Search, Filter, Tag, X, Lock // ✅ Añadido Lock para indicar contenido privado
 } from 'lucide-react';
 
 export default function StudyHub() {
@@ -17,7 +17,7 @@ export default function StudyHub() {
   const [userProgress, setUserProgress] = useState({}); // ✅ Progreso real
   const [loading, setLoading] = useState(true);
   
-  // ✅ ESTADOS DE FILTRADO (Fase 2 y 3)
+  // ✅ ESTADOS DE FILTRADO
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Todas');
   
@@ -25,22 +25,21 @@ export default function StudyHub() {
 
   const categories = ["Todas", "Estudios Bíblicos", "Colaboradores", "Profético", "Jóvenes", "Matrimonios", "Liderazgo"];
 
-  // 1. CARGAR LAS SERIES CON CONTEO REAL (Fix Punto 1)
+  // 1. CARGAR LAS SERIES CON CONTEO REAL (Fix Punto 1 - Mantenido)
   useEffect(() => {
     const q = query(collection(db, 'studies'), orderBy('createdAt', 'desc'));
     
-    // Escuchamos las series
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       const studiesData = [];
       
-      // 🎯 FIX: En lugar de confiar en study.lessonCount, contamos los docs reales en 'lessons'
       for (const docSnap of snapshot.docs) {
         const study = { id: docSnap.id, ...docSnap.data() };
+        // Conteo real de documentos en la subcolección
         const lessonsQ = query(collection(db, 'lessons'), where('studyId', '==', study.id));
         const lessonsSnap = await getDocs(lessonsQ);
         studiesData.push({ 
           ...study, 
-          realLessonCount: lessonsSnap.size // Este es el número real infalible
+          realLessonCount: lessonsSnap.size 
         });
       }
       
@@ -51,7 +50,7 @@ export default function StudyHub() {
     return () => unsubscribe();
   }, []);
 
-  // 2. CARGAR PROGRESO REAL DEL USUARIO
+  // 2. CARGAR PROGRESO REAL DEL USUARIO (Mantenido)
   useEffect(() => {
     if (!currentUser) return;
     const q = query(collection(db, 'userProgress'), where('userId', '==', currentUser.uid));
@@ -65,26 +64,35 @@ export default function StudyHub() {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // 3. LÓGICA DE FILTRADO DINÁMICO
+  // 3. 🎯 LÓGICA DE FILTRADO Y SEGMENTACIÓN POR ROL (Punto 2 y 3)
   const filteredStudies = useMemo(() => {
     return studies.filter(s => {
+      // ✅ SEGMENTACIÓN: 
+      // Si el post es para 'servidores', solo lo ven Líderes o Pastores.
+      // Si no tiene etiqueta o es 'publico', lo ven todos.
+      const isPublic = s.visibility === 'publico' || !s.visibility;
+      const isForStaff = s.visibility === 'servidores';
+      const userIsStaff = dbUser?.role === 'pastor' || dbUser?.role === 'lider';
+
+      const canSeeByRole = isPublic || (isForStaff && userIsStaff);
+
       const matchesSearch = s.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
                             s.instructorName.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesCategory = selectedCategory === 'Todas' || s.category === selectedCategory;
-      return matchesSearch && matchesCategory;
-    });
-  }, [studies, searchTerm, selectedCategory]);
 
-  // 4. CÁLCULO DE PROGRESO REAL (Sincronizado con conteo real)
+      return canSeeByRole && matchesSearch && matchesCategory;
+    });
+  }, [studies, searchTerm, selectedCategory, dbUser]);
+
+  // 4. CÁLCULO DE PROGRESO REAL (Sincronizado - Mantenido)
   const calculateProgress = (studyId, totalLessons) => {
     const progress = userProgress[studyId];
     if (!progress || !totalLessons || totalLessons === 0) return 0;
-    // Solo contamos las clases que tienen nota registrada
     const completed = progress.completedLessons?.length || 0;
     return Math.round((completed / totalLessons) * 100);
   };
 
-  // 5. ENCONTRAR ÚLTIMA SERIE VISTA
+  // 5. ENCONTRAR ÚLTIMA SERIE VISTA (Banner superior - Mantenido)
   const lastStudy = useMemo(() => {
     const active = Object.values(userProgress).sort((a,b) => b.updatedAt?.seconds - a.updatedAt?.seconds)[0];
     return active ? studies.find(s => s.id === active.studyId) : null;
@@ -104,7 +112,7 @@ export default function StudyHub() {
         </div>
       </div>
 
-      {/* BANNER DINÁMICO: CONTINUAR ESTUDIANDO */}
+      {/* BANNER DINÁMICO */}
       <div className="px-6 mb-8">
         <div className="bg-slate-900 rounded-[35px] p-6 text-white shadow-2xl flex items-center justify-between relative overflow-hidden group">
           <div className="relative z-10">
@@ -143,7 +151,6 @@ export default function StudyHub() {
             )}
          </div>
 
-         {/* Pills de Categorías */}
          <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2 px-1">
             {categories.map(cat => (
               <button
@@ -177,7 +184,6 @@ export default function StudyHub() {
         ) : (
           <div className="space-y-8">
             {filteredStudies.map((study) => {
-              // 🎯 Usamos el conteo real aquí
               const progress = calculateProgress(study.id, study.realLessonCount);
               return (
                 <div 
@@ -194,13 +200,18 @@ export default function StudyHub() {
                     <div className="absolute top-4 left-4 bg-slate-900/80 backdrop-blur-md px-4 py-2 rounded-2xl text-white text-[9px] font-black uppercase flex items-center gap-2">
                       <BookOpen size={12} className="text-brand-400" /> {study.realLessonCount || 0} Capítulos
                     </div>
+                    
+                    {/* ✅ BADGE DE VISIBILIDAD PARA EL STAFF */}
+                    {study.visibility === 'servidores' && (
+                      <div className="absolute bottom-4 right-4 bg-amber-500 px-3 py-1.5 rounded-xl text-white text-[8px] font-black uppercase flex items-center gap-1 shadow-lg">
+                        <Lock size={10} /> Solo Servidores
+                      </div>
+                    )}
+
                     {study.category && (
                       <div className="absolute bottom-4 left-4 bg-brand-500/90 backdrop-blur-md px-3 py-1.5 rounded-xl text-white text-[8px] font-black uppercase flex items-center gap-1 shadow-lg">
                         <Tag size={10} /> {study.category}
                       </div>
-                    )}
-                    {study.isNew && (
-                      <div className="absolute top-4 right-4 bg-emerald-500 px-4 py-2 rounded-2xl text-white text-[9px] font-black uppercase shadow-lg">Nuevo</div>
                     )}
                   </div>
 
@@ -232,7 +243,7 @@ export default function StudyHub() {
                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Mi Avance Académico</span>
                         <span className="text-[11px] font-black text-brand-600">{progress}%</span>
                       </div>
-                      <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden border border-slate-50 shadow-inner">
+                      <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden border border-slate-100 shadow-inner">
                         <div 
                           className="h-full bg-brand-500 rounded-full transition-all duration-1000 shadow-[0_0_12px_rgba(234,179,8,0.4)]" 
                           style={{ width: `${progress}%` }}
@@ -247,11 +258,11 @@ export default function StudyHub() {
         )}
       </div>
 
-      {/* ✅ BOTÓN PASTOR CORREGIDO (Z-Index y posición) */}
+      {/* ✅ BOTÓN PASTOR CORREGIDO (Z-Index a 100 para que nunca se tape) */}
       {(dbUser?.role === 'pastor' || dbUser?.role === 'lider') && (
         <button 
           onClick={() => navigate('/estudio/crear')}
-          className="fixed bottom-10 right-6 w-16 h-16 bg-slate-900 text-white rounded-[24px] shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex items-center justify-center active:scale-90 transition-all z-[60] border-4 border-white"
+          className="fixed bottom-10 right-6 w-16 h-16 bg-slate-900 text-white rounded-[24px] shadow-[0_20px_50px_rgba(0,0,0,0.4)] flex items-center justify-center active:scale-90 transition-all z-[100] border-4 border-white"
         >
           <Plus size={32} />
         </button>

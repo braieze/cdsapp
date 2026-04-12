@@ -4,7 +4,7 @@ import {
   Cake, BookOpen, Pin, Link as LinkIcon, ExternalLink, 
   MessageCircle, MoreVertical, X, Edit3, Trash2, 
   PlusCircle, AlertTriangle, Calendar, Heart, Send, 
-  AlertCircle, CheckCircle, Flame, HandHeart, ThumbsUp, // ✅ HandHeart garantizado
+  AlertCircle, CheckCircle, Flame, HandHeart, ThumbsUp, 
   Archive, ChevronDown, Sparkles, Smile, Frown, Sun, CloudRain, Anchor, HelpCircle
 } from 'lucide-react';
 import CreatePostModal from '../components/CreatePostModal';
@@ -18,7 +18,6 @@ import {
 import { Capacitor } from '@capacitor/core'; 
 import { format } from 'date-fns';
 
-// --- CONFIGURACIÓN DE ÁNIMOS (Moods) ---
 const MOODS = [
   { id: 'Fortaleza', label: 'Fortaleza', icon: Anchor, color: 'bg-blue-500' },
   { id: 'Gozo', label: 'Gozo', icon: Sun, color: 'bg-amber-500' },
@@ -26,24 +25,37 @@ const MOODS = [
   { id: 'Paz', label: 'Paz', icon: Smile, color: 'bg-emerald-500' },
 ];
 
-// --- 💬 SUB-COMPONENTE: PREVIEW DE COMENTARIOS (Grupo 3) ---
+// --- 💬 SUB-COMPONENTE: PREVIEW DE COMENTARIOS CORREGIDO (Punto 1) ---
 function CommentPreview({ postId, count, onClick }) {
   const [previewComments, setPreviewComments] = useState([]);
+  const [realCount, setRealCount] = useState(count); // ✅ Estado local para el conteo real
   
   useEffect(() => {
     if (!postId) return;
-    const q = query(collection(db, `posts/${postId}/comments`), orderBy('createdAt', 'desc'), limit(2));
-    const unsub = onSnapshot(q, (snap) => setPreviewComments(snap.docs.map(d => d.data())));
-    return () => unsub();
+    
+    // Escuchamos los últimos 2 comentarios
+    const qPreview = query(collection(db, `posts/${postId}/comments`), orderBy('createdAt', 'desc'), limit(2));
+    const unsubPreview = onSnapshot(qPreview, (snap) => {
+      setPreviewComments(snap.docs.map(d => d.data()));
+    });
+
+    // ✅ FIX: Escuchamos el TAMAÑO REAL de la colección (No más ceros falsos)
+    const unsubCount = onSnapshot(collection(db, `posts/${postId}/comments`), (snap) => {
+      setRealCount(snap.size);
+    });
+
+    return () => { unsubPreview(); unsubCount(); };
   }, [postId]);
 
-  if (count === 0 && previewComments.length === 0) return null;
+  // Si no hay comentarios de verdad, no mostramos nada
+  if (realCount === 0 && previewComments.length === 0) return null;
 
   return (
     <div className="mt-4 bg-slate-50/50 rounded-2xl p-4 border border-slate-100 cursor-pointer active:scale-[0.98] transition-all" onClick={(e) => { e.stopPropagation(); onClick(); }}>
       <div className="flex items-center gap-2 mb-3">
         <MessageCircle size={12} className="text-brand-600" />
-        <span className="text-[10px] font-black uppercase tracking-widest text-brand-600">{count} Comentarios</span>
+        {/* ✅ Usamos realCount aquí */}
+        <span className="text-[10px] font-black uppercase tracking-widest text-brand-600">{realCount} Comentarios</span>
       </div>
       <div className="space-y-2">
         {previewComments.map((c, idx) => (
@@ -79,6 +91,8 @@ export default function Home() {
   
   const isPastor = dbUser?.role === 'pastor';
   const isModerator = isPastor || dbUser?.role === 'lider';
+  const isMiembro = dbUser?.role === 'miembro'; // ✅ Nuevo detector
+  
   const canCreatePost = isModerator || dbUser?.area === 'recepcion';
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -92,22 +106,29 @@ export default function Home() {
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [editingPost, setEditingPost] = useState(null);
 
-  // 1. CARGA DE POSTS CON PRIVACIDAD (Archivados solo para Pastor)
   useEffect(() => {
     const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const postsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      const finalPosts = isPastor 
-        ? postsData 
-        : postsData.filter(p => !p.isArchived);
+      // ✅ SEGMENTACIÓN INTELIGENTE (Punto 2)
+      // Si soy miembro, quito los posts que son solo para servidores
+      let finalPosts = postsData;
+      if (isMiembro) {
+        finalPosts = postsData.filter(p => p.visibility !== 'servidores');
+      }
+
+      // Si no soy pastor, quito los archivados
+      if (!isPastor) {
+        finalPosts = finalPosts.filter(p => !p.isArchived);
+      }
 
       finalPosts.sort((a, b) => (a.isPinned === b.isPinned ? 0 : a.isPinned ? -1 : 1));
       setPosts(finalPosts);
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [isPastor]);
+  }, [isPastor, isMiembro]);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
@@ -126,8 +147,9 @@ export default function Home() {
   const handleReaction = async (postId, reactions, emoji) => {
     if (!currentUser) return;
     const postRef = doc(db, 'posts', postId);
-    const myIdx = (reactions || []).findIndex(r => r.uid === currentUser.uid);
-    let newReactions = [...(reactions || [])];
+    const reactionsArr = reactions || [];
+    const myIdx = reactionsArr.findIndex(r => r.uid === currentUser.uid);
+    let newReactions = [...reactionsArr];
     
     if (myIdx >= 0) {
       if (newReactions[myIdx].emoji === emoji) newReactions.splice(myIdx, 1);
@@ -146,7 +168,6 @@ export default function Home() {
     } catch (e) { console.error(e); }
   };
 
-  // ✅ FILTRADO INTELIGENTE (Pestaña Oración + Moods)
   const filteredPosts = useMemo(() => {
     let result = posts;
     if (filter === 'Archivados') {
@@ -168,7 +189,7 @@ export default function Home() {
       <TopBar />
 
       <div className="px-5 mt-6 space-y-6">
-          {/* CUMPLEÑOS */}
+          {/* CUMPLEÑOS (Visible para todos, crea comunidad) */}
           <div onClick={() => birthdays.length > 0 && setIsBirthdayModalOpen(true)} 
                className={`p-1 rounded-[35px] transition-all active:scale-95 ${birthdays.length > 0 ? 'bg-gradient-to-r from-brand-500 to-indigo-500 shadow-xl' : 'bg-white border border-slate-100'}`}>
             <div className={`flex items-center justify-between p-4 rounded-[30px] ${birthdays.length > 0 ? 'bg-white/90 backdrop-blur-sm' : 'bg-white'}`}>
@@ -190,6 +211,8 @@ export default function Home() {
           <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
             {['Todo', 'Devocional', 'Oración', 'Noticia', 'Archivados'].map((cat) => {
               if (cat === 'Archivados' && !isPastor) return null;
+              // ✅ Los Miembros quizás no necesiten ver "Noticia" si son solo avisos internos del staff
+              // Pero por ahora lo dejamos, el filtro principal está en el contenido del post
               return (
                 <button key={cat} onClick={() => { setFilter(cat); setVisibleCount(4); setSelectedMood(null); }} 
                   className={`py-3 px-6 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border-2 whitespace-nowrap ${
@@ -204,7 +227,6 @@ export default function Home() {
             })}
           </div>
 
-          {/* ✅ BURBUJAS DE ÁNIMOS (Solo en pestaña Devocional) */}
           {filter === 'Devocional' && (
             <div className="flex gap-3 overflow-x-auto no-scrollbar px-1 animate-slide-up">
                {MOODS.map(m => (
@@ -318,7 +340,7 @@ export default function Home() {
                       </div>
                     )}
                     
-                    {/* ✅ PREVIEW DE COMENTARIOS (Grupo 3) */}
+                    {/* ✅ PREVIEW DE COMENTARIOS (Corregido con lógica real-time interna) */}
                     <CommentPreview postId={post.id} count={post.commentsCount || 0} onClick={() => navigate(`/post/${post.id}`)} />
                   </div>
                 )}
@@ -330,7 +352,7 @@ export default function Home() {
                            {[ {e: '❤️'}, {e: '🔥'}, {e: '🙏'}, {e: '👍'}].map(item => {
                               const reactions = post.reactions || [];
                               const count = reactions.filter(r => r.emoji === item.e).length;
-                              const isSelected = reactions.some(r => r.uid === currentUser.uid && r.emoji === item.e);
+                              const isSelected = reactions.some(r => r.uid === currentUser?.uid && r.emoji === item.e);
                               return (
                                 <button key={item.e} onClick={() => handleReaction(post.id, post.reactions, item.e)} 
                                   className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all active:scale-75 shadow-sm border ${isSelected ? 'bg-slate-900 border-slate-900' : 'bg-white border-slate-100'}`}>
