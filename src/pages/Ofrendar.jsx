@@ -61,16 +61,27 @@ export default function Ofrendar() {
   };
 
   // ✅ ACCIÓN MAESTRA: Copia y Abre MP
-  const handleSmartPay = () => {
+ const handleSmartPay = () => {
+    // 1. Copiamos el alias al portapapeles
     navigator.clipboard.writeText(IGLESIA_ALIAS);
     setCopied(true);
     
-    // Pequeño aviso visual antes de redirigir
     setTimeout(() => {
         setCopied(false);
-        // Intenta abrir la sección de transferencias de Mercado Pago
-        window.location.href = "https://www.mercadopago.com.ar/as/p2p-transfer-ui/";
-    }, 1200);
+        
+        // 2. Intentamos abrir la APP directamente con el esquema nativo
+        // Este link es mucho más estable y no tira el error de la imagen
+        window.location.href = "mercadopago://home"; 
+        
+        // 3. FALLBACK: Si en 500ms no se abrió la app (porque está en PC o no tiene la app)
+        // lo mandamos a la web oficial que SÍ carga bien.
+        setTimeout(() => {
+            if (document.hasFocus()) {
+                window.location.href = "https://www.mercadopago.com.ar/home";
+            }
+        }, 500);
+        
+    }, 1000);
   };
 
   const copyAlias = () => {
