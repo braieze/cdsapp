@@ -69,15 +69,18 @@ export default function Ofrendar() {
     setTimeout(() => {
         setCopied(false);
         
-        // 2. Intentamos abrir la APP directamente con el esquema nativo
-        // Este link es mucho más estable y no tira el error de la imagen
-        window.location.href = "mercadopago://home"; 
-        
-        // 3. FALLBACK: Si en 500ms no se abrió la app (porque está en PC o no tiene la app)
-        // lo mandamos a la web oficial que SÍ carga bien.
+        // 🚀 INTENTO DE DEEP LINK DIRECTO A TRANSFERENCIA
+        // Este esquema busca abrir directamente la sección de "Enviar Dinero"
+        const mpDeepLink = "mercadopago://money_transfer";
+        const mpWebFallback = "https://www.mercadopago.com.ar/home";
+
+        window.location.href = mpDeepLink;
+
+        // 🛡️ FALLBACK: Si no abre la pantalla de transferencia en 500ms, 
+        // lo mandamos al home para que no se quede trabado.
         setTimeout(() => {
             if (document.hasFocus()) {
-                window.location.href = "https://www.mercadopago.com.ar/home";
+                window.location.href = mpWebFallback;
             }
         }, 500);
         
