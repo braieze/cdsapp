@@ -74,20 +74,37 @@ export default function EventDetails() {
     fetchData();
   }, [id, currentUser, navigate]);
 
-  // ✅ 2. FUNCIÓN DE NORMALIZACIÓN (SOLUCIÓN AL "SIN PERSONAL")
+  // ✅ 2. LÓGICA DE NORMALIZACIÓN (PARA LEER Y ESCRIBIR)
   const getAssignedForRole = (roleKey) => {
     if (!assignments) return [];
-    
-    // Intenta encontrar la llave ignorando mayúsculas y espacios/guiones
     const foundKey = Object.keys(assignments).find(k => 
       k.toLowerCase().replace(/[\s_]/g, '') === roleKey.toLowerCase().replace(/[\s_]/g, '')
     );
-
     const value = foundKey ? assignments[foundKey] : null;
     if (!value) return [];
-    
-    // Asegura que siempre sea un Array (para compatibilidad con data vieja)
     return Array.isArray(value) ? value : [value];
+  };
+
+  const handleTogglePerson = (userName) => {
+    const currentList = getAssignedForRole(activeRoleKey);
+    const isAlready = currentList.includes(userName);
+    
+    let newList;
+    if (isAlready) {
+      newList = currentList.filter(n => n !== userName);
+    } else {
+      newList = activeRoleConfig.type === 'single' ? [userName] : [...currentList, userName];
+    }
+
+    // Limpiamos llaves viejas para evitar duplicados (Ej: "Predicador" -> "predicador")
+    const newAssignments = { ...assignments };
+    const oldKey = Object.keys(newAssignments).find(k => 
+      k.toLowerCase().replace(/[\s_]/g, '') === activeRoleKey.toLowerCase().replace(/[\s_]/g, '')
+    );
+    if (oldKey) delete newAssignments[oldKey];
+    
+    newAssignments[activeRoleKey] = newList;
+    setAssignments(newAssignments);
   };
 
   const sendPush = async (userNames, eventTitle) => {
@@ -134,8 +151,17 @@ export default function EventDetails() {
 
   const assignGroup = (areaName) => {
     const ministry = users.filter(u => u.area?.toLowerCase() === areaName.toLowerCase()).map(u => u.displayName);
-    const current = assignments[activeRoleKey] || [];
-    setAssignments({ ...assignments, [activeRoleKey]: [...new Set([...current, ...ministry])] });
+    const current = getAssignedForRole(activeRoleKey);
+    const newList = [...new Set([...current, ...ministry])];
+    
+    const newAssignments = { ...assignments };
+    const oldKey = Object.keys(newAssignments).find(k => 
+      k.toLowerCase().replace(/[\s_]/g, '') === activeRoleKey.toLowerCase().replace(/[\s_]/g, '')
+    );
+    if (oldKey) delete newAssignments[oldKey];
+    
+    newAssignments[activeRoleKey] = newList;
+    setAssignments(newAssignments);
     setIsSelectorOpen(false);
     toast.info(`Grupo ${areaName} añadido`);
   };
@@ -236,6 +262,10 @@ export default function EventDetails() {
                 {['pastor', 'lider'].includes(dbUser?.role) && (
                     <>
                       <button onClick={() => setIsEditingMeta(!isEditingMeta)} className={`p-2 rounded-xl ${isEditingMeta ? 'bg-white text-slate-900' : 'bg-white/20 text-white'}`}><Edit3 size={20}/></button>
+                      <button onClick={saveAll} className="px-6 py-2 bg-emerald-500 text-white rounded-xl font-black text-[10px] uppercase shadow-lg shadow-emerald-200 flex items-center gap-2">
+                        {isSaving ? <Loader2 className="animate-spin" size={14}/> : <Save size={14}/>}
+                        {isSaving ? '...' : 'Guardar'}
+                      </button>
                       <button onClick={() => setIsAssigning(!isAssigning)} className={`px-4 py-2 rounded-xl font-black text-[10px] uppercase ${isAssigning ? 'bg-white text-slate-900' : 'bg-white/20 text-white'}`}>{isAssigning ? 'Salir' : 'Asignar'}</button>
                     </>
                 )}
@@ -304,7 +334,6 @@ export default function EventDetails() {
                     <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-6 border-l-4 border-brand-500 pl-3 ml-2">{sec.section}</h3>
                     <div className="grid gap-5">
                       {sec.roles.map(role => {
-                        // ✅ CAMBIO CLAVE: Usamos la normalización inteligente aquí
                         const assigned = getAssignedForRole(role.key);
                         return (
                           <div key={role.key} className="bg-white p-6 rounded-[35px] border border-slate-50 shadow-sm relative">
@@ -331,7 +360,7 @@ export default function EventDetails() {
                                       <p className="text-[9px] font-black text-brand-600 uppercase tracking-widest">{userObj?.area || 'Miembro'}</p>
                                     </div>
                                     {event.confirmations?.[p] === 'confirmed' && <CheckCircle size={18} className="text-emerald-500 shrink-0"/>}
-                                    {isAssigning && <button onClick={() => setAssignments({...assignments, [role.key]: assigned.filter(n => n !== p)})} className="text-rose-500 ml-1"><X size={18}/></button>}
+                                    {isAssigning && <button onClick={() => { setActiveRoleKey(role.key); handleTogglePerson(p); }} className="text-rose-500 ml-1"><X size={18}/></button>}
                                   </div>
                                 )})}
                             </div>
@@ -342,7 +371,7 @@ export default function EventDetails() {
                   </div>
                 ))}
 
-                {/* ✅ SECCIÓN AUTOMÁTICA DE ROLES ADICIONALES (PARA DATA VIEJA O DIFERENTE) */}
+                {/* ROLES EXTRA */}
                 {Object.keys(assignments).filter(k => {
                   const fixedKeys = getStructure().flatMap(s => s.roles.map(r => r.key.toLowerCase().replace(/[\s_]/g, '')));
                   const normalizedK = k.toLowerCase().replace(/[\s_]/g, '');
@@ -376,6 +405,7 @@ export default function EventDetails() {
         </div>
       </div>
 
+      {/* BARRA DE ESTADO */}
       <div className="fixed bottom-0 left-0 right-0 p-8 bg-slate-900 rounded-t-[50px] shadow-2xl z-50 flex items-center justify-between animate-slide-up">
           <div className="text-left">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Estado General</p>
@@ -384,6 +414,7 @@ export default function EventDetails() {
           <button onClick={() => navigate(-1)} className="bg-slate-800 text-white px-10 py-5 rounded-[22px] font-black text-[11px] uppercase active:scale-95 transition-all">Entendido</button>
       </div>
 
+      {/* SELECTOR DE PERSONAL */}
       {isSelectorOpen && (
         <div className="fixed inset-0 z-[300] bg-slate-900/90 backdrop-blur-md flex items-end justify-center" onClick={() => setIsSelectorOpen(false)}>
           <div className="bg-white w-full max-w-md rounded-t-[50px] h-[88vh] flex flex-col animate-slide-up shadow-2xl relative overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -404,12 +435,9 @@ export default function EventDetails() {
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-2 no-scrollbar pb-32">
               {users.filter(u => u.displayName?.toLowerCase().includes(personSearchTerm.toLowerCase())).map(u => {
-                const isAlready = (assignments[activeRoleKey] || []).includes(u.displayName);
+                const isAlready = getAssignedForRole(activeRoleKey).includes(u.displayName);
                 return (
-                  <button key={u.id} onClick={() => {
-                    const curr = assignments[activeRoleKey] || [];
-                    setAssignments({ ...assignments, [activeRoleKey]: isAlready ? curr.filter(n => n !== u.displayName) : (activeRoleConfig.type === 'single' ? [u.displayName] : [...curr, u.displayName]) });
-                  }} className={`w-full flex items-center gap-4 p-4 rounded-3xl border-2 transition-all text-left ${isAlready ? 'bg-brand-600 border-brand-600 text-white shadow-xl' : 'bg-white border-slate-50'}`}>
+                  <button key={u.id} onClick={() => handleTogglePerson(u.displayName)} className={`w-full flex items-center gap-4 p-4 rounded-3xl border-2 transition-all text-left ${isAlready ? 'bg-brand-600 border-brand-600 text-white shadow-xl' : 'bg-white border-slate-50'}`}>
                     <div className="w-12 h-12 rounded-2xl border-2 border-white overflow-hidden shadow-sm shrink-0"><img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}`} className="w-full h-full object-cover" /></div>
                     <div className="flex-1 min-w-0"><p className={`font-black text-xs uppercase truncate ${isAlready ? 'text-white' : 'text-slate-800'}`}>{u.displayName}</p><p className={`text-[9px] font-bold uppercase mt-0.5 ${isAlready ? 'text-white/60' : 'text-slate-400'}`}>{u.area || 'Miembro'}</p></div>
                     {isAlready ? <CheckCircle size={20} className="text-white"/> : <Plus size={20} className="text-slate-200"/>}
