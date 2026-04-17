@@ -40,7 +40,7 @@ export default function EventDetails() {
 
   const currentUser = auth.currentUser;
 
-  // --- 1. CARGA DE DATOS (ORDEN ALFABÉTICO Y PRIVACIDAD) ---
+  // --- 1. CARGA DE DATOS ---
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -73,6 +73,22 @@ export default function EventDetails() {
     };
     fetchData();
   }, [id, currentUser, navigate]);
+
+  // ✅ 2. FUNCIÓN DE NORMALIZACIÓN (SOLUCIÓN AL "SIN PERSONAL")
+  const getAssignedForRole = (roleKey) => {
+    if (!assignments) return [];
+    
+    // Intenta encontrar la llave ignorando mayúsculas y espacios/guiones
+    const foundKey = Object.keys(assignments).find(k => 
+      k.toLowerCase().replace(/[\s_]/g, '') === roleKey.toLowerCase().replace(/[\s_]/g, '')
+    );
+
+    const value = foundKey ? assignments[foundKey] : null;
+    if (!value) return [];
+    
+    // Asegura que siempre sea un Array (para compatibilidad con data vieja)
+    return Array.isArray(value) ? value : [value];
+  };
 
   const sendPush = async (userNames, eventTitle) => {
     const KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
@@ -167,7 +183,6 @@ export default function EventDetails() {
   const amIAssigned = Object.values(event.assignments || {}).flat().includes(dbUser?.displayName);
   const shouldPulse = amIAssigned && myStatus === 'pending';
 
-  // ✅ LLAVES CORREGIDAS SEGÚN TU VOLCADO DE BASE DE DATOS
   const getStructure = () => {
     if (event.type === 'limpieza' || event.type === 'mantenimiento') {
       return [{ section: 'SECTORES Y TRABAJO', roles: [
@@ -289,7 +304,8 @@ export default function EventDetails() {
                     <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-6 border-l-4 border-brand-500 pl-3 ml-2">{sec.section}</h3>
                     <div className="grid gap-5">
                       {sec.roles.map(role => {
-                        const assigned = assignments[role.key] || [];
+                        // ✅ CAMBIO CLAVE: Usamos la normalización inteligente aquí
+                        const assigned = getAssignedForRole(role.key);
                         return (
                           <div key={role.key} className="bg-white p-6 rounded-[35px] border border-slate-50 shadow-sm relative">
                             <div className="flex justify-between items-center mb-5">
@@ -325,12 +341,41 @@ export default function EventDetails() {
                     </div>
                   </div>
                 ))}
+
+                {/* ✅ SECCIÓN AUTOMÁTICA DE ROLES ADICIONALES (PARA DATA VIEJA O DIFERENTE) */}
+                {Object.keys(assignments).filter(k => {
+                  const fixedKeys = getStructure().flatMap(s => s.roles.map(r => r.key.toLowerCase().replace(/[\s_]/g, '')));
+                  const normalizedK = k.toLowerCase().replace(/[\s_]/g, '');
+                  return !fixedKeys.includes(normalizedK) && assignments[k]?.length > 0;
+                }).length > 0 && (
+                  <div className="text-left mt-10 pb-10">
+                    <h3 className="text-[10px] font-black text-amber-500 uppercase tracking-[0.3em] mb-6 border-l-4 border-amber-500 pl-3 ml-2 italic">Asignaciones de esta Reunión</h3>
+                    <div className="grid gap-5">
+                      {Object.keys(assignments).filter(k => {
+                        const fixedKeys = getStructure().flatMap(s => s.roles.map(r => r.key.toLowerCase().replace(/[\s_]/g, '')));
+                        const normalizedK = k.toLowerCase().replace(/[\s_]/g, '');
+                        return !fixedKeys.includes(normalizedK);
+                      }).map(extraKey => (
+                        <div key={extraKey} className="bg-white p-6 rounded-[35px] border border-amber-100/50 shadow-sm">
+                           <div className="flex items-center gap-3 mb-4">
+                              <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl"><Users size={18}/></div>
+                              <span className="text-[11px] font-black text-slate-800 uppercase">{extraKey.replace(/_/g, ' ')}</span>
+                           </div>
+                           <div className="space-y-2">
+                             {getAssignedForRole(extraKey).map((p, pIdx) => (
+                               <div key={pIdx} className="font-black text-slate-700 text-xs uppercase bg-slate-50 p-4 rounded-2xl border border-slate-100">{p}</div>
+                             ))}
+                           </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
         </div>
       </div>
 
-      {/* ✅ BARRA DE ESTADO GENERAL (Punto 8) */}
       <div className="fixed bottom-0 left-0 right-0 p-8 bg-slate-900 rounded-t-[50px] shadow-2xl z-50 flex items-center justify-between animate-slide-up">
           <div className="text-left">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Estado General</p>
@@ -339,7 +384,6 @@ export default function EventDetails() {
           <button onClick={() => navigate(-1)} className="bg-slate-800 text-white px-10 py-5 rounded-[22px] font-black text-[11px] uppercase active:scale-95 transition-all">Entendido</button>
       </div>
 
-      {/* SELECTOR DE PERSONAL */}
       {isSelectorOpen && (
         <div className="fixed inset-0 z-[300] bg-slate-900/90 backdrop-blur-md flex items-end justify-center" onClick={() => setIsSelectorOpen(false)}>
           <div className="bg-white w-full max-w-md rounded-t-[50px] h-[88vh] flex flex-col animate-slide-up shadow-2xl relative overflow-hidden" onClick={e => e.stopPropagation()}>
