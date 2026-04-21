@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth, messaging } from '../firebase'; 
-import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, arrayUnion, arrayRemove, where, getDoc, setDoc } from 'firebase/firestore'; 
-import { getToken, deleteToken, onMessage } from 'firebase/messaging'; 
+import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, arrayUnion, setDoc } from 'firebase/firestore'; 
+import { getToken } from 'firebase/messaging'; 
 import { 
-  Bell, BellOff, X, Calendar, MessageCircle, ChevronRight, Briefcase, 
-  ShieldAlert, Sparkles, Megaphone, BookOpen, Clock, Settings, Loader2, 
-  Send, Link as LinkIcon, Activity, Heart, Users, HandHeart, Lock, Unlock, Globe, Save
+  Bell, X, Clock, Loader2, Send, Link as LinkIcon, 
+  Activity, HandHeart, Lock, Unlock, Globe, Save,
+  Megaphone, Sparkles, BellRing, AlertTriangle, BookOpen, UserCircle
 } from 'lucide-react';
-import { format, isToday, isYesterday } from 'date-fns';
+import { format, isToday } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { Capacitor } from '@capacitor/core';
@@ -16,7 +16,15 @@ import OneSignal from 'onesignal-cordova-plugin';
 
 const VAPID_KEY = "BGMeg-zLHj3i9JZ09bYjrsV5P0eVEll09oaXMgHgs6ImBloOLHRFKKjELGxHrAEfd96ZnmlBf7XyoLKXiyIA3Wk";
 
-export default function TopBar({ title, subtitle }) {
+// ✅ NUEVO: PLANTILLAS RÁPIDAS
+const PUSH_TEMPLATES = [
+  { id: 'urgente', label: '🚨 Aviso Urgente', title: '¡Aviso Importante!', body: 'Por favor, lee este comunicado urgente de la iglesia.', targetArea: 'todos', targetPath: '/' },
+  { id: 'servicio', label: '⛪ Confirmar Servicio', title: 'Recordatorio de Servicio', body: 'No olvides confirmar tu asistencia para servir en el próximo culto.', targetArea: 'todos', targetPath: '/servicios' },
+  { id: 'clase', label: '📚 Nueva Clase', title: '¡Nueva Clase Publicada!', body: 'Ya está disponible el material de la nueva serie. ¡No te lo pierdas!', targetArea: 'todos', targetPath: '/' },
+  { id: 'meet', label: '🎥 Link de Meet', title: '¡Ya estamos en vivo!', body: 'Entrá al link para sumarte a la transmisión.', targetArea: 'todos', targetPath: '/' }
+];
+
+export default function TopBar() {
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [readIds, setReadIds] = useState([]); 
@@ -37,7 +45,7 @@ export default function TopBar({ title, subtitle }) {
 
   const isNative = Capacitor.isNativePlatform(); 
 
-  // ✅ 0. DETECTOR DE USUARIO, ROL Y DEEP LINKING
+  // 0. DETECTOR DE USUARIO, ROL Y DEEP LINKING
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged((user) => {
       if (user) {
@@ -52,7 +60,6 @@ export default function TopBar({ title, subtitle }) {
             if (isNative) {
                 const areaTag = (data.area || 'ninguna').toLowerCase();
                 OneSignal.sendTag("area", areaTag);
-                console.log("Tag Enviado:", areaTag);
             }
           }
         });
@@ -150,15 +157,37 @@ export default function TopBar({ title, subtitle }) {
       link: prayerLinkData.url, 
       targetPath: '/' 
     });
-    toast.info("Plantilla cargada");
+    toast.info("Link cargado");
+  };
+
+  // ✅ NUEVO: Aplicar Plantilla Rápida
+  const applyTemplate = (template) => {
+    setPushData({
+      title: template.title,
+      body: template.body,
+      link: '',
+      targetArea: template.targetArea,
+      targetPath: template.targetPath
+    });
+    toast.success("Plantilla aplicada");
   };
 
   const sendManualPush = async () => {
     if (!pushData.title || !pushData.body) return toast.error("Completa título y mensaje");
     setLoadingAction(true);
     try {
+      // 1. Guardar en Base de Datos para el Historial (Fase 2)
+      const notifRef = doc(collection(db, 'notificaciones_globales'));
+      await setDoc(notifRef, {
+        titulo: pushData.title,
+        mensaje: pushData.body,
+        fecha: new Date().toISOString(),
+        destino: pushData.targetArea.toUpperCase(),
+        link: pushData.link || pushData.targetPath
+      });
+
+      // 2. Enviar a OneSignal
       const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
-      
       const payload = {
         app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
         headings: { en: pushData.title, es: pushData.title },
@@ -184,7 +213,7 @@ export default function TopBar({ title, subtitle }) {
       });
 
       if (response.ok) {
-          toast.success("¡Notificación enviada!");
+          toast.success("¡Notificación enviada y guardada!");
           setIsPastorPanelOpen(false);
           setPushData({ title: '', body: '', link: '', targetArea: 'todos', targetPath: '/' });
       }
@@ -192,36 +221,55 @@ export default function TopBar({ title, subtitle }) {
     finally { setLoadingAction(false); }
   };
 
-  // ✅ CARGA DE NOTIFICACIONES LOCALES (CON FILTRO DE SEGURIDAD)
+  // ✅ NUEVO: FUSIONAR POSTS Y AVISOS PUSH EN LA CAMPANITA
   useEffect(() => {
     if (!activeUser) return;
     
-    const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(20));
-    
-    const unsubNotifs = onSnapshot(q, (snap) => {
-        const allPosts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        
-        // 🎯 FILTRO CRUCIAL: Solo mostramos lo público a los miembros
-        const filteredForUser = allPosts.filter(p => {
-            const isPublic = p.visibility === 'publico' || !p.visibility;
-            if (userRole === 'miembro') return isPublic;
-            return true; // Staff ve todo
-        });
-
-        setNotifications(filteredForUser.map(post => ({
-            id: post.id,
+    // Escuchamos Posts
+    const qPosts = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(15));
+    const unsubPosts = onSnapshot(qPosts, (snap) => {
+        const posts = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+          .filter(p => userRole === 'miembro' ? (p.visibility === 'publico' || !p.visibility) : true)
+          .map(p => ({
+            id: p.id,
             type: 'post',
-            title: post.title || 'Nueva publicación',
-            subtitle: post.type,
-            timestamp: post.createdAt?.toMillis() || Date.now(),
-            link: `/post/${post.id}`,
-            icon: post.type === 'Devocional' ? BookOpen : Megaphone,
-            color: post.type === 'Urgente' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600',
-            isUrgent: post.type === 'Urgente'
-        })));
+            title: p.title || 'Nueva publicación',
+            subtitle: p.type,
+            timestamp: p.createdAt?.toMillis() || Date.now(),
+            link: `/post/${p.id}`,
+            icon: p.type === 'Devocional' ? BookOpen : Megaphone,
+            color: p.type === 'Urgente' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600',
+            isUrgent: p.type === 'Urgente'
+          }));
+          
+        // Escuchamos Notificaciones Globales (Push manuales)
+        const qNotifs = query(collection(db, 'notificaciones_globales'), orderBy('fecha', 'desc'), limit(15));
+        const unsubGlobal = onSnapshot(qNotifs, (snapGlobal) => {
+            const globals = snapGlobal.docs.map(d => {
+              const data = d.data();
+              return {
+                id: d.id,
+                type: 'push',
+                title: data.titulo,
+                subtitle: data.destino === 'TODOS' ? 'Aviso General' : `Aviso: ${data.destino}`,
+                timestamp: new Date(data.fecha).getTime(),
+                link: data.link || '/',
+                icon: BellRing,
+                color: 'bg-amber-100 text-amber-600',
+                isUrgent: false
+              };
+            });
+
+            // Juntamos todo y ordenamos por fecha
+            const allMerged = [...posts, ...globals].sort((a, b) => b.timestamp - a.timestamp).slice(0, 20);
+            setNotifications(allMerged);
+        });
+        
+        return () => unsubGlobal();
     });
-    return () => unsubNotifs();
-  }, [activeUser, userRole]); // Escuchamos el rol para actualizar el filtro
+
+    return () => unsubPosts();
+  }, [activeUser, userRole]); 
 
   useEffect(() => {
     const unread = notifications.filter(n => !readIds.includes(n.id)).length;
@@ -275,7 +323,7 @@ export default function TopBar({ title, subtitle }) {
             <div className="px-6 pt-14 pb-6 border-b border-slate-50 flex justify-between items-center bg-white sticky top-0">
                 <div className="text-left">
                   <h3 className="font-black text-2xl text-slate-900 uppercase tracking-tighter">Notificaciones</h3>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Novedades de la iglesia</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Historial de Avisos</p>
                 </div>
                 <button onClick={() => setIsOpen(false)} className="p-3 bg-slate-50 rounded-full text-slate-400 active:scale-75 transition-all"><X size={24}/></button>
             </div>
@@ -292,7 +340,7 @@ export default function TopBar({ title, subtitle }) {
                 {notifications.length === 0 ? (
                     <div className="py-32 text-center opacity-20 flex flex-col items-center">
                         <Sparkles size={64} className="mb-4 text-slate-300"/>
-                        <p className="text-xs font-black uppercase text-center">Todo al día</p>
+                        <p className="text-xs font-black uppercase text-center">Bandeja Vacía</p>
                     </div>
                 ) : (
                     notifications.slice(0, displayLimit).map((notif) => (
@@ -323,13 +371,26 @@ export default function TopBar({ title, subtitle }) {
             
             <div className="flex justify-between items-center border-b pb-4">
               <div>
-                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter leading-none">Comunicación Push</h3>
-                <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest mt-1">Lanzamiento segmentado</p>
+                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter leading-none">Aviso Push</h3>
+                <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest mt-1">Lanzamiento Manual</p>
               </div>
               <button onClick={() => setIsPastorPanelOpen(false)} className="p-2 bg-slate-100 rounded-full active:scale-75 transition-all text-slate-400"><X size={20}/></button>
             </div>
 
-            <div className="p-5 bg-indigo-50 border-2 border-indigo-100 rounded-[30px] space-y-4 text-left">
+            {/* ✅ NUEVO: PLANTILLAS RÁPIDAS (CHIPS) */}
+            <div>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5"><Sparkles size={12}/> Plantillas Rápidas</p>
+              <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+                {PUSH_TEMPLATES.map((tmpl) => (
+                  <button key={tmpl.id} onClick={() => applyTemplate(tmpl)}
+                    className="shrink-0 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-bold transition-colors">
+                    {tmpl.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-4 bg-indigo-50 border-2 border-indigo-100 rounded-3xl space-y-3 text-left">
                 <div className="flex justify-between items-center">
                     <p className="text-[10px] font-black text-indigo-600 uppercase flex items-center gap-2 tracking-widest"><HandHeart size={16}/> Link de Oración</p>
                     <button onClick={() => setPrayerLinkData({...prayerLinkData, isLocked: !prayerLinkData.isLocked})} className="text-indigo-400">
@@ -347,7 +408,7 @@ export default function TopBar({ title, subtitle }) {
                         <button onClick={savePrayerLink} className="bg-brand-600 text-white p-3 rounded-xl shadow-lg active:scale-90 transition-all"><Save size={16}/></button>
                     )}
                 </div>
-                <button onClick={setPrayerTemplate} className="w-full py-3 bg-indigo-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md active:scale-95 transition-all">Cargar en Formulario</button>
+                <button onClick={setPrayerTemplate} className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md active:scale-95 transition-all">Usar como aviso</button>
             </div>
 
             <div className="space-y-4 text-left">
@@ -360,13 +421,13 @@ export default function TopBar({ title, subtitle }) {
                     </select>
                  </div>
                  <div className="space-y-1.5">
-                    <label className="text-[9px] font-black text-slate-400 uppercase ml-2 tracking-widest flex items-center gap-1.5"><ChevronRight size={10}/> Destino:</label>
+                    <label className="text-[9px] font-black text-slate-400 uppercase ml-2 tracking-widest flex items-center gap-1.5"><LinkIcon size={10}/> Redirigir a:</label>
                     <select className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-black uppercase outline-none" value={pushData.targetPath} onChange={e => setPushData({...pushData, targetPath: e.target.value})}>
-                       <option value="/">Muro de Inicio</option>
+                       <option value="/">Muro Principal</option>
                        <option value="/calendario">Agenda Global</option>
                        <option value="/servicios">Mis Servicios</option>
                        <option value="/directorio">Directorio</option>
-                       <option value="/perfil">Perfil</option>
+                       <option value="/perfil">Mi Perfil</option>
                     </select>
                  </div>
               </div>
@@ -375,13 +436,13 @@ export default function TopBar({ title, subtitle }) {
               <textarea placeholder="Contenido del aviso..." className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-semibold text-sm h-24 resize-none outline-none focus:border-brand-500 transition-all shadow-inner" value={pushData.body} onChange={e => setPushData({...pushData, body: e.target.value})} />
               
               <div className="p-4 bg-slate-50 rounded-2xl border-dashed border-2 border-slate-200">
-                <p className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-2 mb-2"><LinkIcon size={12}/> Link Externo (Meet/IG)</p>
+                <p className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-2 mb-2"><Globe size={12}/> Link Externo (Opcional)</p>
                 <input placeholder="https://..." className="w-full p-2 bg-white rounded-lg border border-slate-100 font-bold text-[10px] outline-none text-brand-600" value={pushData.link} onChange={e => setPushData({...pushData, link: e.target.value})} />
               </div>
             </div>
 
             <button onClick={sendManualPush} disabled={loadingAction} className="w-full py-5 bg-slate-900 text-white rounded-[24px] font-black text-xs uppercase tracking-[0.3em] flex items-center justify-center gap-3 shadow-2xl active:scale-95 transition-all disabled:opacity-50">
-              {loadingAction ? <Loader2 className="animate-spin" size={20}/> : <Send size={20}/>} Enviar Aviso Push
+              {loadingAction ? <Loader2 className="animate-spin" size={20}/> : <Send size={20}/>} Lanzar Aviso
             </button>
           </div>
         </div>

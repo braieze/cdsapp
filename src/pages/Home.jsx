@@ -6,7 +6,7 @@ import {
   PlusCircle, AlertTriangle, Calendar, Heart, Send, 
   AlertCircle, CheckCircle, Flame, HandHeart, ThumbsUp, 
   Archive, ChevronDown, Sparkles, Smile, Frown, Sun, CloudRain, Anchor, HelpCircle,
-  Wallet, Video, Music, GraduationCap, Briefcase 
+  Wallet, Video, Music, GraduationCap, Briefcase, BellRing
 } from 'lucide-react';
 import CreatePostModal from '../components/CreatePostModal';
 import TopBar from '../components/TopBar';
@@ -106,6 +106,14 @@ export default function Home() {
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [editingPost, setEditingPost] = useState(null);
 
+  // NUEVO: Estado para el Toast de Re-notificar
+  const [toast, setToast] = useState({ show: false, message: '' });
+
+  const showToast = (msg) => {
+    setToast({ show: true, message: msg });
+    setTimeout(() => setToast({ show: false, message: '' }), 3000);
+  };
+
   useEffect(() => {
     const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -164,6 +172,32 @@ export default function Home() {
     } catch (e) { console.error(e); }
   };
 
+  // ✅ NUEVA FUNCIÓN: Re-notificar Post
+  const handleReNotify = async (post) => {
+    setMenuOpenId(null);
+    showToast("Enviando aviso push a la iglesia...");
+
+    try {
+      // 1. Guardamos el registro de la notificación (Fase 2)
+      const notifRef = doc(collection(db, 'notificaciones_globales'));
+      await setDoc(notifRef, {
+        titulo: `Recordatorio: ${post.title}`,
+        mensaje: post.content ? post.content.substring(0, 100) + '...' : 'Toca para ver el aviso.',
+        fecha: new Date().toISOString(),
+        destino: post.visibility === 'servidores' ? 'SERVIDORES' : 'TODA LA IGLESIA',
+        link: `/post/${post.id}`
+      });
+
+      // 2. ACÁ DEBÉS LLAMAR A TU API DE ONESIGNAL / FIREBASE CLOUD MESSAGING
+      // fetch('TU_ENDPOINT_AQUI', { method: 'POST', body: ... })
+
+      showToast("¡Aviso reenviado con éxito!");
+    } catch (error) {
+      console.error(error);
+      showToast("Error al enviar el aviso.");
+    }
+  };
+
   const filteredPosts = useMemo(() => {
     let result = posts;
     if (filter === 'Archivados') result = posts.filter(p => p.isArchived === true);
@@ -176,9 +210,18 @@ export default function Home() {
   }, [filter, posts, selectedMood]);
 
   const displayedPosts = filteredPosts.slice(0, visibleCount);
+  const hasMorePosts = visibleCount < filteredPosts.length;
 
   return (
     <div className="pb-36 animate-fade-in min-h-screen bg-slate-50 font-outfit relative">
+      
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[100] bg-slate-900 text-white px-6 py-3 rounded-full text-xs font-bold uppercase tracking-widest shadow-2xl animate-slide-up">
+          {toast.message}
+        </div>
+      )}
+
       <TopBar />
 
       <div className="px-5 mt-6 space-y-6">
@@ -286,13 +329,27 @@ export default function Home() {
                             </span>
                           </div>
                       </div>
+                      
+                      {/* BOTÓN 3 PUNTITOS Y MENÚ */}
                       {isModerator && (
-                        <div className="relative">
-                          <button onClick={() => setMenuOpenId(menuOpenId === post.id ? null : post.id)} className="p-2 text-slate-300 bg-slate-50 rounded-xl active:text-slate-900"><MoreVertical size={20}/></button>
+                        <div className="relative z-10">
+                          <button onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === post.id ? null : post.id); }} className="p-2 text-slate-300 bg-slate-50 rounded-xl active:text-slate-900"><MoreVertical size={20}/></button>
                           {menuOpenId === post.id && (
                             <div className="absolute right-0 top-12 bg-white shadow-2xl rounded-2xl border border-slate-100 py-2 w-52 z-50 animate-scale-in origin-top-right">
-                              {isPastor && <button onClick={() => handleArchive(post.id, post.isArchived)} className="w-full text-left px-5 py-4 text-[9px] font-black uppercase tracking-widest text-amber-600 hover:bg-amber-50 flex items-center gap-3 border-b border-slate-50"><Archive size={14}/> {post.isArchived ? 'Desarchivar' : 'Archivar post'}</button>}
-                              <button onClick={() => { setEditingPost(post); setIsModalOpen(true); setMenuOpenId(null); }} className="w-full text-left px-5 py-4 text-[9px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50 flex items-center gap-3"><Edit3 size={14}/> Editar</button>
+                              
+                              {/* NUEVO BOTÓN: RE-NOTIFICAR */}
+                              <button onClick={(e) => { e.stopPropagation(); handleReNotify(post); }} className="w-full text-left px-5 py-4 text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:bg-indigo-50 flex items-center gap-3 border-b border-slate-50">
+                                <BellRing size={14}/> Re-Notificar
+                              </button>
+
+                              {isPastor && (
+                                <button onClick={(e) => { e.stopPropagation(); handleArchive(post.id, post.isArchived); }} className="w-full text-left px-5 py-4 text-[9px] font-black uppercase tracking-widest text-amber-600 hover:bg-amber-50 flex items-center gap-3 border-b border-slate-50">
+                                  <Archive size={14}/> {post.isArchived ? 'Desarchivar' : 'Archivar post'}
+                                </button>
+                              )}
+                              <button onClick={(e) => { e.stopPropagation(); setEditingPost(post); setIsModalOpen(true); setMenuOpenId(null); }} className="w-full text-left px-5 py-4 text-[9px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50 flex items-center gap-3">
+                                <Edit3 size={14}/> Editar
+                              </button>
                             </div>
                           )}
                         </div>
@@ -336,6 +393,18 @@ export default function Home() {
                 )}
               </div>
             )})
+        )}
+
+        {/* ✅ NUEVO: BOTÓN VER MÁS POSTS */}
+        {hasMorePosts && !loading && (
+          <div className="flex justify-center px-5 mt-8 pb-4">
+            <button 
+              onClick={() => setVisibleCount(prev => prev + 4)}
+              className="bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 px-8 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center gap-3 transition-all active:scale-95 shadow-sm"
+            >
+              <PlusCircle size={16} /> Mostrar más publicaciones
+            </button>
+          </div>
         )}
       </div>
 
