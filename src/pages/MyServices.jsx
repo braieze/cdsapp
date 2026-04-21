@@ -8,7 +8,7 @@ import {
 import { 
   Calendar, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, 
   History, ChevronRight, Loader2, RefreshCcw, Users, ShieldAlert, 
-  MessageSquare, HelpCircle, User, X, ArrowRightCircle, Check, Info, Lock
+  MessageSquare, HelpCircle, User, X, ArrowRightCircle, Check, Info, Lock, BellRing
 } from 'lucide-react';
 import { format, isSameMonth, isPast, isFuture, subDays, startOfDay, isAfter } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -24,16 +24,14 @@ export default function MyServices() {
   const [userRole, setUserRole] = useState(null); 
   const [stats, setStats] = useState({ monthCount: 0, lastServiceDate: null, nextServiceDays: null });
   
-  // ✅ ESTADO PARA MENSAJES NO LEÍDOS POR EVENTO
   const [unreadCounts, setUnreadCounts] = useState({}); 
-
   const [showAttendanceEvent, setShowAttendanceEvent] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null); 
   const [toast, setToast] = useState(null); 
+  const [loadingAction, setLoadingAction] = useState(false);
 
   const currentUser = auth.currentUser;
 
-  // 🎯 PUNTO 2: REFERENCIA DE TIEMPO (Para que no se borre hoy)
   const ayer = useMemo(() => subDays(startOfDay(new Date()), 1), []);
 
   useEffect(() => {
@@ -43,7 +41,6 @@ export default function MyServices() {
     }
   }, [toast]);
 
-  // ✅ ESCUCHA ACTIVA DE CHATS PARA BADGES
   useEffect(() => {
     if (!currentUser || myEvents.length === 0) return;
     const unsubscribes = myEvents.map(event => {
@@ -94,7 +91,6 @@ export default function MyServices() {
             const unsubscribe = onSnapshot(q, (snapshot) => {
                 const eventsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 
-                // 🎯 PUNTO 2: Filtrar mis asignaciones que NO han pasado (Incluye hoy)
                 const myAssignments = eventsData.filter(event => {
                     if (!event.assignments) return false;
                     const eventDate = new Date(event.date + 'T00:00:00');
@@ -107,12 +103,10 @@ export default function MyServices() {
 
                 let futureEvents = [];
                 if (role === 'pastor' || role === 'lider') {
-                    // Equipo ve eventos desde hoy en adelante
                     futureEvents = eventsData.filter(event => isAfter(new Date(event.date + 'T00:00:00'), ayer));
                     setTeamEvents(futureEvents);
                 }
 
-                // ✅ SUMA TOTAL DE ALERTAS
                 const myPendingCount = myAssignments.filter(e => (!e.confirmations || !e.confirmations[currentUser.displayName])).length;
                 const totalUnreadMessages = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
 
@@ -136,7 +130,6 @@ export default function MyServices() {
     const active = events.filter(e => e.confirmations?.[myName] !== 'declined');
     const thisMonth = active.filter(e => isSameMonth(new Date(e.date + 'T00:00:00'), now));
     
-    // El "Próximo" ahora detecta correctamente si es hoy
     const future = active.filter(e => isAfter(new Date(e.date + 'T00:00:00'), subDays(now, 1)));
     const next = future.length > 0 ? future[0] : null;
     
@@ -148,25 +141,70 @@ export default function MyServices() {
 
     setStats({ 
       monthCount: thisMonth.length, 
-      lastServiceDate: '-', // Calculado en historial si fuera necesario
+      lastServiceDate: '-', 
       nextServiceDays: days 
     });
   };
 
+  // ✅ NUEVA FUNCIÓN: Envío silencioso a Pastores Designados
+  const notifyPastors = async (title, body) => {
+    const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
+    if (!REST_API_KEY) return;
+    
+    // Obtenemos los pastores/lideres principales (Filtro anti-spam)
+    const adminPastors = allUsers.filter(u => 
+      u.role === 'pastor' && 
+      (u.area?.toLowerCase() === 'pastorado' || u.area?.toLowerCase() === 'recepcion')
+    ).map(u => u.id); // Sus UIDs
+
+    if (adminPastors.length === 0) return; // Nadie a quien avisar
+
+    try {
+      await fetch("https://onesignal.com/api/v1/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8", "Authorization": `Basic ${REST_API_KEY}` },
+        body: JSON.stringify({
+          app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
+          headings: { en: title, es: title },
+          contents: { en: body, es: body },
+          include_external_user_ids: adminPastors, // Solo les llega a estos UIDs
+          priority: 10
+        })
+      });
+    } catch (e) { console.error("Error notificando pastores", e); }
+  };
+
   const executeResponse = async () => {
     if (!confirmAction) return;
-    const { eventId, status } = confirmAction;
-    setConfirmAction(null);
+    setLoadingAction(true);
+    const { eventId, status, title } = confirmAction;
+    
     try {
         await updateDoc(doc(db, 'events', eventId), { 
             [`confirmations.${currentUser.displayName}`]: status, 
             updatedAt: serverTimestamp() 
         });
-        setToast({ message: status === 'confirmed' ? "¡Asistencia confirmada!" : "Baja notificada correctamente", type: "success" });
+        
+        // 🚀 FASE 3: Notificar a los pastores que respondió
+        const eventoBase = myEvents.find(e => e.id === eventId);
+        const myRoleForEvent = getMyRole(eventoBase);
+        
+        if (status === 'confirmed') {
+          await notifyPastors("✅ Confirmación de Servicio", `${currentUser.displayName} confirmó asistencia en ${myRoleForEvent} para el culto de ${title}.`);
+          setToast({ message: "¡Asistencia confirmada!", type: "success" });
+        } else {
+          await notifyPastors("🚨 ALERTA: Baja de Servicio", `${currentUser.displayName} acaba de notificar que NO PUEDE ASISTIR a ${myRoleForEvent} para el culto de ${title}.`);
+          setToast({ message: "Baja notificada correctamente", type: "success" });
+        }
     } catch (error) { setToast({ message: "Error al actualizar", type: "error" }); }
+    finally { 
+      setConfirmAction(null); 
+      setLoadingAction(false); 
+    }
   };
 
   const handleUndo = async (eventId) => {
+    setLoadingAction(true);
     try { 
         await updateDoc(doc(db, 'events', eventId), { 
             [`confirmations.${currentUser.displayName}`]: null,
@@ -174,10 +212,44 @@ export default function MyServices() {
         }); 
         setToast({ message: "Estado restablecido", type: "info" });
     } catch (e) { setToast({ message: "Error", type: "error" }); }
+    finally { setLoadingAction(false); }
+  };
+
+  // ✅ NUEVA FUNCIÓN: Recordatorio Automático a Inactivos
+  const handleRemindPending = async (event) => {
+    if (!window.confirm("¿Avisar a todos los pendientes?")) return;
+    
+    const pendingNames = getGroupedAttendance(event).pending.map(p => p.name);
+    if (pendingNames.length === 0) return;
+
+    // Buscamos los UIDs de esas personas
+    const pendingUIDs = allUsers.filter(u => pendingNames.includes(u.displayName)).map(u => u.id);
+    
+    setToast({ message: "Enviando recordatorios...", type: "info" });
+    
+    try {
+      const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
+      await fetch("https://onesignal.com/api/v1/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8", "Authorization": `Basic ${REST_API_KEY}` },
+        body: JSON.stringify({
+          app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
+          headings: { en: "⚠️ Recordatorio de Servicio", es: "⚠️ Recordatorio de Servicio" },
+          contents: { en: `Tenés un servicio sin confirmar para ${event.title}. Por favor, entrá a la App a responder.`, es: `Tenés un servicio sin confirmar para ${event.title}. Por favor, entrá a la App a responder.` },
+          include_external_user_ids: pendingUIDs, // Solo le llega a los pendientes
+          data: { route: '/servicios' }
+        })
+      });
+      setToast({ message: "Recordatorios enviados", type: "success" });
+    } catch (e) {
+      console.error(e);
+      setToast({ message: "Error al enviar", type: "error" });
+    }
   };
 
   const getMyRole = (event) => {
-      const roleKey = Object.keys(event.assignments || {}).find(key => event.assignments[key].includes(currentUser.displayName));
+      if (!event || !event.assignments) return 'Equipo';
+      const roleKey = Object.keys(event.assignments).find(key => event.assignments[key].includes(currentUser.displayName));
       return roleKey ? roleKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Equipo';
   };
 
@@ -264,7 +336,6 @@ export default function MyServices() {
                             </div>
                         </div>
                         
-                        {/* ✅ ACCESO AL CHAT (Punto 2) */}
                         <button onClick={() => navigate(`/servicios/${event.id}`)} className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl text-[10px] uppercase flex items-center justify-center gap-3 shadow-xl transition-all active:scale-95 relative tracking-widest">
                             <MessageSquare size={16}/> 
                             CHAT DE SERVICIO
@@ -309,17 +380,25 @@ export default function MyServices() {
                       if (status.total === 0) return null; 
                       const hasIssues = status.declined > 0;
                       const progress = Math.round(((status.confirmed + status.declined) / status.total) * 100);
+                      const pendingCount = status.total - status.confirmed - status.declined;
+
                       return (
                           <div key={event.id} className={`bg-white p-6 rounded-[35px] border-2 shadow-sm transition-all ${hasIssues ? 'border-red-100 bg-red-50/10' : 'border-slate-50'}`}>
                               <div className="flex justify-between items-start mb-5">
                                   <div className="min-w-0 flex-1"><h4 className="font-black text-slate-900 text-base uppercase tracking-tight truncate leading-tight">{event.title}</h4><p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">{format(new Date(event.date + 'T00:00:00'), 'EEEE d MMMM', { locale: es })}</p></div>
-                                  {hasIssues && <div className="bg-red-500 text-white px-3 py-1.5 rounded-full text-[9px] font-black flex items-center gap-1.5 uppercase shadow-lg shadow-red-100 shrink-0"><ShieldAlert size={12}/> {status.declined} Baja(s)</div>}
+                                  <div className="flex gap-2">
+                                    {pendingCount > 0 && (
+                                      <button onClick={() => handleRemindPending(event)} className="bg-slate-100 hover:bg-brand-100 text-brand-600 px-2 py-1.5 rounded-xl transition-colors active:scale-90" title="Avisar a Pendientes">
+                                        <BellRing size={16}/>
+                                      </button>
+                                    )}
+                                    {hasIssues && <div className="bg-red-500 text-white px-3 py-1.5 rounded-full text-[9px] font-black flex items-center gap-1.5 uppercase shadow-lg shadow-red-100 shrink-0"><ShieldAlert size={12}/> {status.declined} Baja(s)</div>}
+                                  </div>
                               </div>
                               <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden mb-6 shadow-inner"><div className={`h-full rounded-full transition-all duration-1000 ${hasIssues ? 'bg-amber-400' : 'bg-emerald-500'}`} style={{ width: `${progress}%` }}></div></div>
                               <div className="flex gap-2">
                                 <button onClick={() => setShowAttendanceEvent(event)} className="flex-1 bg-slate-50 hover:bg-slate-100 text-slate-600 py-4 rounded-2xl text-[10px] font-black uppercase flex items-center justify-center gap-2 border border-slate-100 transition-all active:scale-95 tracking-widest">DETALLES</button>
                                 
-                                {/* ✅ PUNTO 2: ACCESO AL CHAT PARA LÍDERES */}
                                 <button onClick={() => navigate(`/servicios/${event.id}`)} className="p-4 bg-brand-50 text-brand-600 rounded-2xl hover:bg-brand-100 transition-colors relative active:scale-90">
                                     <MessageSquare size={20}/>
                                     {unreadCounts[event.id] > 0 && (
@@ -348,10 +427,10 @@ export default function MyServices() {
             </h4>
             <p className="text-[10px] text-slate-400 font-black mb-10 uppercase tracking-widest leading-relaxed px-2">{confirmAction.title}</p>
             <div className="flex flex-col gap-3">
-              <button onClick={executeResponse} className={`w-full py-5 rounded-[22px] font-black text-xs uppercase shadow-xl ${confirmAction.status === 'confirmed' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}`}>
-                Sí, Confirmar
+              <button onClick={executeResponse} disabled={loadingAction} className={`w-full py-5 rounded-[22px] font-black text-xs uppercase shadow-xl flex items-center justify-center gap-2 ${confirmAction.status === 'confirmed' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'} disabled:opacity-50`}>
+                {loadingAction ? <Loader2 className="animate-spin" size={16}/> : 'Sí, Confirmar'}
               </button>
-              <button onClick={() => setConfirmAction(null)} className="w-full py-5 rounded-[22px] font-black text-xs uppercase text-slate-400 bg-slate-50 active:scale-95 transition-transform">
+              <button onClick={() => setConfirmAction(null)} disabled={loadingAction} className="w-full py-5 rounded-[22px] font-black text-xs uppercase text-slate-400 bg-slate-50 active:scale-95 transition-transform disabled:opacity-50">
                 Cancelar
               </button>
             </div>
