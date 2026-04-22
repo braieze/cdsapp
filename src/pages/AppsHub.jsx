@@ -54,8 +54,8 @@ export default function AppsHub() {
     // 🎓 Series (Academia)
     { id: 'classroom', name: 'Series', icon: GraduationCap, color: 'text-emerald-600', bg: 'bg-emerald-50', path: '/estudio', roles: ['todos'] },
 
-    // 🎵 Cancionero
-    { id: 'alabanza', name: 'Cancionero', icon: Music, color: 'text-pink-600', bg: 'bg-pink-50', path: '#', roles: ['pastor', 'lider', 'alabanza', 'multimedia'] },
+    // 🎵 Cancionero (✅ RUTA CONECTADA AL NUEVO MÓDULO)
+    { id: 'alabanza', name: 'Cancionero', icon: Music, color: 'text-pink-600', bg: 'bg-pink-50', path: '/alabanza', roles: ['pastor', 'lider', 'alabanza', 'multimedia'] },
     
     // 🎬 Multimedia
     { id: 'multimedia', name: 'Multimedia', icon: Video, color: 'text-cyan-600', bg: 'bg-cyan-50', path: '#', roles: ['pastor', 'lider', 'multimedia', 'alabanza'] },
@@ -74,9 +74,9 @@ export default function AppsHub() {
       return app.roles.includes('todos');
     }
 
-    // 3. REGLA LIDER: Ve todo lo de staff + Cancionero y Multimedia (sin Tesorería)
+    // 3. REGLA LIDER: Ve todo lo de staff + Cancionero y Multimedia si corresponde a su área
     if (userRole === 'lider') {
-      return app.roles.includes('lider') || app.roles.includes('todos');
+      return app.roles.includes('lider') || app.roles.includes('todos') || app.roles.includes(userArea);
     }
 
     // 4. REGLA SERVIDOR GENERAL Y ÁREAS ESPECÍFICAS

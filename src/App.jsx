@@ -26,6 +26,7 @@ import Profile from './pages/Profile';
 import Directory from './pages/Directory';
 import Ofrendar from './pages/Ofrendar'; 
 import Tesoreria from './pages/Tesoreria';
+import Alabanza from './pages/Alabanza'; // ✅ MÓDULO DE ALABANZA AGREGADO
 
 // ✅ ACADEMIA CDS
 import StudyHub from './pages/StudyHub';
@@ -208,6 +209,7 @@ export default function App() {
           <Route path="perfil" element={<Profile />} /> 
           <Route path="directorio" element={<Directory />} />
           <Route path="tesoreria" element={<Tesoreria />} /> 
+          <Route path="alabanza" element={<Alabanza />} /> {/* ✅ RUTA DE ALABANZA AGREGADA */}
 
           {/* 🎓 ACADEMIA */}
           <Route path="estudio" element={<StudyHub />} />
