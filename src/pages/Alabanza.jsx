@@ -5,7 +5,7 @@ import {
   Search, Filter, ChevronRight, Mic2, Save, X,
   Youtube, ArrowUpCircle, ArrowDownCircle,
   PlayCircle, StopCircle, Flame, Sparkles, Lock, 
-  ClipboardList, CheckCircle2, ChevronLeft
+  ClipboardList, CheckCircle2, ChevronLeft, Loader2
 } from 'lucide-react';
 import { db } from '../firebase';
 import { 
