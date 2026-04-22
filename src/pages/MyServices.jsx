@@ -154,7 +154,7 @@ export default function MyServices() {
     // Obtenemos los pastores/lideres principales (Filtro anti-spam)
     const adminPastors = allUsers.filter(u => 
       u.role === 'pastor' && 
-      (u.area?.toLowerCase() === 'pastorado' || u.area?.toLowerCase() === 'recepcion')
+      (u.area?.toLowerCase() === 'general' || u.area?.toLowerCase() === 'recepcion')
     ).map(u => u.id); // Sus UIDs
 
     if (adminPastors.length === 0) return; // Nadie a quien avisar
