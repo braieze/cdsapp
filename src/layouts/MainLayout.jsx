@@ -16,10 +16,12 @@ export default function MainLayout() {
   // 1. Estamos en el detalle de una serie (/estudio/ID_DE_SERIE)
   // 2. Estamos en una clase (/estudio/clase/ID_DE_CLASE)
   // 3. Estamos creando/editando (/estudio/crear o /estudio/nueva-clase)
+  // 4. Estamos en el módulo de Alabanza (/alabanza) <- ¡NUEVO!
   
   const hideNav = location.pathname.includes('/estudio/') || 
                   location.pathname.includes('/editar-clase/') ||
-                  location.pathname.includes('/nueva-clase/');
+                  location.pathname.includes('/nueva-clase/') ||
+                  location.pathname.includes('/alabanza');
 
   useEffect(() => {
     if (!user) {
@@ -56,7 +58,7 @@ export default function MainLayout() {
         <Outlet context={{ dbUser }} /> 
       </main>
 
-      {/* ✅ Solo renderiza el BottomNavigation si NO estamos en un detalle/clase */}
+      {/* ✅ Solo renderiza el BottomNavigation si NO estamos en un detalle/clase/alabanza */}
       {!hideNav && <BottomNavigation dbUser={dbUser} />}
     </div>
   );
