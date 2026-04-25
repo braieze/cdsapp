@@ -6,7 +6,7 @@ import {
   Youtube, ArrowUpCircle, ArrowDownCircle,
   PlayCircle, StopCircle, Flame, Sparkles, Lock, 
   ClipboardList, CheckCircle2, ChevronLeft, Loader2,
-  Trash2, Edit3, ArrowLeft, Home, FileText
+  Trash2, Edit3, ArrowLeft, Home, FileText, ListMusic
 } from 'lucide-react';
 import { db } from '../firebase';
 import { 
