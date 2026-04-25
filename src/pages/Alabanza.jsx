@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import { 
   Music, Calendar, Clock, BookOpen, PlusCircle, 
@@ -6,7 +6,7 @@ import {
   Youtube, ArrowUpCircle, ArrowDownCircle,
   PlayCircle, StopCircle, Flame, Sparkles, Lock, 
   ClipboardList, CheckCircle2, ChevronLeft, Loader2,
-  Trash2, Edit3, ArrowLeft, Home, FileText, ListMusic
+  Trash2, Edit3, ArrowLeft, Home, FileText, ListMusic, User
 } from 'lucide-react';
 import { db } from '../firebase';
 import { 
@@ -20,6 +20,9 @@ import { toast } from 'sonner';
 // --- LÓGICA DEL TRANSPOSITOR ---
 const scale = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const flatToSharp = { 'Db': 'C#', 'Eb': 'D#', 'Gb': 'F#', 'Ab': 'G#', 'Bb': 'A#' };
+
+const getIndex = (c) => scale.indexOf(flatToSharp[c] || c);
+
 const transposeChord = (chord, steps) => {
   const match = chord.match(/^([A-G][b#]?)(.*)$/);
   if (!match) return chord;
@@ -31,6 +34,13 @@ const transposeChord = (chord, steps) => {
   let newIndex = (index + steps) % 12;
   if (newIndex < 0) newIndex += 12;
   return scale[newIndex] + rest;
+};
+
+const getStepsDiff = (from, to) => {
+  const i1 = getIndex(from);
+  const i2 = getIndex(to);
+  if (i1 === -1 || i2 === -1) return 0;
+  return (i2 - i1 + 12) % 12;
 };
 
 const CATEGORIAS = ['Todas', 'Bienvenida', 'Fuego', 'Alabanza', 'Adoración', 'Ministración', 'Especial'];
@@ -54,12 +64,14 @@ export default function Alabanza() {
   // Modales y Visores
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
+  const [setlistSearchTerm, setSetlistSearchTerm] = useState(''); // Buscador dentro del culto
   
   // Setlist y Modo Ensayo
   const [activeSetlist, setActiveSetlist] = useState([]);
   const [currentSongIdx, setCurrentSongIdx] = useState(0);
   const [transposeSteps, setTransposeSteps] = useState(0);
   const [currentSlideIdx, setCurrentSlideIdx] = useState(0);
+  const [genderToggle, setGenderToggle] = useState('man'); // 'man' o 'woman'
 
   // Metrónomo
   const [isPlayingMetro, setIsPlayingMetro] = useState(false);
@@ -67,7 +79,7 @@ export default function Alabanza() {
   const timerRef = useRef(null);
 
   // Formulario Canción y Acordes
-  const [songForm, setSongForm] = useState({ id: null, title: '', artist: '', originalKey: 'C', bpm: '', category: 'Adoración', link: '', content: '' });
+  const [songForm, setSongForm] = useState({ id: null, title: '', artist: '', keyMan: 'C', keyWoman: 'C', bpm: '', category: 'Adoración', link: '', content: '' });
   const textAreaRef = useRef(null);
 
   // 🛡️ ACCESO
@@ -129,12 +141,13 @@ export default function Alabanza() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [currentSongIdx, activeSetlist]);
 
-  // --- VISOR SETLIST & SLIDES ---
+  // --- VISOR SETLIST & SLIDES (PAGINACIÓN INTELIGENTE) ---
   const openSongViewer = (songList, startIndex = 0) => {
     setActiveSetlist(songList);
     setCurrentSongIdx(startIndex);
     setTransposeSteps(0);
     setCurrentSlideIdx(0);
+    setGenderToggle('man');
     setIsPlayingMetro(false);
     if (timerRef.current) clearInterval(timerRef.current);
   };
@@ -146,7 +159,31 @@ export default function Alabanza() {
   };
 
   const viewingSong = activeSetlist[currentSongIdx];
-  const songSlides = viewingSong ? viewingSong.content.split(/\n\s*\n/) : [];
+  
+  // Paginación inteligente: Agrupa estrofas hasta tener ~10 líneas
+  const songSlides = useMemo(() => {
+    if (!viewingSong) return [];
+    const stanzas = viewingSong.content.split(/\n\s*\n/);
+    const slides = [];
+    let currentSlide = [];
+    let currentLines = 0;
+    
+    stanzas.forEach(stanza => {
+       const linesCount = stanza.split('\n').length;
+       if (currentLines + linesCount > 10 && currentSlide.length > 0) {
+           slides.push(currentSlide.join('\n\n'));
+           currentSlide = [stanza];
+           currentLines = linesCount;
+       } else {
+           currentSlide.push(stanza);
+           currentLines += linesCount;
+       }
+    });
+    if (currentSlide.length > 0) slides.push(currentSlide.join('\n\n'));
+    return slides;
+  }, [viewingSong]);
+
+  const effectiveSteps = transposeSteps + (genderToggle === 'woman' ? getStepsDiff(viewingSong?.keyMan, viewingSong?.keyWoman) : 0);
 
   const handleNextSlide = () => {
     if (currentSlideIdx < songSlides.length - 1) setCurrentSlideIdx(p => p + 1);
@@ -183,7 +220,7 @@ export default function Alabanza() {
             await setDoc(doc(db, 'alabanza_events', eventId), {
               date: eventId,
               type,
-              team: { bateria: '', bajo: '', piano: '', guitarra: '', acustica: '', voces: [], devo: '' },
+              team: { teclado: '', bajo: '', bateria: '', electrica: '', acustica: '', voces: [], devo: '' },
               setlist: [],
               observations: ''
             });
@@ -216,7 +253,8 @@ export default function Alabanza() {
     if (!songForm.title || !songForm.content) return toast.error("Título y letra son obligatorios");
     try {
       const songData = {
-        title: songForm.title, artist: songForm.artist, originalKey: songForm.originalKey, 
+        title: songForm.title, artist: songForm.artist, 
+        keyMan: songForm.keyMan || 'C', keyWoman: songForm.keyWoman || 'C', 
         bpm: Number(songForm.bpm) || 0, category: songForm.category, link: songForm.link, 
         content: songForm.content, updatedAt: serverTimestamp()
       };
@@ -288,6 +326,8 @@ export default function Alabanza() {
     return matchesSearch && matchesCategory;
   });
 
+  const filteredSetlistSongs = songs.filter(s => s.title.toLowerCase().includes(setlistSearchTerm.toLowerCase()));
+
   const weeklyEvents = events.filter(ev => isSameWeek(new Date(ev.date + 'T00:00:00'), new Date(), { weekStartsOn: 1 }));
   const monthlyEvents = events.filter(ev => {
     const evDate = new Date(ev.date + 'T00:00:00');
@@ -347,16 +387,16 @@ export default function Alabanza() {
                     {/* BANDA ASIGNADA */}
                     {(ev.type.includes('Culto') || ev.type.includes('Ensayo')) && (
                       <div className="grid grid-cols-2 gap-2 mb-4">
-                        {['piano', 'bajo', 'bateria', 'guitarra', 'acustica'].map(role => ev.team[role] && (
+                        {['teclado', 'bajo', 'bateria', 'electrica', 'acustica'].map(role => ev.team[role] && (
                           <div key={role} className="flex items-center gap-2 text-left bg-slate-50 p-2 rounded-xl border border-slate-100">
                             <div className="w-6 h-6 bg-white rounded-lg flex items-center justify-center text-[10px] font-bold shadow-sm">{role.substring(0,2).toUpperCase()}</div>
                             <p className="text-[10px] font-black text-slate-700 truncate">{ev.team[role]}</p>
                           </div>
                         ))}
                         {ev.team.voces?.length > 0 && (
-                          <div className="col-span-2 flex items-center gap-2 text-left bg-indigo-50 p-2 rounded-xl border border-indigo-100">
-                            <div className="w-6 h-6 bg-indigo-600 text-white rounded-lg flex items-center justify-center text-[10px] font-bold shadow-sm">VO</div>
-                            <p className="text-[10px] font-black text-indigo-900 truncate">{ev.team.voces.join(', ')}</p>
+                          <div className="col-span-2 flex items-center gap-2 text-left bg-indigo-50 p-2 rounded-xl border border-indigo-100 mt-1">
+                            <div className="w-6 h-6 bg-indigo-600 text-white rounded-lg flex items-center justify-center text-[10px] font-bold shadow-sm shrink-0"><Mic2 size={12}/></div>
+                            <p className="text-[10px] font-black text-indigo-900 truncate leading-snug">{ev.team.voces.join(' • ')}</p>
                           </div>
                         )}
                       </div>
@@ -379,7 +419,9 @@ export default function Alabanza() {
                              <PlayCircle size={18} className="text-brand-500 shrink-0" />
                              <div>
                                 <span className="block text-xs font-black text-slate-800 uppercase tracking-tighter">{song.title}</span>
-                                <span className="block text-[9px] font-bold text-slate-400 uppercase">{song.originalKey} • {song.bpm} BPM</span>
+                                <span className="block text-[9px] font-bold text-slate-400 uppercase">
+                                  H: {song.keyMan} | M: {song.keyWoman} {song.bpm ? `• ${song.bpm} BPM` : ''}
+                                </span>
                              </div>
                            </div>
                          ))}
@@ -430,7 +472,7 @@ export default function Alabanza() {
                        <div>
                          <h4 className="font-black text-slate-900 text-sm uppercase tracking-tight">{ev.type}</h4>
                          <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mt-1">
-                           {ev.type === 'Devocional' ? `Resp: ${ev.team.devo || '?'}` : `${ev.setlist.length} canciones asignadas`}
+                           {ev.type === 'Devocional' ? `Resp: ${ev.team.devo || '?'}` : `${ev.setlist?.length || 0} canciones asignadas`}
                          </p>
                        </div>
                      </div>
@@ -470,7 +512,7 @@ export default function Alabanza() {
                  filteredSongs.map(song => (
                    <div key={song.id} className="bg-white p-5 rounded-[28px] border border-slate-100 shadow-sm flex items-center justify-between active:scale-95 transition-transform">
                       <div className="flex items-center gap-4 text-left min-w-0 flex-1 cursor-pointer" onClick={() => openSongViewer([song], 0)}>
-                        <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center shrink-0"><span className="font-black text-lg">{song.originalKey}</span></div>
+                        <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center shrink-0"><span className="font-black text-lg">{song.keyMan || 'C'}</span></div>
                         <div className="min-w-0 flex-1">
                           <h4 className="font-black text-slate-900 text-sm uppercase tracking-tight truncate">{song.title}</h4>
                           <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mt-1 flex items-center gap-1.5 truncate"><Flame size={10} className="text-brand-500"/> {song.category} {song.bpm ? `• ${song.bpm} BPM` : ''}</p>
@@ -488,11 +530,11 @@ export default function Alabanza() {
       </div>
 
       {activeTab === 'cancionero' && (
-        <button onClick={() => { setSongForm({ id: null, title: '', artist: '', originalKey: 'C', bpm: '', category: 'Adoración', link: '', content: '' }); setIsFormOpen(true); }} className="fixed bottom-28 right-6 w-16 h-16 bg-slate-900 text-white rounded-[26px] shadow-2xl flex items-center justify-center active:scale-90 z-40 transition-all border-4 border-white"><PlusCircle size={32} /></button>
+        <button onClick={() => { setSongForm({ id: null, title: '', artist: '', keyMan: 'C', keyWoman: 'C', bpm: '', category: 'Adoración', link: '', content: '' }); setIsFormOpen(true); }} className="fixed bottom-28 right-6 w-16 h-16 bg-slate-900 text-white rounded-[26px] shadow-2xl flex items-center justify-center active:scale-90 z-40 transition-all border-4 border-white"><PlusCircle size={32} /></button>
       )}
 
       {/* =============================================================
-          MODAL 1: EDITAR ORGANIZACIÓN DEL DÍA
+          MODAL 1: EDITAR ORGANIZACIÓN DEL DÍA (CULTOS/ENSAYOS)
       ================================================================= */}
       {editingEvent && (
         <div className="fixed inset-0 z-[200] bg-slate-900/90 backdrop-blur-md flex items-end sm:items-center justify-center font-outfit">
@@ -529,10 +571,10 @@ export default function Alabanza() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
-                    {['piano', 'bajo', 'bateria', 'guitarra', 'acustica'].map(role => (
+                    {['teclado', 'bajo', 'bateria', 'electrica', 'acustica'].map(role => (
                       <div key={role} className="text-left">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">{role}</label>
-                        <select className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none" value={editingEvent.team[role]} onChange={e => setEditingEvent({...editingEvent, team: {...editingEvent.team, [role]: e.target.value}})}>
+                        <select className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none" value={editingEvent.team[role] || ''} onChange={e => setEditingEvent({...editingEvent, team: {...editingEvent.team, [role]: e.target.value}})}>
                           <option value="">-</option>
                           {teamMembers.map(m => <option key={m.id} value={m.displayName}>{m.displayName}</option>)}
                         </select>
@@ -542,16 +584,29 @@ export default function Alabanza() {
 
                   <div className="text-left border-t border-slate-100 pt-4">
                     <label className="text-[10px] font-black text-brand-600 uppercase tracking-widest ml-1 mb-3 flex items-center gap-2"><ListMusic size={12}/> Setlist del Día</label>
+                    
+                    {/* BUSCADOR DE CANCIONES PARA EL SETLIST */}
+                    <div className="flex items-center bg-slate-50 border border-slate-200 p-3 rounded-xl mb-3">
+                       <Search size={16} className="text-slate-400 mr-2"/>
+                       <input placeholder="Buscar para agregar..." value={setlistSearchTerm} onChange={e => setSetlistSearchTerm(e.target.value)} className="bg-transparent outline-none w-full text-xs font-bold" />
+                    </div>
+
                     <div className="max-h-40 overflow-y-auto space-y-2 pr-1 no-scrollbar">
-                      {songs.map(song => (
-                        <div key={song.id} onClick={() => {
-                            const newList = editingEvent.setlist.includes(song.id) ? editingEvent.setlist.filter(id => id !== song.id) : [...editingEvent.setlist, song.id];
-                            setEditingEvent({...editingEvent, setlist: newList});
-                          }} className={`p-3 rounded-xl border-2 transition-all flex items-center justify-between cursor-pointer ${editingEvent.setlist.includes(song.id) ? 'border-brand-500 bg-brand-50' : 'border-slate-100 bg-white'}`}>
-                          <span className="text-[11px] font-black text-slate-700 uppercase truncate pr-2">{song.title}</span>
-                          {editingEvent.setlist.includes(song.id) ? <CheckCircle2 size={16} className="text-brand-600 shrink-0"/> : <PlusCircle size={16} className="text-slate-300 shrink-0"/>}
-                        </div>
-                      ))}
+                      {filteredSetlistSongs.map(song => {
+                        const isSelected = editingEvent.setlist.includes(song.id);
+                        return (
+                          <div key={song.id} onClick={() => {
+                              const newList = isSelected ? editingEvent.setlist.filter(id => id !== song.id) : [...editingEvent.setlist, song.id];
+                              setEditingEvent({...editingEvent, setlist: newList});
+                            }} className={`p-3 rounded-xl border-2 transition-all flex items-center justify-between cursor-pointer ${isSelected ? 'border-brand-500 bg-brand-50' : 'border-slate-100 bg-white'}`}>
+                            <div className="flex flex-col">
+                               <span className="text-xs font-black text-slate-700 uppercase truncate pr-2">{song.title}</span>
+                               <span className="text-[9px] text-slate-400 font-bold uppercase">{song.category}</span>
+                            </div>
+                            {isSelected ? <CheckCircle2 size={16} className="text-brand-600 shrink-0"/> : <PlusCircle size={16} className="text-slate-300 shrink-0"/>}
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 </>
@@ -559,25 +614,25 @@ export default function Alabanza() {
 
               {/* ENSAYO: Observaciones */}
               {editingEvent.type.includes('Ensayo') && (
-                <div className="text-left pt-2">
-                  <label className="text-[10px] font-black text-amber-600 uppercase tracking-widest ml-1 mb-2 flex items-center gap-2"><FileText size={12}/> Observaciones del Ensayo</label>
-                  <textarea placeholder="Ej: Faltó sacar el puente de Eterno..." className="w-full p-4 bg-amber-50/50 border border-amber-100 rounded-2xl font-medium text-sm h-24 resize-none outline-none focus:border-amber-400" value={editingEvent.observations} onChange={e => setEditingEvent({...editingEvent, observations: e.target.value})} />
+                <div className="text-left pt-2 border-t border-slate-100">
+                  <label className="text-[10px] font-black text-amber-600 uppercase tracking-widest ml-1 mb-2 flex items-center gap-2 mt-4"><FileText size={12}/> Observaciones del Ensayo</label>
+                  <textarea placeholder="Ej: Faltó repasar el puente, voces del coro..." className="w-full p-4 bg-amber-50/50 border border-amber-100 rounded-2xl font-medium text-sm h-24 resize-none outline-none focus:border-amber-400" value={editingEvent.observations} onChange={e => setEditingEvent({...editingEvent, observations: e.target.value})} />
                 </div>
               )}
 
               {/* DEVOCIONAL */}
               {(editingEvent.type === 'Devocional' || editingEvent.type.includes('Ensayo')) && (
-                 <div className="text-left pt-2">
-                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Responsable Devocional</label>
-                   <select className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none" value={editingEvent.team.devo} onChange={e => setEditingEvent({...editingEvent, team: {...editingEvent.team, devo: e.target.value}})}>
+                 <div className="text-left pt-2 border-t border-slate-100 mt-4">
+                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block mt-4">Responsable Devocional</label>
+                   <select className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none" value={editingEvent.team.devo || ''} onChange={e => setEditingEvent({...editingEvent, team: {...editingEvent.team, devo: e.target.value}})}>
                      <option value="">-</option>
                      {teamMembers.map(m => <option key={m.id} value={m.displayName}>{m.displayName}</option>)}
                    </select>
                  </div>
               )}
 
-              <button type="submit" className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-[0.3em] shadow-xl flex items-center justify-center gap-3">
-                <Save size={18}/> Guardar Cambios
+              <button type="submit" className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-[0.3em] shadow-xl flex items-center justify-center gap-3 mt-4">
+                <Save size={18}/> Guardar Organización
               </button>
             </form>
           </div>
@@ -585,7 +640,7 @@ export default function Alabanza() {
       )}
 
       {/* =============================================================
-          MODAL 2: NUEVA/EDITAR CANCIÓN CON TECLADO DE ACORDES
+          MODAL 2: NUEVA/EDITAR CANCIÓN CON TONOS HOMBRE/MUJER
       ================================================================= */}
       {isFormOpen && (
         <div className="fixed inset-0 z-[200] bg-slate-50 flex flex-col animate-slide-up h-[100dvh]">
@@ -600,16 +655,22 @@ export default function Alabanza() {
           <div className="flex-1 overflow-y-auto p-5 pb-48 text-left">
             <div className="space-y-4">
               <input placeholder="Título" className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-black text-lg outline-none focus:border-brand-500" value={songForm.title} onChange={e => setSongForm({...songForm, title: e.target.value})} />
-              <div className="flex gap-3">
-                <div className="flex-1">
-                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Tono Original</label>
-                   <input placeholder="C, Dm..." className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-black uppercase outline-none focus:border-brand-500" value={songForm.originalKey} onChange={e => setSongForm({...songForm, originalKey: e.target.value})} />
+              
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 flex items-center gap-1"><User size={10}/> Voz H.</label>
+                   <input placeholder="C" className="w-full p-4 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-2xl font-black uppercase outline-none" value={songForm.keyMan} onChange={e => setSongForm({...songForm, keyMan: e.target.value})} />
                 </div>
-                <div className="flex-1">
-                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">BPM (Tempo)</label>
+                <div>
+                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 flex items-center gap-1"><User size={10}/> Voz M.</label>
+                   <input placeholder="G" className="w-full p-4 bg-pink-50 text-pink-700 border border-pink-100 rounded-2xl font-black uppercase outline-none" value={songForm.keyWoman} onChange={e => setSongForm({...songForm, keyWoman: e.target.value})} />
+                </div>
+                <div>
+                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Tempo</label>
                    <input placeholder="120" type="number" className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-black outline-none focus:border-brand-500" value={songForm.bpm} onChange={e => setSongForm({...songForm, bpm: e.target.value})} />
                 </div>
               </div>
+
               <select className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-bold outline-none" value={songForm.category} onChange={e => setSongForm({...songForm, category: e.target.value})}>
                 {CATEGORIAS.filter(c => c !== 'Todas').map(c => <option key={c} value={c}>{c}</option>)}
               </select>
@@ -658,16 +719,28 @@ export default function Alabanza() {
           </div>
 
           <div className="bg-slate-800 p-3 flex gap-2 shrink-0 shadow-md z-10">
-            <div className="flex-1 bg-slate-900/50 rounded-xl p-2 flex items-center justify-between border border-slate-700">
-              <button onClick={() => setTransposeSteps(p => p - 1)} className="w-10 h-10 rounded-lg bg-slate-700 text-white flex items-center justify-center active:scale-95 transition-transform"><ArrowDownCircle size={20}/></button>
-              <div className="text-center"><span className="block text-[8px] text-slate-400 font-black uppercase tracking-widest">Tono</span><span className="block text-lg font-black text-white">{transposeChord(viewingSong.originalKey, transposeSteps)}</span></div>
-              <button onClick={() => setTransposeSteps(p => p + 1)} className="w-10 h-10 rounded-lg bg-slate-700 text-white flex items-center justify-center active:scale-95 transition-transform"><ArrowUpCircle size={20}/></button>
+            {/* SELECTOR DE VOZ (HOMBRE/MUJER) Y TRANSPOSITOR */}
+            <div className="flex-[1.5] bg-slate-900/50 rounded-xl p-2 flex flex-col border border-slate-700 justify-between">
+              <div className="flex bg-slate-800 rounded-lg p-1 mb-2">
+                <button onClick={() => setGenderToggle('man')} className={`flex-1 text-[9px] font-black uppercase tracking-widest py-1.5 rounded-md transition-colors ${genderToggle === 'man' ? 'bg-indigo-500 text-white' : 'text-slate-400'}`}>Hombre</button>
+                <button onClick={() => setGenderToggle('woman')} className={`flex-1 text-[9px] font-black uppercase tracking-widest py-1.5 rounded-md transition-colors ${genderToggle === 'woman' ? 'bg-pink-500 text-white' : 'text-slate-400'}`}>Mujer</button>
+              </div>
+              <div className="flex items-center justify-between px-1">
+                <button onClick={() => setTransposeSteps(p => p - 1)} className="w-8 h-8 rounded-md bg-slate-700 text-white flex items-center justify-center active:scale-95 transition-transform"><ArrowDownCircle size={16}/></button>
+                <div className="text-center"><span className="block text-[8px] text-slate-400 font-black uppercase tracking-widest">Tono Actual</span><span className="block text-lg font-black text-white">{transposeChord(viewingSong.keyMan, effectiveSteps)}</span></div>
+                <button onClick={() => setTransposeSteps(p => p + 1)} className="w-8 h-8 rounded-md bg-slate-700 text-white flex items-center justify-center active:scale-95 transition-transform"><ArrowUpCircle size={16}/></button>
+              </div>
             </div>
-            <div className="flex-1 bg-slate-900/50 rounded-xl p-2 flex items-center justify-between border border-slate-700 px-4">
-               <div className="text-left"><span className="block text-[8px] text-slate-400 font-black uppercase tracking-widest">Tempo</span><span className="block text-lg font-black text-white">{viewingSong.bpm || '--'} <span className="text-[10px]">bpm</span></span></div>
-               <button onClick={() => toggleMetronome(viewingSong.bpm)} className={`w-10 h-10 rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-all ${isPlayingMetro ? 'bg-rose-500 shadow-rose-500/50 animate-pulse' : 'bg-brand-600 shadow-brand-500/50'}`}>
-                 {isPlayingMetro ? <StopCircle size={20} className="text-white"/> : <PlayCircle size={20} className="text-white"/>}
-               </button>
+
+            {/* METRÓNOMO */}
+            <div className="flex-1 bg-slate-900/50 rounded-xl p-2 flex flex-col justify-center items-center border border-slate-700">
+               <span className="block text-[8px] text-slate-400 font-black uppercase tracking-widest mb-1">Metrónomo</span>
+               <div className="flex items-center gap-3">
+                 <span className="block text-xl font-black text-white">{viewingSong.bpm || '--'}</span>
+                 <button onClick={() => toggleMetronome(viewingSong.bpm)} className={`w-10 h-10 rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-all ${isPlayingMetro ? 'bg-rose-500 shadow-rose-500/50 animate-pulse' : 'bg-brand-600 shadow-brand-500/50'}`}>
+                   {isPlayingMetro ? <StopCircle size={20} className="text-white"/> : <PlayCircle size={20} className="text-white"/>}
+                 </button>
+               </div>
             </div>
           </div>
 
@@ -677,8 +750,8 @@ export default function Alabanza() {
              <div className="absolute left-0 top-0 bottom-0 w-1/2 z-10" onClick={handlePrevSlide}></div>
              <div className="absolute right-0 top-0 bottom-0 w-1/2 z-10" onClick={handleNextSlide}></div>
              
-             <div className="p-8 text-center w-full max-w-2xl transition-all duration-300">
-               {renderLyricsWithChords(songSlides[currentSlideIdx] || '', transposeSteps)}
+             <div className="p-8 text-center w-full max-w-2xl transition-all duration-300 pointer-events-none">
+               {renderLyricsWithChords(songSlides[currentSlideIdx] || '', effectiveSteps)}
              </div>
 
              {/* INDICADOR DE PAGINACIÓN */}
@@ -692,12 +765,12 @@ export default function Alabanza() {
           {/* NAVEGACIÓN DE SETLIST */}
           {activeSetlist.length > 1 && (
             <div className="bg-slate-900 p-4 flex items-center gap-4 border-t border-slate-800 shrink-0 z-20 relative">
-              <button onClick={() => { if(currentSongIdx > 0) { setCurrentSongIdx(p=>p-1); setTransposeSteps(0); setCurrentSlideIdx(0); } }} className={`p-4 rounded-2xl flex items-center justify-center transition-all ${currentSongIdx === 0 ? 'opacity-30' : 'bg-slate-800 text-white active:scale-90'}`}><ChevronLeft size={24} /></button>
+              <button onClick={() => { if(currentSongIdx > 0) { setCurrentSongIdx(p=>p-1); setTransposeSteps(0); setCurrentSlideIdx(0); setGenderToggle('man'); } }} className={`p-4 rounded-2xl flex items-center justify-center transition-all ${currentSongIdx === 0 ? 'opacity-30' : 'bg-slate-800 text-white active:scale-90'}`}><ChevronLeft size={24} /></button>
               <div className="flex-1 text-center min-w-0">
                 <span className="block text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">{currentSongIdx < activeSetlist.length - 1 ? 'SIGUIENTE CANCIÓN' : 'FIN DEL SETLIST'}</span>
                 <span className="block text-sm font-black text-white truncate mt-1">{currentSongIdx < activeSetlist.length - 1 ? activeSetlist[currentSongIdx+1].title : '-'}</span>
               </div>
-              <button onClick={() => { if(currentSongIdx < activeSetlist.length - 1) { setCurrentSongIdx(p=>p+1); setTransposeSteps(0); setCurrentSlideIdx(0); } }} className={`p-4 rounded-2xl flex items-center justify-center transition-all ${currentSongIdx === activeSetlist.length - 1 ? 'opacity-30' : 'bg-brand-600 text-white active:scale-90'}`}><ChevronRight size={24} /></button>
+              <button onClick={() => { if(currentSongIdx < activeSetlist.length - 1) { setCurrentSongIdx(p=>p+1); setTransposeSteps(0); setCurrentSlideIdx(0); setGenderToggle('man'); } }} className={`p-4 rounded-2xl flex items-center justify-center transition-all ${currentSongIdx === activeSetlist.length - 1 ? 'opacity-30' : 'bg-brand-600 text-white active:scale-90'}`}><ChevronRight size={24} /></button>
             </div>
           )}
         </div>
