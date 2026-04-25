@@ -47,6 +47,9 @@ const CATEGORIAS = ['Todas', 'Bienvenida', 'Fuego', 'Alabanza', 'Adoración', 'M
 const NOTAS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
 const MODIFICADORES = ['', 'm', '#', 'b', '7', 'm7'];
 
+// Helper para compatibilidad de base de datos
+const getSongId = (item) => typeof item === 'string' ? item : item.songId;
+
 export default function Alabanza() {
   const navigate = useNavigate();
   const { dbUser } = useOutletContext();
@@ -64,14 +67,14 @@ export default function Alabanza() {
   // Modales y Visores
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
-  const [setlistSearchTerm, setSetlistSearchTerm] = useState(''); // Buscador dentro del culto
+  const [setlistSearchTerm, setSetlistSearchTerm] = useState(''); 
   
   // Setlist y Modo Ensayo
   const [activeSetlist, setActiveSetlist] = useState([]);
   const [currentSongIdx, setCurrentSongIdx] = useState(0);
   const [transposeSteps, setTransposeSteps] = useState(0);
   const [currentSlideIdx, setCurrentSlideIdx] = useState(0);
-  const [genderToggle, setGenderToggle] = useState('man'); // 'man' o 'woman'
+  const [genderToggle, setGenderToggle] = useState('man'); 
 
   // Metrónomo
   const [isPlayingMetro, setIsPlayingMetro] = useState(false);
@@ -142,14 +145,23 @@ export default function Alabanza() {
   }, [currentSongIdx, activeSetlist]);
 
   // --- VISOR SETLIST & SLIDES (PAGINACIÓN INTELIGENTE) ---
-  const openSongViewer = (songList, startIndex = 0) => {
-    setActiveSetlist(songList);
-    setCurrentSongIdx(startIndex);
+  const changeSongIdx = (newIdx, list = activeSetlist) => {
+    setCurrentSongIdx(newIdx);
     setTransposeSteps(0);
     setCurrentSlideIdx(0);
-    setGenderToggle('man');
+    const nextSong = list[newIdx];
+    if (nextSong && nextSong.setlistConfig?.keyType) {
+        setGenderToggle(nextSong.setlistConfig.keyType);
+    } else {
+        setGenderToggle('man');
+    }
+  };
+
+  const openSongViewer = (songList, startIndex = 0) => {
+    setActiveSetlist(songList);
     setIsPlayingMetro(false);
     if (timerRef.current) clearInterval(timerRef.current);
+    changeSongIdx(startIndex, songList); // Set inicial con info del setlist
   };
 
   const closeViewer = () => {
@@ -160,7 +172,6 @@ export default function Alabanza() {
 
   const viewingSong = activeSetlist[currentSongIdx];
   
-  // Paginación inteligente: Agrupa estrofas hasta tener ~10 líneas
   const songSlides = useMemo(() => {
     if (!viewingSong) return [];
     const stanzas = viewingSong.content.split(/\n\s*\n/);
@@ -370,7 +381,13 @@ export default function Alabanza() {
               <div className="py-20 text-center opacity-20"><Calendar size={48} className="mx-auto mb-4" /><p className="font-black text-xs uppercase">Sin actividades esta semana</p></div>
             ) : (
               weeklyEvents.map(ev => {
-                const eventSongs = ev.setlist?.map(id => songs.find(s => s.id === id)).filter(Boolean) || [];
+                const eventSongs = ev.setlist?.map(item => {
+                  const songId = getSongId(item);
+                  const s = songs.find(s => s.id === songId);
+                  if(!s) return null;
+                  return { ...s, setlistConfig: typeof item === 'string' ? { singer: '', keyType: 'man', notes: '' } : item };
+                }).filter(Boolean) || [];
+
                 return (
                   <div key={ev.id} className="bg-white p-6 rounded-[35px] border border-slate-100 shadow-sm relative overflow-hidden">
                     <div className="flex justify-between items-start mb-5">
@@ -410,25 +427,33 @@ export default function Alabanza() {
                        </div>
                     )}
 
-                    {/* SETLIST */}
+                    {/* SETLIST DETALLADO */}
                     {eventSongs.length > 0 && (
-                      <div className="border-t pt-4 space-y-2">
-                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-left mb-3 flex items-center justify-between">Setlist <span className="bg-slate-900 text-white px-2 py-0.5 rounded-md">Abrir Modo Ensayo</span></p>
+                      <div className="border-t pt-4 space-y-3">
+                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-left mb-2 flex items-center justify-between">Setlist <span className="bg-slate-900 text-white px-2 py-0.5 rounded-md">Abrir Modo Ensayo</span></p>
                          {eventSongs.map((song, idx) => (
-                           <div key={song.id} className="flex items-center gap-3 text-left p-2 rounded-xl hover:bg-slate-50 cursor-pointer transition-colors" onClick={() => openSongViewer(eventSongs, idx)}>
-                             <PlayCircle size={18} className="text-brand-500 shrink-0" />
-                             <div>
+                           <div key={song.id} className="flex items-start gap-3 text-left p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer transition-colors active:scale-95" onClick={() => openSongViewer(eventSongs, idx)}>
+                             <PlayCircle size={20} className="text-brand-500 shrink-0 mt-0.5" />
+                             <div className="flex-1 min-w-0">
                                 <span className="block text-xs font-black text-slate-800 uppercase tracking-tighter">{song.title}</span>
-                                <span className="block text-[9px] font-bold text-slate-400 uppercase">
-                                  H: {song.keyMan} | M: {song.keyWoman} {song.bpm ? `• ${song.bpm} BPM` : ''}
-                                </span>
+                                <div className="flex flex-wrap gap-2 mt-1.5">
+                                   {song.setlistConfig.singer && (
+                                      <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest flex items-center gap-1"><Mic2 size={8}/> {song.setlistConfig.singer}</span>
+                                   )}
+                                   <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest">
+                                      Tono: {song.setlistConfig.keyType === 'woman' ? song.keyWoman : song.keyMan}
+                                   </span>
+                                </div>
+                                {song.setlistConfig.notes && (
+                                   <p className="text-[9px] font-bold text-amber-600 mt-2 flex items-center gap-1"><FileText size={10}/> {song.setlistConfig.notes}</p>
+                                )}
                              </div>
                            </div>
                          ))}
                       </div>
                     )}
 
-                    {/* OBSERVACIONES */}
+                    {/* OBSERVACIONES GENERALES */}
                     {ev.observations && (
                       <div className="mt-4 p-3 bg-slate-50 border-l-4 border-slate-300 rounded-r-xl text-left">
                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Observaciones</p>
@@ -447,7 +472,6 @@ export default function Alabanza() {
         ============================================= */}
         {activeTab === 'mensual' && (
           <div className="animate-slide-up space-y-4">
-            {/* CARRUSEL DE MESES */}
             <div className="flex items-center justify-between bg-white p-2 rounded-2xl shadow-sm border border-slate-100 mb-4">
               <button onClick={handlePrevMonth} className="p-3 bg-slate-50 rounded-xl text-slate-600 active:scale-90"><ChevronLeft size={18}/></button>
               <h2 className="text-sm font-black text-slate-900 uppercase tracking-widest">{format(viewMonth, 'MMMM yyyy', { locale: es })}</h2>
@@ -496,7 +520,6 @@ export default function Alabanza() {
               </div>
             </div>
 
-            {/* FILTROS CATEGORÍAS */}
             <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
                {CATEGORIAS.map(cat => (
                  <button key={cat} onClick={() => setActiveCategory(cat)} className={`shrink-0 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeCategory === cat ? 'bg-slate-900 text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200'}`}>
@@ -582,31 +605,94 @@ export default function Alabanza() {
                     ))}
                   </div>
 
+                  {/* CONSTRUCTOR DE SETLIST DETALLADO */}
                   <div className="text-left border-t border-slate-100 pt-4">
-                    <label className="text-[10px] font-black text-brand-600 uppercase tracking-widest ml-1 mb-3 flex items-center gap-2"><ListMusic size={12}/> Setlist del Día</label>
+                    <label className="text-[10px] font-black text-brand-600 uppercase tracking-widest ml-1 mb-3 flex items-center gap-2"><ListMusic size={12}/> Constructor de Setlist</label>
                     
-                    {/* BUSCADOR DE CANCIONES PARA EL SETLIST */}
                     <div className="flex items-center bg-slate-50 border border-slate-200 p-3 rounded-xl mb-3">
                        <Search size={16} className="text-slate-400 mr-2"/>
                        <input placeholder="Buscar para agregar..." value={setlistSearchTerm} onChange={e => setSetlistSearchTerm(e.target.value)} className="bg-transparent outline-none w-full text-xs font-bold" />
                     </div>
 
-                    <div className="max-h-40 overflow-y-auto space-y-2 pr-1 no-scrollbar">
-                      {filteredSetlistSongs.map(song => {
-                        const isSelected = editingEvent.setlist.includes(song.id);
-                        return (
-                          <div key={song.id} onClick={() => {
-                              const newList = isSelected ? editingEvent.setlist.filter(id => id !== song.id) : [...editingEvent.setlist, song.id];
-                              setEditingEvent({...editingEvent, setlist: newList});
-                            }} className={`p-3 rounded-xl border-2 transition-all flex items-center justify-between cursor-pointer ${isSelected ? 'border-brand-500 bg-brand-50' : 'border-slate-100 bg-white'}`}>
-                            <div className="flex flex-col">
-                               <span className="text-xs font-black text-slate-700 uppercase truncate pr-2">{song.title}</span>
-                               <span className="text-[9px] text-slate-400 font-bold uppercase">{song.category}</span>
+                    {setlistSearchTerm && (
+                      <div className="max-h-40 overflow-y-auto space-y-2 pr-1 mb-4 border-b border-slate-100 pb-4 no-scrollbar">
+                        {filteredSetlistSongs.map(song => {
+                          const isSelected = editingEvent.setlist.some(item => getSongId(item) === song.id);
+                          return (
+                            <div key={song.id} onClick={() => {
+                                let newList = [...editingEvent.setlist];
+                                if (isSelected) {
+                                   newList = newList.filter(item => getSongId(item) !== song.id);
+                                } else {
+                                   newList.push({ songId: song.id, singer: '', keyType: 'man', notes: '' });
+                                }
+                                setEditingEvent({...editingEvent, setlist: newList});
+                              }} className={`p-3 rounded-xl border-2 transition-all flex items-center justify-between cursor-pointer ${isSelected ? 'border-brand-500 bg-brand-50' : 'border-slate-100 bg-white'}`}>
+                              <div className="flex flex-col">
+                                 <span className="text-xs font-black text-slate-700 uppercase truncate pr-2">{song.title}</span>
+                                 <span className="text-[9px] text-slate-400 font-bold uppercase">{song.category}</span>
+                              </div>
+                              {isSelected ? <CheckCircle2 size={16} className="text-brand-600 shrink-0"/> : <PlusCircle size={16} className="text-slate-300 shrink-0"/>}
                             </div>
-                            {isSelected ? <CheckCircle2 size={16} className="text-brand-600 shrink-0"/> : <PlusCircle size={16} className="text-slate-300 shrink-0"/>}
-                          </div>
-                        )
-                      })}
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {/* CANCIONES SELECCIONADAS (Mini Formulario por canción) */}
+                    <div className="space-y-3 mt-4">
+                       {editingEvent.setlist.map((item, idx) => {
+                          const songId = getSongId(item);
+                          const song = songs.find(s => s.id === songId);
+                          if(!song) return null;
+                          
+                          // Convertir vieja data string a objeto por compatibilidad
+                          const config = typeof item === 'string' ? { songId, singer: '', keyType: 'man', notes: '' } : item;
+
+                          return (
+                             <div key={idx} className="p-3 bg-white border border-slate-200 rounded-xl shadow-sm relative">
+                                <button type="button" onClick={() => {
+                                    const newList = [...editingEvent.setlist];
+                                    newList.splice(idx, 1);
+                                    setEditingEvent({...editingEvent, setlist: newList});
+                                }} className="absolute top-3 right-3 text-rose-400 active:scale-90"><Trash2 size={14}/></button>
+                                
+                                <h4 className="text-xs font-black text-slate-800 uppercase tracking-tighter mb-2 pr-6">{song.title}</h4>
+                                
+                                <div className="grid grid-cols-2 gap-2 mb-2">
+                                   <div>
+                                      <label className="text-[8px] font-black text-slate-400 uppercase ml-1">Canta (Principal)</label>
+                                      <select value={config.singer} onChange={e => {
+                                         const newList = [...editingEvent.setlist];
+                                         newList[idx] = { ...config, singer: e.target.value };
+                                         setEditingEvent({...editingEvent, setlist: newList});
+                                      }} className="w-full bg-slate-50 border border-slate-100 p-2 rounded-lg text-[10px] font-bold outline-none text-slate-700">
+                                         <option value="">Nadie / Todos</option>
+                                         {teamMembers.map(m => <option key={m.id} value={m.displayName}>{m.displayName}</option>)}
+                                      </select>
+                                   </div>
+                                   <div>
+                                      <label className="text-[8px] font-black text-slate-400 uppercase ml-1">Tono a tocar</label>
+                                      <select value={config.keyType} onChange={e => {
+                                         const newList = [...editingEvent.setlist];
+                                         newList[idx] = { ...config, keyType: e.target.value };
+                                         setEditingEvent({...editingEvent, setlist: newList});
+                                      }} className="w-full bg-slate-50 border border-slate-100 p-2 rounded-lg text-[10px] font-bold outline-none text-slate-700">
+                                         <option value="man">Hombre ({song.keyMan || 'C'})</option>
+                                         <option value="woman">Mujer ({song.keyWoman || 'C'})</option>
+                                      </select>
+                                   </div>
+                                </div>
+                                <div>
+                                   <input placeholder="Notas de ensayo (Ej: Solo acústico al principio)..." value={config.notes || ''} onChange={e => {
+                                       const newList = [...editingEvent.setlist];
+                                       newList[idx] = { ...config, notes: e.target.value };
+                                       setEditingEvent({...editingEvent, setlist: newList});
+                                   }} className="w-full bg-amber-50/50 border border-amber-100 p-2.5 rounded-lg text-[10px] font-bold outline-none placeholder:text-amber-300 text-amber-900" />
+                                </div>
+                             </div>
+                          )
+                       })}
                     </div>
                   </div>
                 </>
@@ -631,7 +717,7 @@ export default function Alabanza() {
                  </div>
               )}
 
-              <button type="submit" className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-[0.3em] shadow-xl flex items-center justify-center gap-3 mt-4">
+              <button type="submit" className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-[0.3em] shadow-xl flex items-center justify-center gap-3 mt-4 active:scale-95 transition-transform">
                 <Save size={18}/> Guardar Organización
               </button>
             </form>
@@ -711,12 +797,24 @@ export default function Alabanza() {
         <div className="fixed inset-0 z-[300] bg-white flex flex-col animate-slide-up h-[100dvh] overflow-hidden">
           <div className="flex justify-between items-start p-5 bg-slate-900 text-white shrink-0">
             <div className="text-left flex-1 min-w-0 pr-4">
-              <span className="bg-white/20 text-white px-2.5 py-1 rounded-md text-[8px] font-black uppercase mb-2 inline-block tracking-widest">{viewingSong.category}</span>
+              <div className="flex items-center gap-2 mb-2">
+                 <span className="bg-white/20 text-white px-2.5 py-1 rounded-md text-[8px] font-black uppercase tracking-widest">{viewingSong.category}</span>
+                 {viewingSong.setlistConfig?.notes && (
+                    <span className="bg-amber-500 text-amber-900 px-2 py-1 rounded-md text-[8px] font-black uppercase flex items-center gap-1"><FileText size={8}/> Notas</span>
+                 )}
+              </div>
               <h2 className="text-2xl font-black uppercase tracking-tighter truncate">{viewingSong.title}</h2>
               {activeSetlist.length > 1 && <p className="text-[10px] font-black text-brand-400 uppercase tracking-widest mt-1">Setlist: {currentSongIdx + 1} de {activeSetlist.length}</p>}
             </div>
             <button onClick={closeViewer} className="p-3 bg-white/10 rounded-full text-slate-300 active:scale-75 transition-all shrink-0"><X size={20}/></button>
           </div>
+
+          {viewingSong.setlistConfig?.notes && (
+             <div className="bg-amber-400 text-amber-900 px-5 py-2 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 shrink-0">
+                <FileText size={14} className="shrink-0"/>
+                <span className="truncate">{viewingSong.setlistConfig.notes}</span>
+             </div>
+          )}
 
           <div className="bg-slate-800 p-3 flex gap-2 shrink-0 shadow-md z-10">
             {/* SELECTOR DE VOZ (HOMBRE/MUJER) Y TRANSPOSITOR */}
@@ -765,12 +863,12 @@ export default function Alabanza() {
           {/* NAVEGACIÓN DE SETLIST */}
           {activeSetlist.length > 1 && (
             <div className="bg-slate-900 p-4 flex items-center gap-4 border-t border-slate-800 shrink-0 z-20 relative">
-              <button onClick={() => { if(currentSongIdx > 0) { setCurrentSongIdx(p=>p-1); setTransposeSteps(0); setCurrentSlideIdx(0); setGenderToggle('man'); } }} className={`p-4 rounded-2xl flex items-center justify-center transition-all ${currentSongIdx === 0 ? 'opacity-30' : 'bg-slate-800 text-white active:scale-90'}`}><ChevronLeft size={24} /></button>
+              <button onClick={() => { if(currentSongIdx > 0) changeSongIdx(currentSongIdx - 1) }} className={`p-4 rounded-2xl flex items-center justify-center transition-all ${currentSongIdx === 0 ? 'opacity-30' : 'bg-slate-800 text-white active:scale-90'}`}><ChevronLeft size={24} /></button>
               <div className="flex-1 text-center min-w-0">
                 <span className="block text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">{currentSongIdx < activeSetlist.length - 1 ? 'SIGUIENTE CANCIÓN' : 'FIN DEL SETLIST'}</span>
                 <span className="block text-sm font-black text-white truncate mt-1">{currentSongIdx < activeSetlist.length - 1 ? activeSetlist[currentSongIdx+1].title : '-'}</span>
               </div>
-              <button onClick={() => { if(currentSongIdx < activeSetlist.length - 1) { setCurrentSongIdx(p=>p+1); setTransposeSteps(0); setCurrentSlideIdx(0); setGenderToggle('man'); } }} className={`p-4 rounded-2xl flex items-center justify-center transition-all ${currentSongIdx === activeSetlist.length - 1 ? 'opacity-30' : 'bg-brand-600 text-white active:scale-90'}`}><ChevronRight size={24} /></button>
+              <button onClick={() => { if(currentSongIdx < activeSetlist.length - 1) changeSongIdx(currentSongIdx + 1) }} className={`p-4 rounded-2xl flex items-center justify-center transition-all ${currentSongIdx === activeSetlist.length - 1 ? 'opacity-30' : 'bg-brand-600 text-white active:scale-90'}`}><ChevronRight size={24} /></button>
             </div>
           )}
         </div>
