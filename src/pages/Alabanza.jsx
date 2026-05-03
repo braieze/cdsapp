@@ -6,7 +6,7 @@ import {
   Youtube, ArrowUpCircle, ArrowDownCircle,
   PlayCircle, StopCircle, Flame, Sparkles, Lock, 
   ClipboardList, CheckCircle2, ChevronLeft, Loader2,
-  Trash2, Edit3, ArrowLeft, Home, FileText, ListMusic, User
+  Trash2, Edit3, ArrowLeft, Home, FileText, ListMusic, User, Settings
 } from 'lucide-react';
 import { db } from '../firebase';
 import { 
@@ -24,6 +24,7 @@ const flatToSharp = { 'Db': 'C#', 'Eb': 'D#', 'Gb': 'F#', 'Ab': 'G#', 'Bb': 'A#'
 const getIndex = (c) => scale.indexOf(flatToSharp[c] || c);
 
 const transposeChord = (chord, steps) => {
+  if (!chord) return chord; // Seguro anti-crasheo (Evita el error 'match of undefined')
   const match = chord.match(/^([A-G][b#]?)(.*)$/);
   if (!match) return chord;
   let root = match[1];
@@ -75,6 +76,8 @@ export default function Alabanza() {
   const [transposeSteps, setTransposeSteps] = useState(0);
   const [currentSlideIdx, setCurrentSlideIdx] = useState(0);
   const [genderToggle, setGenderToggle] = useState('man'); 
+  const [textSize, setTextSize] = useState('md'); // sm, md, lg
+  const [showSettings, setShowSettings] = useState(false);
 
   // Metrónomo
   const [isPlayingMetro, setIsPlayingMetro] = useState(false);
@@ -144,7 +147,7 @@ export default function Alabanza() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [currentSongIdx, activeSetlist]);
 
-  // --- VISOR SETLIST & SLIDES (PAGINACIÓN INTELIGENTE) ---
+  // --- VISOR SETLIST & SLIDES (PAGINACIÓN INTELIGENTE CON TAMAÑO CONFIGURABLE) ---
   const changeSongIdx = (newIdx, list = activeSetlist) => {
     setCurrentSongIdx(newIdx);
     setTransposeSteps(0);
@@ -160,13 +163,15 @@ export default function Alabanza() {
   const openSongViewer = (songList, startIndex = 0) => {
     setActiveSetlist(songList);
     setIsPlayingMetro(false);
+    setShowSettings(false);
     if (timerRef.current) clearInterval(timerRef.current);
-    changeSongIdx(startIndex, songList); // Set inicial con info del setlist
+    changeSongIdx(startIndex, songList);
   };
 
   const closeViewer = () => {
     setActiveSetlist([]);
     setIsPlayingMetro(false);
+    setShowSettings(false);
     if (timerRef.current) clearInterval(timerRef.current);
   };
 
@@ -179,9 +184,12 @@ export default function Alabanza() {
     let currentSlide = [];
     let currentLines = 0;
     
+    // Calcula cuántas líneas caben según el tamaño de texto elegido
+    const maxLines = textSize === 'sm' ? 14 : textSize === 'lg' ? 6 : 10;
+    
     stanzas.forEach(stanza => {
        const linesCount = stanza.split('\n').length;
-       if (currentLines + linesCount > 10 && currentSlide.length > 0) {
+       if (currentLines + linesCount > maxLines && currentSlide.length > 0) {
            slides.push(currentSlide.join('\n\n'));
            currentSlide = [stanza];
            currentLines = linesCount;
@@ -192,7 +200,7 @@ export default function Alabanza() {
     });
     if (currentSlide.length > 0) slides.push(currentSlide.join('\n\n'));
     return slides;
-  }, [viewingSong]);
+  }, [viewingSong, textSize]);
 
   const effectiveSteps = transposeSteps + (genderToggle === 'woman' ? getStepsDiff(viewingSong?.keyMan, viewingSong?.keyWoman) : 0);
 
@@ -306,24 +314,36 @@ export default function Alabanza() {
     }, 0);
   };
 
-  const renderLyricsWithChords = (text, steps) => {
+  const renderLyricsWithChords = (text, steps, size) => {
     const lines = text.split('\n');
+    
+    // Tamaños dinámicos
+    const sizeClasses = { sm: 'text-lg md:text-xl', md: 'text-xl md:text-2xl', lg: 'text-2xl md:text-3xl' };
+    const chordSizeClasses = { sm: 'text-lg', md: 'text-xl', lg: 'text-2xl' };
+    const topClasses = { sm: '-top-5', md: '-top-6', lg: '-top-8' };
+
     return lines.map((line, idx) => {
       if (line.trim().match(/^\[?(intro|coro|verso|puente|pre-coro|instrumental|final)\]?:?/i)) {
         return <div key={idx} className="mt-6 mb-2 text-[11px] font-black text-brand-500 uppercase tracking-[0.2em] bg-brand-50 inline-block px-3 py-1 rounded-md">{line.replace(/\[|\]/g, '')}</div>;
       }
       const parts = line.split(/(\[[^\]]+\])/g);
       let hasChords = parts.some(p => p.startsWith('[') && p.endsWith(']'));
-      if (!hasChords) return <div key={idx} className="text-xl md:text-2xl font-bold text-slate-800 leading-relaxed min-h-[2rem]">{line}</div>;
+      if (!hasChords) return <div key={idx} className={`${sizeClasses[size]} font-bold text-slate-800 min-h-[2.5rem] whitespace-pre-wrap`}>{line}</div>;
       
       return (
-        <div key={idx} className="relative flex flex-wrap items-end mt-8 mb-2">
+        <div key={idx} className="mt-10 mb-2 leading-loose whitespace-pre-wrap text-center">
           {parts.map((part, i) => {
             if (part.startsWith('[') && part.endsWith(']')) {
               const chord = part.slice(1, -1);
-              return <span key={i} className="absolute -top-6 text-brand-600 font-black text-xl tracking-tighter">{transposeChord(chord, steps)}</span>;
+              return (
+                <span key={i} className="relative inline-block">
+                  <span className={`absolute ${topClasses[size]} left-0 text-brand-600 font-black tracking-tighter ${chordSizeClasses[size]}`}>
+                    {transposeChord(chord, steps)}
+                  </span>
+                </span>
+              );
             }
-            return <span key={i} className="text-xl md:text-2xl font-bold text-slate-800 whitespace-pre leading-relaxed">{part}</span>;
+            return <span key={i} className={`${sizeClasses[size]} font-bold text-slate-800`}>{part}</span>;
           })}
         </div>
       );
@@ -410,10 +430,21 @@ export default function Alabanza() {
                             <p className="text-[10px] font-black text-slate-700 truncate">{ev.team[role]}</p>
                           </div>
                         ))}
+
+                        {/* VOCES - MULTIPLE CHIPS (Diseño Limpio, nada de esconder) */}
                         {ev.team.voces?.length > 0 && (
-                          <div className="col-span-2 flex items-center gap-2 text-left bg-indigo-50 p-2 rounded-xl border border-indigo-100 mt-1">
-                            <div className="w-6 h-6 bg-indigo-600 text-white rounded-lg flex items-center justify-center text-[10px] font-bold shadow-sm shrink-0"><Mic2 size={12}/></div>
-                            <p className="text-[10px] font-black text-indigo-900 truncate leading-snug">{ev.team.voces.join(' • ')}</p>
+                          <div className="col-span-2 flex flex-col gap-2 text-left bg-indigo-50 p-3 rounded-xl border border-indigo-100 mt-1">
+                             <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 bg-indigo-600 text-white rounded-lg flex items-center justify-center text-[10px] font-bold shadow-sm shrink-0"><Mic2 size={12}/></div>
+                                <span className="text-[10px] font-black text-indigo-900 uppercase tracking-widest">Voces Asignadas</span>
+                             </div>
+                             <div className="flex flex-wrap gap-1.5 mt-1">
+                                {ev.team.voces.map((v, i) => (
+                                   <span key={i} className="bg-white text-indigo-700 border border-indigo-100 px-2.5 py-1.5 rounded-lg text-[10px] font-bold">
+                                      {v}
+                                   </span>
+                                ))}
+                             </div>
                           </div>
                         )}
                       </div>
@@ -429,7 +460,7 @@ export default function Alabanza() {
 
                     {/* SETLIST DETALLADO */}
                     {eventSongs.length > 0 && (
-                      <div className="border-t pt-4 space-y-3">
+                      <div className="border-t border-slate-100 pt-4 space-y-3">
                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-left mb-2 flex items-center justify-between">Setlist <span className="bg-slate-900 text-white px-2 py-0.5 rounded-md">Abrir Modo Ensayo</span></p>
                          {eventSongs.map((song, idx) => (
                            <div key={song.id} className="flex items-start gap-3 text-left p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer transition-colors active:scale-95" onClick={() => openSongViewer(eventSongs, idx)}>
@@ -764,6 +795,13 @@ export default function Alabanza() {
                  <Youtube size={18} className="absolute top-4 left-4 text-rose-500" />
                  <input placeholder="Link YouTube/Spotify (Opcional)" className="w-full py-4 pl-12 pr-4 bg-rose-50 border border-rose-100 rounded-2xl font-bold text-sm outline-none focus:border-rose-400 text-rose-900" value={songForm.link} onChange={e => setSongForm({...songForm, link: e.target.value})} />
               </div>
+              
+              <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
+                 <p className="text-[10px] font-black text-indigo-800 uppercase tracking-widest leading-relaxed">
+                   💡 TIP: Ubicá el cursor antes de la letra donde va el acorde y tocá el botón en el teclado de abajo. Ej: E<span className="text-brand-600 font-bold bg-white px-1 rounded">[Dm]</span>TERNO
+                 </p>
+              </div>
+
               <textarea ref={textAreaRef} placeholder="Escribí la letra acá y usá el teclado flotante de abajo para insertar los acordes..." className="w-full p-5 bg-white border border-slate-200 rounded-2xl font-medium text-[15px] h-[400px] resize-none outline-none leading-relaxed font-mono shadow-inner pb-32" value={songForm.content} onChange={e => setSongForm({...songForm, content: e.target.value})} />
             </div>
           </div>
@@ -795,7 +833,7 @@ export default function Alabanza() {
       ================================================================= */}
       {viewingSong && (
         <div className="fixed inset-0 z-[300] bg-white flex flex-col animate-slide-up h-[100dvh] overflow-hidden">
-          <div className="flex justify-between items-start p-5 bg-slate-900 text-white shrink-0">
+          <div className="flex justify-between items-start p-5 bg-slate-900 text-white shrink-0 relative">
             <div className="text-left flex-1 min-w-0 pr-4">
               <div className="flex items-center gap-2 mb-2">
                  <span className="bg-white/20 text-white px-2.5 py-1 rounded-md text-[8px] font-black uppercase tracking-widest">{viewingSong.category}</span>
@@ -806,7 +844,25 @@ export default function Alabanza() {
               <h2 className="text-2xl font-black uppercase tracking-tighter truncate">{viewingSong.title}</h2>
               {activeSetlist.length > 1 && <p className="text-[10px] font-black text-brand-400 uppercase tracking-widest mt-1">Setlist: {currentSongIdx + 1} de {activeSetlist.length}</p>}
             </div>
-            <button onClick={closeViewer} className="p-3 bg-white/10 rounded-full text-slate-300 active:scale-75 transition-all shrink-0"><X size={20}/></button>
+            
+            <div className="flex items-center gap-2">
+               <button onClick={() => setShowSettings(!showSettings)} className="p-3 bg-white/10 rounded-full text-slate-300 active:scale-75 transition-all shrink-0"><Settings size={20}/></button>
+               <button onClick={closeViewer} className="p-3 bg-white/10 rounded-full text-slate-300 active:scale-75 transition-all shrink-0"><X size={20}/></button>
+            </div>
+
+            {/* DROPDOWN DE CONFIGURACIÓN DE TEXTO */}
+            {showSettings && (
+               <div className="absolute top-20 right-5 bg-slate-800 border border-slate-700 rounded-xl p-3 shadow-xl z-50 animate-slide-up">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 text-center">Tamaño de Letra</p>
+                  <div className="flex gap-2">
+                     {['sm', 'md', 'lg'].map(s => (
+                        <button key={s} onClick={() => { setTextSize(s); setShowSettings(false); }} className={`w-10 h-10 rounded-lg flex items-center justify-center font-black transition-colors ${textSize === s ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+                           {s === 'sm' ? 'A' : s === 'md' ? 'A+' : 'A++'}
+                        </button>
+                     ))}
+                  </div>
+               </div>
+            )}
           </div>
 
           {viewingSong.setlistConfig?.notes && (
@@ -849,7 +905,7 @@ export default function Alabanza() {
              <div className="absolute right-0 top-0 bottom-0 w-1/2 z-10" onClick={handleNextSlide}></div>
              
              <div className="p-8 text-center w-full max-w-2xl transition-all duration-300 pointer-events-none">
-               {renderLyricsWithChords(songSlides[currentSlideIdx] || '', effectiveSteps)}
+               {renderLyricsWithChords(songSlides[currentSlideIdx] || '', effectiveSteps, textSize)}
              </div>
 
              {/* INDICADOR DE PAGINACIÓN */}
