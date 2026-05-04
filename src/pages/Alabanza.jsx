@@ -17,14 +17,20 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameWeek
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 
-// --- LÓGICA DEL TRANSPOSITOR ---
+// --- LÓGICA DEL TRANSPOSITOR CORREGIDA ---
 const scale = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const flatToSharp = { 'Db': 'C#', 'Eb': 'D#', 'Gb': 'F#', 'Ab': 'G#', 'Bb': 'A#' };
 
-const getIndex = (c) => scale.indexOf(flatToSharp[c] || c);
+// NUEVO: Extrae solo la nota raíz para saber el index matemático exacto
+const getIndex = (c) => {
+  if (!c || typeof c !== 'string') return -1;
+  const match = c.match(/^([A-G][b#]?)/);
+  if (!match) return -1;
+  return scale.indexOf(flatToSharp[match[1]] || match[1]);
+};
 
 const transposeChord = (chord, steps) => {
-  if (!chord) return chord; // Seguro anti-crasheo (Evita el error 'match of undefined')
+  if (!chord || typeof chord !== 'string') return chord; // Seguro anti-crasheo
   const match = chord.match(/^([A-G][b#]?)(.*)$/);
   if (!match) return chord;
   let root = match[1];
@@ -161,7 +167,7 @@ export default function Alabanza() {
     setCurrentSlideIdx(0);
     const nextSong = list[newIdx];
     if (nextSong && nextSong.setlistConfig?.keyType) {
-        setGenderToggle(nextSong.setlistConfig.keyType);
+        setGenderToggle(nextSong.setlistConfig.keyType); // Lee directo si es Hombre/Mujer del Culto
     } else {
         setGenderToggle('man');
     }
@@ -191,7 +197,8 @@ export default function Alabanza() {
     let currentSlide = [];
     let currentLines = 0;
     
-    const maxLines = textSize === 'sm' ? 14 : textSize === 'lg' ? 6 : 10;
+    // Tamaños mucho más compactos para celular
+    const maxLines = textSize === 'sm' ? 18 : textSize === 'lg' ? 10 : 14;
     
     stanzas.forEach(stanza => {
        const linesCount = stanza.split('\n').length;
@@ -208,6 +215,7 @@ export default function Alabanza() {
     return slides;
   }, [viewingSong, textSize]);
 
+  // Lógica de cálculo de pasos para transposición automática (Hombre/Mujer)
   const effectiveSteps = transposeSteps + (genderToggle === 'woman' ? getStepsDiff(viewingSong?.keyMan, viewingSong?.keyWoman) : 0);
 
   const handleNextSlide = () => {
@@ -320,33 +328,35 @@ export default function Alabanza() {
     }, 0);
   };
 
-  // 100% RENOVADO: Evita superposición, el acorde va arriba en su propia mini-columna
+  // 100% DISEÑO "LACUERDA": Acorde alineado arriba a la izq, etiquetas limpias.
   const renderLyricsWithChords = (text, steps, size) => {
     const lines = text.split('\n');
     
-    const sizeClasses = { sm: 'text-lg md:text-xl', md: 'text-xl md:text-2xl', lg: 'text-2xl md:text-3xl' };
-    const chordSizeClasses = { sm: 'text-base', md: 'text-lg', lg: 'text-xl' };
+    // Tamaños mucho más chicos para que entre la oración en celular
+    const sizeClasses = { sm: 'text-sm', md: 'text-base', lg: 'text-lg' };
+    const chordSizeClasses = { sm: 'text-sm', md: 'text-base', lg: 'text-lg' };
 
     return lines.map((line, idx) => {
-      if (line.trim().match(/^\[?(intro|coro|verso|puente|pre-coro|instrumental|final)\]?:?/i)) {
-        return <div key={idx} className="mt-8 mb-3 text-[11px] font-black text-brand-500 uppercase tracking-[0.2em] bg-brand-50 inline-block px-3 py-1 rounded-md">{line.replace(/\[|\]/g, '')}</div>;
+      // 1. ETIQUETAS LIMPIAS (Intro, Coro, Verso)
+      if (line.trim().match(/^\[?(intro|coros?|versos?|puente|pre-coro|instrumental|final)\]?:?/i)) {
+        return <div key={idx} className="mt-6 mb-1 font-black text-slate-900 text-left capitalize text-lg tracking-tight">{line.replace(/\[|\]/g, '')}</div>;
       }
 
       const parts = line.split(/(\[[^\]]+\])/g);
       let hasChords = parts.some(p => p.startsWith('[') && p.endsWith(']'));
       
-      // Si la línea no tiene acordes, la dibuja normal
+      // Si la línea no tiene acordes, la dibuja como texto normal
       if (!hasChords) {
-         return <div key={idx} className={`${sizeClasses[size]} font-bold text-slate-800 min-h-[2.5rem] whitespace-pre-wrap text-center`}>{line}</div>;
+         return <div key={idx} className={`${sizeClasses[size]} font-medium text-slate-800 min-h-[1.5rem] whitespace-pre-wrap text-left`}>{line}</div>;
       }
       
-      // Lógica estructural inteligente para separar acorde de sílaba y agruparlos en una mini columna (evita superposiciones)
+      // Lógica estructural: Agrupa acorde con la sílaba en una "columnita" alineada.
       const segments = [];
       let currentChord = null;
       
       parts.forEach(part => {
         if (part.startsWith('[') && part.endsWith(']')) {
-          if (currentChord) segments.push({ chord: currentChord, text: '' });
+          if (currentChord) segments.push({ chord: currentChord, text: '' }); 
           currentChord = part.slice(1, -1);
         } else {
           segments.push({ chord: currentChord, text: part });
@@ -356,15 +366,15 @@ export default function Alabanza() {
       if (currentChord) segments.push({ chord: currentChord, text: '' });
 
       return (
-        <div key={idx} className="flex flex-wrap items-end justify-center mb-5 w-full">
+        <div key={idx} className="flex flex-wrap items-end justify-start mb-4 w-full text-left">
           {segments.map((seg, i) => (
-            <div key={i} className="inline-flex flex-col items-start mx-[1px]">
+            <div key={i} className="inline-flex flex-col items-start min-w-[0.3rem]">
               {/* PISO 1: EL ACORDE */}
-              <span className={`text-brand-600 font-black leading-none min-h-[1.2em] ${chordSizeClasses[size]}`}>
+              <span className={`text-[#aa8e4a] font-bold leading-none min-h-[1.2em] ${chordSizeClasses[size]}`}>
                 {seg.chord ? transposeChord(seg.chord, steps) : '\u200B'}
               </span>
-              {/* PISO 2: LA LETRA ASOCIADA A ESE ACORDE */}
-              <span className={`${sizeClasses[size]} font-bold text-slate-800 leading-tight mt-1 whitespace-pre-wrap text-left`}>
+              {/* PISO 2: LA LETRA */}
+              <span className={`${sizeClasses[size]} font-medium text-slate-800 leading-tight whitespace-pre text-left`}>
                 {seg.text || '\u200B'}
               </span>
             </div>
@@ -834,7 +844,7 @@ export default function Alabanza() {
                  </p>
               </div>
 
-              <textarea ref={textAreaRef} placeholder="Escribí la letra acá y usá el teclado flotante de abajo para insertar los acordes..." className="w-full p-5 bg-white border border-slate-200 rounded-2xl font-medium text-[15px] h-[400px] resize-none outline-none leading-relaxed font-mono shadow-inner pb-32" value={songForm.content} onChange={e => setSongForm({...songForm, content: e.target.value})} />
+              <textarea ref={textAreaRef} placeholder="Escribí la letra acá y usá el teclado flotante de abajo para insertar los acordes..." className="w-full p-5 bg-white border border-slate-200 rounded-2xl font-medium text-[15px] h-[400px] resize-none outline-none leading-relaxed font-mono shadow-inner pb-32 whitespace-pre-wrap" value={songForm.content} onChange={e => setSongForm({...songForm, content: e.target.value})} />
             </div>
           </div>
 
@@ -917,7 +927,7 @@ export default function Alabanza() {
               </div>
               <div className="flex items-center justify-between px-1">
                 <button onClick={() => setTransposeSteps(p => p - 1)} className="w-8 h-8 rounded-md bg-slate-700 text-white flex items-center justify-center active:scale-95 transition-transform"><ArrowDownCircle size={16}/></button>
-                <div className="text-center"><span className="block text-[8px] text-slate-400 font-black uppercase tracking-widest">Tono Actual</span><span className="block text-lg font-black text-white">{transposeChord(viewingSong.keyMan, effectiveSteps)}</span></div>
+                <div className="text-center"><span className="block text-[8px] text-slate-400 font-black uppercase tracking-widest">Tono Actual</span><span className="block text-lg font-black text-white">{transposeChord(genderToggle === 'woman' ? viewingSong.keyWoman : viewingSong.keyMan, transposeSteps)}</span></div>
                 <button onClick={() => setTransposeSteps(p => p + 1)} className="w-8 h-8 rounded-md bg-slate-700 text-white flex items-center justify-center active:scale-95 transition-transform"><ArrowUpCircle size={16}/></button>
               </div>
             </div>
@@ -935,12 +945,12 @@ export default function Alabanza() {
           </div>
 
           {/* ÁREA DE LETRA PAGINADA CON TAP ZONES */}
-          <div className="flex-1 relative bg-[#fdfdfd] overflow-hidden flex items-center justify-center">
+          <div className="flex-1 relative bg-[#fdfdfd] overflow-hidden flex items-start justify-start p-6 pb-20">
              {/* ZONAS DE TOQUE INVISIBLES */}
              <div className="absolute left-0 top-0 bottom-0 w-1/2 z-10" onClick={handlePrevSlide}></div>
              <div className="absolute right-0 top-0 bottom-0 w-1/2 z-10" onClick={handleNextSlide}></div>
              
-             <div className="p-8 w-full max-w-2xl transition-all duration-300 pointer-events-none">
+             <div className="w-full transition-all duration-300 pointer-events-none">
                {renderLyricsWithChords(songSlides[currentSlideIdx] || '', effectiveSteps, textSize)}
              </div>
 
