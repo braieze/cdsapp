@@ -6,7 +6,7 @@ import {
   PlusCircle, AlertTriangle, Calendar, Heart, Send, 
   AlertCircle, CheckCircle, Flame, HandHeart, ThumbsUp, 
   Archive, ChevronDown, Sparkles, Smile, Frown, Sun, CloudRain, Anchor, HelpCircle,
-  Wallet, Video, Music, GraduationCap, Briefcase, BellRing
+  Wallet, Video, Music, GraduationCap, Briefcase, BellRing, Layers
 } from 'lucide-react';
 import CreatePostModal from '../components/CreatePostModal';
 import TopBar from '../components/TopBar';
@@ -93,6 +93,11 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('Todo');
   const [selectedMood, setSelectedMood] = useState(null);
+  
+  // ✅ 1. NUEVOS ESTADOS PARA SERIES
+  const [allSeries, setAllSeries] = useState([]);
+  const [selectedSeries, setSelectedSeries] = useState(null);
+
   const [visibleCount, setVisibleCount] = useState(4);
   const [birthdays, setBirthdays] = useState([]);
   const [menuOpenId, setMenuOpenId] = useState(null);
@@ -121,6 +126,16 @@ export default function Home() {
     });
     return () => unsubscribe();
   }, [isPastor, isMiembro]);
+
+  // ✅ 2. ESCUCHADOR DE SERIES EN TIEMPO REAL
+  useEffect(() => {
+    const unsubSeries = onSnapshot(doc(db, 'metadata', 'devotional_series'), (snap) => {
+      if (snap.exists()) {
+        setAllSeries(snap.data().list || []);
+      }
+    });
+    return () => unsubSeries();
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
@@ -217,6 +232,7 @@ export default function Home() {
     }
   };
 
+  // ✅ 3. LÓGICA DE FILTRADO ACTUALIZADA PARA SERIES
   const filteredPosts = useMemo(() => {
     let result = posts;
     if (filter === 'Archivados') result = posts.filter(p => p.isArchived === true);
@@ -224,9 +240,14 @@ export default function Home() {
       result = posts.filter(p => p.isArchived !== true);
       if (filter !== 'Todo') result = result.filter(p => p.type === filter);
     }
-    if (selectedMood && filter === 'Devocional') result = result.filter(p => p.mood === selectedMood);
+
+    if (filter === 'Devocional') {
+      if (selectedMood) result = result.filter(p => p.mood === selectedMood);
+      if (selectedSeries) result = result.filter(p => p.seriesName === selectedSeries);
+    }
+    
     return result;
-  }, [filter, posts, selectedMood]);
+  }, [filter, posts, selectedMood, selectedSeries]);
 
   const displayedPosts = filteredPosts.slice(0, visibleCount);
   const hasMorePosts = visibleCount < filteredPosts.length;
@@ -263,7 +284,12 @@ export default function Home() {
             {['Todo', 'Devocional', 'Oración', 'Noticia', 'Archivados'].map((cat) => {
               if (cat === 'Archivados' && !isPastor) return null;
               return (
-                <button key={cat} onClick={() => { setFilter(cat); setVisibleCount(4); setSelectedMood(null); }} 
+                <button key={cat} onClick={() => { 
+                    setFilter(cat); 
+                    setVisibleCount(4); 
+                    setSelectedMood(null); 
+                    setSelectedSeries(null); // Reiniciamos series al cambiar de pestaña
+                  }} 
                   className={`py-2.5 px-5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border-2 whitespace-nowrap ${
                     filter === cat 
                     ? (cat === 'Oración' ? 'bg-purple-600 border-purple-600 text-white shadow-md' : 'bg-slate-900 border-slate-900 text-white shadow-md')
@@ -275,6 +301,46 @@ export default function Home() {
               )
             })}
           </div>
+
+          {/* ✅ 4. UI DE FILTROS PARA DEVOCIONALES (ÁNIMOS Y SERIES) */}
+          {filter === 'Devocional' && (
+            <div className="space-y-4 animate-slide-up">
+              {/* Ánimos */}
+              <div className="flex gap-3 overflow-x-auto no-scrollbar px-1">
+                {MOODS.map(m => (
+                  <button key={m.id} onClick={() => setSelectedMood(selectedMood === m.id ? null : m.id)}
+                   className={`flex flex-col items-center gap-2 transition-all active:scale-90 min-w-[70px] ${selectedMood === m.id ? 'scale-110' : 'opacity-40 grayscale'}`}
+                  >
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white shadow-lg ${m.color}`}>
+                       <m.icon size={20} />
+                    </div>
+                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-600">{m.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Series Pills */}
+              {allSeries.length > 0 && (
+                <div className="flex gap-2 overflow-x-auto no-scrollbar px-1 py-1">
+                  <button 
+                    onClick={() => setSelectedSeries(null)}
+                    className={`px-4 py-2 rounded-full text-[8px] font-black uppercase border-2 transition-all whitespace-nowrap flex items-center gap-2 ${!selectedSeries ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white text-slate-400 border-slate-100'}`}
+                  >
+                    <Layers size={10}/> Todas las Series
+                  </button>
+                  {allSeries.map((s, idx) => (
+                    <button 
+                      key={idx}
+                      onClick={() => setSelectedSeries(selectedSeries === s ? null : s)}
+                      className={`px-4 py-2 rounded-full text-[8px] font-black uppercase border-2 transition-all whitespace-nowrap ${selectedSeries === s ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white text-slate-400 border-slate-100'}`}
+                    >
+                      Serie: {s}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
       </div>
 
       <div className="space-y-6 px-4 mt-6">
@@ -303,7 +369,6 @@ export default function Home() {
                       <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" />
                     </div>
 
-                    {/* ✅ SOLUCIÓN: Cabecera administrativa sobre la imagen del devocional */}
                     <div className="absolute top-4 left-4 right-4 flex justify-between items-start z-20">
                       <div>
                         {post.isPinned && <div className="bg-amber-500 text-white p-2 rounded-xl shadow-lg"><Pin size={14} fill="currentColor"/></div>}
@@ -340,6 +405,8 @@ export default function Home() {
                        <div className="flex items-center gap-2 mb-3">
                           <div className="px-2.5 py-1 bg-brand-500 rounded-full text-[7px] font-black text-white uppercase tracking-widest">Devocional</div>
                           {post.mood && <div className="px-2.5 py-1 bg-white/20 backdrop-blur-md rounded-full text-[7px] font-black text-white uppercase tracking-widest">{post.mood}</div>}
+                          {/* Etiqueta de Serie en la tarjeta */}
+                          {post.seriesName && <div className="px-2.5 py-1 bg-indigo-500/80 backdrop-blur-md rounded-full text-[7px] font-black text-white uppercase tracking-widest border border-indigo-400/30">{post.seriesName}</div>}
                        </div>
                        <h2 className="text-2xl font-black text-white uppercase tracking-tighter leading-tight mb-2 italic line-clamp-2">{post.title}</h2>
                        <button onClick={(e) => { e.stopPropagation(); navigate(`/post/${post.id}`); }} className="mt-4 bg-white text-black py-3 rounded-xl font-black text-[9px] uppercase tracking-widest flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all pointer-events-auto">

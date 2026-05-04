@@ -6,8 +6,8 @@ import {
 } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { db, auth } from '../firebase'; 
-import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
-import { toast } from 'sonner'; // Asumiendo que usas sonner para notificaciones UI
+import { collection, addDoc, serverTimestamp, doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
+import { toast } from 'sonner'; 
 
 const MOOD_OPTIONS = [
   { id: 'Fortaleza', icon: Anchor, color: 'text-blue-500', bg: 'bg-blue-50' },
@@ -29,12 +29,27 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
   const [isArchived, setIsArchived] = useState(false);
   const [mood, setMood] = useState(''); 
   const [seriesName, setSeriesName] = useState(''); 
+  const [existingSeries, setExistingSeries] = useState([]); // ✅ Estado para series globales
 
   const [showPoll, setShowPoll] = useState(false);
   const [pollOptions, setPollOptions] = useState(['', '']); 
 
   const CLOUD_NAME = "djmkggzjp"; 
   const UPLOAD_PRESET = "ml_default"; 
+
+  // ✅ 1. Cargar la lista de series existentes al abrir el modal
+  useEffect(() => {
+    const fetchSeriesMetadata = async () => {
+      try {
+        const seriesRef = doc(db, 'metadata', 'devotional_series');
+        const seriesSnap = await getDoc(seriesRef);
+        if (seriesSnap.exists()) {
+          setExistingSeries(seriesSnap.data().list || []);
+        }
+      } catch (e) { console.error("Error cargando series:", e); }
+    };
+    if (isOpen) fetchSeriesMetadata();
+  }, [isOpen]);
 
   useEffect(() => {
     if (postToEdit) {
@@ -61,32 +76,40 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     setMood(''); setSeriesName('');
   };
 
-  // ✅ MEJORA: Función de notificación con Deep Linking habilitado
+  // ✅ 2. Función para registrar la serie en la base de datos centralizada
+  const updateGlobalSeriesMetadata = async (name) => {
+    if (!name.trim()) return;
+    try {
+      const seriesRef = doc(db, 'metadata', 'devotional_series');
+      const seriesSnap = await getDoc(seriesRef);
+      
+      let updatedList = [name];
+      if (seriesSnap.exists()) {
+        const currentList = seriesSnap.data().list || [];
+        // Evitamos duplicados con una comparación insensible a mayúsculas
+        const alreadyExists = currentList.some(s => s.toLowerCase() === name.toLowerCase());
+        if (alreadyExists) return;
+        updatedList = [...currentList, name];
+      }
+      await setDoc(seriesRef, { list: updatedList }, { merge: true });
+    } catch (e) { console.error("Error actualizando metadatos de serie:", e); }
+  };
+
   const sendPushNotification = async (notifTitle, notifContent, postUrl) => {
     try {
       const APP_ID = "742a62cd-6d15-427f-8bab-5b8759fabd0a";
       const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
-      
-      if (!REST_API_KEY) {
-        console.error("Falta REST API KEY de OneSignal");
-        return;
-      }
-
-      // Si es privado para servidores, no mandamos push masivo en esta instancia
+      if (!REST_API_KEY) return;
       if (visibility === 'servidores') return;
 
       await fetch("https://onesignal.com/api/v1/notifications", {
         method: "POST",
-        headers: { 
-          "Content-Type": "application/json; charset=utf-8", 
-          "Authorization": `Basic ${REST_API_KEY}` 
-        },
+        headers: { "Content-Type": "application/json; charset=utf-8", "Authorization": `Basic ${REST_API_KEY}` },
         body: JSON.stringify({
           app_id: APP_ID,
           included_segments: ["Total Subscriptions"], 
           headings: { en: notifTitle, es: notifTitle }, 
           contents: { en: notifContent, es: notifContent }, 
-          // ✅ DEEP LINK: Ruta hacia el post específico
           data: { route: postUrl }, 
           large_icon: "https://cdsapp.vercel.app/logo.png",
           priority: 10,
@@ -94,9 +117,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           android_accent_color: "FF0000"
         })
       });
-    } catch (error) { 
-      console.error("Error notif:", error); 
-    }
+    } catch (error) { console.error("Error notif:", error); }
   };
 
   const handleImageChange = async (e) => {
@@ -143,7 +164,9 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         const postRef = doc(db, 'posts', postToEdit.id);
         await updateDoc(postRef, { ...commonData, updatedAt: serverTimestamp() });
         
-        // Notificación si se desarchiva
+        // Registro de serie si es devocional
+        if (type === 'Devocional' && seriesName) await updateGlobalSeriesMetadata(seriesName);
+
         if (postToEdit.isArchived && !isArchived) {
             const cleanContent = text.length > 80 ? text.substring(0, 80) + "..." : text;
             await sendPushNotification(`📢 Actualización: ${commonData.title}`, cleanContent, `/post/${postToEdit.id}`);
@@ -175,7 +198,9 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           commentsCount: 0
         });
 
-        // ✅ ENVÍO DE NOTIFICACIÓN AUTOMÁTICA CON DEEP LINK
+        // ✅ Registro de serie si es devocional
+        if (type === 'Devocional' && seriesName) await updateGlobalSeriesMetadata(seriesName);
+
         if (!isArchived) {
             const cleanContent = text.length > 80 ? text.substring(0, 80) + "..." : text;
             await sendPushNotification(commonData.title, cleanContent, `/post/${docRef.id}`);
@@ -209,7 +234,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         </div>
 
         <div className="flex-1 space-y-6">
-          {/* SELECTOR DE TIPO */}
           <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
             {['Noticia', 'Devocional', 'Oración', 'Urgente'].map(t => (
               <button 
@@ -224,7 +248,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
             ))}
           </div>
 
-          {/* VISIBILIDAD */}
           <div className="space-y-2">
              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 flex items-center gap-2"><Eye size={12}/> Visibilidad del post</label>
              <div className="flex gap-2">
@@ -253,11 +276,19 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
               <div className="space-y-4 animate-fade-in">
                  <div className="p-5 bg-indigo-50/50 rounded-[30px] border-2 border-indigo-100/50">
                     <p className="text-[9px] font-black text-indigo-600 uppercase mb-4 ml-2 flex items-center gap-2"><Layers size={12}/> Serie (Opcional)</p>
+                    {/* ✅ UI MEJORADA: Input con sugerencias globales */}
                     <input 
+                      list="series-suggestions"
                       placeholder="Ej: El Sermón del Monte"
                       className="w-full p-3 bg-white border border-indigo-100 rounded-xl text-xs font-bold outline-none"
-                      value={seriesName} onChange={e => setSeriesName(e.target.value)}
+                      value={seriesName} 
+                      onChange={e => setSeriesName(e.target.value)}
                     />
+                    <datalist id="series-suggestions">
+                      {existingSeries.map((s, idx) => (
+                        <option key={idx} value={s} />
+                      ))}
+                    </datalist>
                  </div>
                  <div className="p-5 bg-slate-50 rounded-[30px] border-2 border-slate-100">
                     <p className="text-[9px] font-black text-slate-400 uppercase mb-4 ml-2 text-left">¿Ánimo del devocional?</p>
