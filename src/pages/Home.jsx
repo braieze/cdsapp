@@ -168,15 +168,12 @@ export default function Home() {
     } catch (e) { console.error(e); }
   };
 
-  // ✅ SOLUCIÓN DEEP LINK: Implementación real de OneSignal para Re-notificar
   const handleReNotify = async (post) => {
     setMenuOpenId(null);
     showToast("Enviando aviso push...");
 
     try {
       const notifBody = post.content ? post.content.substring(0, 100) + '...' : 'Toca para ver la novedad.';
-      
-      // 1. Registro en base de datos para historial
       const notifRef = doc(collection(db, 'notificaciones_globales'));
       await setDoc(notifRef, {
         titulo: `RECORDATORIO: ${post.title}`,
@@ -186,13 +183,11 @@ export default function Home() {
         link: `/post/${post.id}`
       });
 
-      // 2. Llamada real a OneSignal con Deep Link (route)
       const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
       const payload = {
         app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
         headings: { en: `RECORDATORIO: ${post.title}`, es: `RECORDATORIO: ${post.title}` },
         contents: { en: notifBody, es: notifBody },
-        // ✅ DEEP LINK: Esto asocia la notificación con la ruta del post
         data: { route: `/post/${post.id}` }, 
         large_icon: "https://cdsapp.vercel.app/logo.png",
         priority: 10,
@@ -302,17 +297,52 @@ export default function Home() {
                 : 'bg-white border border-slate-100 rounded-[30px] shadow-sm mb-6 overflow-hidden'
               }`}>
                 {isDevocional ? (
-                  <div className="absolute inset-0 w-full h-full" onClick={() => navigate(`/post/${post.id}`)}>
-                    {post.image ? <img src={post.image} className="w-full h-full object-cover" alt="Portada" referrerPolicy="no-referrer" /> : <div className="w-full h-full bg-gradient-to-br from-indigo-600 to-brand-900" />}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" />
-                    {post.isPinned && <div className="absolute top-4 left-4 bg-amber-500 text-white p-2 rounded-xl shadow-lg"><Pin size={14} fill="currentColor"/></div>}
-                    <div className="absolute inset-0 p-6 flex flex-col justify-end text-left">
+                  <div className="absolute inset-0 w-full h-full">
+                    <div className="absolute inset-0 w-full h-full cursor-pointer" onClick={() => navigate(`/post/${post.id}`)}>
+                      {post.image ? <img src={post.image} className="w-full h-full object-cover" alt="Portada" referrerPolicy="no-referrer" /> : <div className="w-full h-full bg-gradient-to-br from-indigo-600 to-brand-900" />}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" />
+                    </div>
+
+                    {/* ✅ SOLUCIÓN: Cabecera administrativa sobre la imagen del devocional */}
+                    <div className="absolute top-4 left-4 right-4 flex justify-between items-start z-20">
+                      <div>
+                        {post.isPinned && <div className="bg-amber-500 text-white p-2 rounded-xl shadow-lg"><Pin size={14} fill="currentColor"/></div>}
+                      </div>
+                      
+                      {isModerator && (
+                        <div className="relative">
+                          <button onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === post.id ? null : post.id); }} className="p-2.5 bg-black/20 backdrop-blur-md text-white rounded-xl active:bg-white/40 transition-all border border-white/10">
+                            <MoreVertical size={20}/>
+                          </button>
+                          {menuOpenId === post.id && (
+                            <div className="absolute right-0 top-12 bg-white shadow-2xl rounded-2xl border border-slate-100 py-1.5 w-48 z-50 animate-scale-in origin-top-right">
+                              <button onClick={(e) => { e.stopPropagation(); handlePin(post.id, post.isPinned); }} className="w-full text-left px-4 py-3 text-[9px] font-black uppercase tracking-widest text-amber-600 hover:bg-amber-50 flex items-center gap-3 border-b border-slate-50">
+                                <Pin size={14}/> {post.isPinned ? 'Desanclar' : 'Fijar arriba'}
+                              </button>
+                              <button onClick={(e) => { e.stopPropagation(); handleReNotify(post); }} className="w-full text-left px-4 py-3 text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:bg-indigo-50 flex items-center gap-3 border-b border-slate-50">
+                                <BellRing size={14}/> Re-Notificar
+                              </button>
+                              {isPastor && (
+                                <button onClick={(e) => { e.stopPropagation(); handleArchive(post.id, post.isArchived); }} className="w-full text-left px-4 py-3 text-[9px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-50">
+                                  <Archive size={14}/> {post.isArchived ? 'Desarchivar' : 'Archivar'}
+                                </button>
+                              )}
+                              <button onClick={(e) => { e.stopPropagation(); setEditingPost(post); setIsModalOpen(true); setMenuOpenId(null); }} className="w-full text-left px-4 py-3 text-[9px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50 flex items-center gap-3">
+                                <Edit3 size={14}/> Editar
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="absolute inset-0 p-6 flex flex-col justify-end text-left pointer-events-none">
                        <div className="flex items-center gap-2 mb-3">
                           <div className="px-2.5 py-1 bg-brand-500 rounded-full text-[7px] font-black text-white uppercase tracking-widest">Devocional</div>
                           {post.mood && <div className="px-2.5 py-1 bg-white/20 backdrop-blur-md rounded-full text-[7px] font-black text-white uppercase tracking-widest">{post.mood}</div>}
                        </div>
                        <h2 className="text-2xl font-black text-white uppercase tracking-tighter leading-tight mb-2 italic line-clamp-2">{post.title}</h2>
-                       <button className="mt-4 bg-white text-black py-3 rounded-xl font-black text-[9px] uppercase tracking-widest flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all">
+                       <button onClick={(e) => { e.stopPropagation(); navigate(`/post/${post.id}`); }} className="mt-4 bg-white text-black py-3 rounded-xl font-black text-[9px] uppercase tracking-widest flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all pointer-events-auto">
                          <BookOpen size={14}/> Leer Palabra
                        </button>
                     </div>
@@ -376,7 +406,6 @@ export default function Home() {
                       
                       <div className="mt-4 pt-4 border-t border-slate-50 flex items-center justify-between">
                           <div className="flex items-center gap-1.5 flex-1 overflow-x-auto no-scrollbar">
-                             {/* ✅ RESTAURACIÓN DE EMOJIS: Siempre visibles */}
                              {['❤️', '🔥', '🙏', '👍'].map(e => {
                                 const reactions = post.reactions || [];
                                 const count = reactions.filter(r => r.emoji === e).length;
