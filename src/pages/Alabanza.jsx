@@ -17,22 +17,25 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameWeek
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 
-// --- LÓGICA DEL TRANSPOSITOR CORREGIDA ---
+// --- LÓGICA DEL TRANSPOSITOR CORREGIDA (AHORA INFALIBLE CON MINÚSCULAS) ---
 const scale = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const flatToSharp = { 'Db': 'C#', 'Eb': 'D#', 'Gb': 'F#', 'Ab': 'G#', 'Bb': 'A#' };
 
 const getIndex = (c) => {
   if (!c || typeof c !== 'string') return -1;
-  const match = c.match(/^([A-G][b#]?)/);
+  const match = c.trim().match(/^([a-gA-G][b#B]?)/);
   if (!match) return -1;
-  return scale.indexOf(flatToSharp[match[1]] || match[1]);
+  let root = match[1].charAt(0).toUpperCase() + match[1].slice(1);
+  if (root.length === 2 && root[1].toUpperCase() === 'B') root = root[0] + 'b'; // arregla el bemol mal escrito
+  return scale.indexOf(flatToSharp[root] || root);
 };
 
 const transposeChord = (chord, steps) => {
-  if (!chord || typeof chord !== 'string') return chord;
-  const match = chord.match(/^([A-G][b#]?)(.*)$/);
+  if (!chord || typeof chord !== 'string') return chord; // Seguro anti-crasheo
+  const match = chord.trim().match(/^([a-gA-G][b#B]?)(.*)$/);
   if (!match) return chord;
-  let root = match[1];
+  let root = match[1].charAt(0).toUpperCase() + match[1].slice(1);
+  if (root.length === 2 && root[1].toUpperCase() === 'B') root = root[0] + 'b';
   const rest = match[2];
   if (flatToSharp[root]) root = flatToSharp[root];
   let index = scale.indexOf(root);
@@ -53,6 +56,7 @@ const CATEGORIAS = ['Todas', 'Bienvenida', 'Fuego', 'Alabanza', 'Adoración', 'M
 const NOTAS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
 const MODIFICADORES = ['', 'm', '#', 'b', '7', 'm7'];
 
+// Helper para compatibilidad de base de datos
 const getSongId = (item) => typeof item === 'string' ? item : item.songId;
 
 export default function Alabanza() {
@@ -80,7 +84,7 @@ export default function Alabanza() {
   const [transposeSteps, setTransposeSteps] = useState(0);
   const [currentSlideIdx, setCurrentSlideIdx] = useState(0);
   const [genderToggle, setGenderToggle] = useState('man'); 
-  const [textSize, setTextSize] = useState('md'); 
+  const [textSize, setTextSize] = useState('sm'); // POR DEFECTO EL MÁS CHICO
   const [showSettings, setShowSettings] = useState(false);
 
   // Metrónomo
@@ -88,20 +92,18 @@ export default function Alabanza() {
   const audioCtxRef = useRef(null);
   const timerRef = useRef(null);
 
-  // Formulario Canción y Acordes (Agregado baseTone)
-  const [songForm, setSongForm] = useState({ 
-    id: null, title: '', artist: '', keyMan: 'C', keyWoman: 'C', 
-    bpm: '', category: 'Adoración', link: '', content: '', songChords: '',
-    baseTone: 'man' // 'man' o 'woman'
-  });
+  // Formulario Canción y Acordes
+  const [songForm, setSongForm] = useState({ id: null, title: '', artist: '', keyMan: 'C', keyWoman: 'C', bpm: '', category: 'Adoración', link: '', content: '', songChords: '', baseTone: 'man' });
   const textAreaRef = useRef(null);
 
+  // Generar lista completa de acordes para el carrusel
   const allChords = useMemo(() => {
     const list = [];
     NOTAS.forEach(n => MODIFICADORES.forEach(m => list.push(n + m)));
     return list;
   }, []);
 
+  // 🛡️ ACCESO
   const isPastor = dbUser?.role === 'pastor';
   const isAlabanza = dbUser?.area?.toLowerCase() === 'alabanza';
   const hasAccess = isPastor || isAlabanza;
@@ -120,6 +122,7 @@ export default function Alabanza() {
     return () => { unsubSongs(); unsubTeam(); unsubEvents(); };
   }, [hasAccess]);
 
+  // --- METRÓNOMO AUDIO API ---
   const toggleMetronome = (bpm) => {
     if (isPlayingMetro) {
       clearInterval(timerRef.current);
@@ -159,16 +162,16 @@ export default function Alabanza() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [currentSongIdx, activeSetlist]);
 
-  // --- VISOR SETLIST & SLIDES (PAGINACIÓN INTELIGENTE) ---
+  // --- VISOR SETLIST & SLIDES (CONEXIÓN DE TONO BASE Y CONFIGURACIÓN) ---
   const changeSongIdx = (newIdx, list = activeSetlist) => {
     setCurrentSongIdx(newIdx);
     setTransposeSteps(0);
     setCurrentSlideIdx(0);
     const nextSong = list[newIdx];
     if (nextSong && nextSong.setlistConfig?.keyType) {
-        setGenderToggle(nextSong.setlistConfig.keyType); 
+        setGenderToggle(nextSong.setlistConfig.keyType); // Lee directo del Culto
     } else {
-        setGenderToggle('man');
+        setGenderToggle(nextSong?.baseTone || 'man'); // Lee directo de la Canción Original
     }
   };
 
@@ -189,7 +192,7 @@ export default function Alabanza() {
 
   const viewingSong = activeSetlist[currentSongIdx];
   
-  // PAGINACIÓN INTELIGENTE: Párrafos completos.
+  // PAGINACIÓN INTELIGENTE AJUSTADA
   const songSlides = useMemo(() => {
     if (!viewingSong) return [];
     const stanzas = viewingSong.content.split(/\n\s*\n/);
@@ -197,19 +200,16 @@ export default function Alabanza() {
     let currentSlide = [];
     let currentLines = 0;
     
-    // Tamaños mucho más compactos para celular
-    const maxLines = textSize === 'sm' ? 18 : textSize === 'lg' ? 10 : 14;
+    // Al ser más grande la letra (lg), baja la cantidad de líneas para que nunca se esconda texto
+    const maxLines = textSize === 'sm' ? 14 : textSize === 'lg' ? 6 : 10;
     
     stanzas.forEach(stanza => {
        const linesCount = stanza.split('\n').length;
-       
-       // Si agregar esta estrofa supera el límite y ya hay algo en la slide actual, cerramos la slide
        if (currentLines + linesCount > maxLines && currentSlide.length > 0) {
            slides.push(currentSlide.join('\n\n'));
            currentSlide = [stanza];
            currentLines = linesCount;
        } else {
-           // Si entra, o es la primera estrofa de una slide nueva (incluso si es enorme)
            currentSlide.push(stanza);
            currentLines += linesCount;
        }
@@ -218,11 +218,9 @@ export default function Alabanza() {
     return slides;
   }, [viewingSong, textSize]);
 
-  // CÁLCULO DE TRANSPOSICIÓN CORREGIDO CON BASE TONE
-  // Si la canción fue escrita en tono de Mujer y seleccionamos Hombre (o viceversa), calculamos la diferencia.
+  // CÁLCULO PERFECTO DE TRANSPOSICIÓN (CONTEMPLA EL TONO BASE DE CREACIÓN)
   const baseKey = viewingSong?.baseTone === 'woman' ? viewingSong?.keyWoman : viewingSong?.keyMan;
   const targetKey = genderToggle === 'woman' ? viewingSong?.keyWoman : viewingSong?.keyMan;
-  
   const genderSteps = getStepsDiff(baseKey, targetKey);
   const effectiveSteps = transposeSteps + genderSteps;
 
@@ -233,7 +231,7 @@ export default function Alabanza() {
     if (currentSlideIdx > 0) setCurrentSlideIdx(p => p - 1);
   };
 
-  // --- ACCIONES PLANIFICACIÓN ---
+  // --- ACCIONES PLANIFICACIÓN (CARRUSEL MES) ---
   const handleNextMonth = () => setViewMonth(addMonths(viewMonth, 1));
   const handlePrevMonth = () => setViewMonth(subMonths(viewMonth, 1));
 
@@ -297,9 +295,7 @@ export default function Alabanza() {
         title: songForm.title, artist: songForm.artist, 
         keyMan: songForm.keyMan || 'C', keyWoman: songForm.keyWoman || 'C', 
         bpm: Number(songForm.bpm) || 0, category: songForm.category, link: songForm.link, 
-        content: songForm.content, songChords: songForm.songChords || '', 
-        baseTone: songForm.baseTone || 'man', // Guardamos el tono base
-        updatedAt: serverTimestamp()
+        content: songForm.content, songChords: songForm.songChords || '', baseTone: songForm.baseTone || 'man', updatedAt: serverTimestamp()
       };
       if (songForm.id) {
         await updateDoc(doc(db, 'songs', songForm.id), songData);
@@ -338,17 +334,15 @@ export default function Alabanza() {
     }, 0);
   };
 
-  // RENDERIZADO DE LETRAS (DISEÑO LACUERDA: ETIQUETAS Y AJUSTE DE LÍNEA)
+  // RENDERIZADO DE LETRAS (DISEÑO LACUERDA MEJORADO)
   const renderLyricsWithChords = (text, steps, size) => {
     const lines = text.split('\n');
     
-    // Tamaños más chicos, break-words activado
     const sizeClasses = { sm: 'text-sm md:text-base', md: 'text-base md:text-lg', lg: 'text-lg md:text-xl' };
     const chordSizeClasses = { sm: 'text-sm', md: 'text-base', lg: 'text-lg' };
 
     return lines.map((line, idx) => {
-      
-      // EXPRESIÓN REGULAR MEJORADA PARA ETIQUETAS: Detecta Intro, Coro, Verso, Puente, etc.
+      // 1. ETIQUETAS LIMPIAS (Intro, Coro, Verso)
       if (line.trim().match(/^\[?(intro|coros?|versos?|puente|pre-coro|instrumental|final|solo)\]?:?/i)) {
         return <div key={idx} className="mt-6 mb-1 font-black text-slate-900 text-left capitalize text-lg tracking-tight">{line.replace(/\[|\]/g, '')}</div>;
       }
@@ -356,12 +350,12 @@ export default function Alabanza() {
       const parts = line.split(/(\[[^\]]+\])/g);
       let hasChords = parts.some(p => p.startsWith('[') && p.endsWith(']'));
       
-      // Si no tiene acordes, se dibuja normal, permitiendo salto de línea si es largo (break-words)
+      // Si la línea no tiene acordes, se dibuja normal con break-words para que no se escape
       if (!hasChords) {
          return <div key={idx} className={`${sizeClasses[size]} font-medium text-slate-800 min-h-[1.5rem] whitespace-pre-wrap break-words text-left`}>{line}</div>;
       }
       
-      // Lógica estructural: Agrupa acorde con sílaba
+      // Lógica estructural: Agrupa acorde con la sílaba
       const segments = [];
       let currentChord = null;
       
@@ -380,9 +374,11 @@ export default function Alabanza() {
         <div key={idx} className="flex flex-wrap items-end justify-start mb-4 w-full text-left">
           {segments.map((seg, i) => (
             <div key={i} className="inline-flex flex-col items-start min-w-[0.3rem]">
+              {/* PISO 1: EL ACORDE */}
               <span className={`text-[#aa8e4a] font-bold leading-none min-h-[1.2em] ${chordSizeClasses[size]}`}>
                 {seg.chord ? transposeChord(seg.chord, steps) : '\u200B'}
               </span>
+              {/* PISO 2: LA LETRA */}
               <span className={`${sizeClasses[size]} font-medium text-slate-800 leading-tight whitespace-pre-wrap break-words text-left max-w-full`}>
                 {seg.text || '\u200B'}
               </span>
@@ -393,6 +389,7 @@ export default function Alabanza() {
     });
   };
 
+  // --- FILTROS ---
   const filteredSongs = songs.filter(s => {
     const matchesSearch = s.title.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = activeCategory === 'Todas' || s.category === activeCategory;
@@ -413,6 +410,7 @@ export default function Alabanza() {
 
   return (
     <div className="pb-36 animate-fade-in min-h-screen bg-slate-50 font-outfit relative">
+      {/* HEADER SUPERIOR CON NAVEGACIÓN */}
       <div className="px-5 pt-8 pb-4 bg-white border-b border-slate-100 sticky top-0 z-30 shadow-sm">
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-3 text-left">
@@ -435,6 +433,9 @@ export default function Alabanza() {
       </div>
 
       <div className="px-5 mt-8">
+        {/* =========================================
+            PESTAÑA: SEMANAL 
+        ============================================= */}
         {activeTab === 'semanal' && (
           <div className="animate-slide-up space-y-6">
             {weeklyEvents.length === 0 ? (
@@ -461,6 +462,7 @@ export default function Alabanza() {
                       </div>
                     </div>
                     
+                    {/* BANDA ASIGNADA */}
                     {(ev.type.includes('Culto') || ev.type.includes('Ensayo')) && (
                       <div className="grid grid-cols-2 gap-2 mb-4">
                         {['teclado', 'bajo', 'bateria', 'electrica', 'acustica'].map(role => ev.team[role] && (
@@ -470,6 +472,7 @@ export default function Alabanza() {
                           </div>
                         ))}
 
+                        {/* VOCES - MULTIPLE CHIPS */}
                         {ev.team.voces?.length > 0 && (
                           <div className="col-span-2 flex flex-col gap-2 text-left bg-indigo-50 p-3 rounded-xl border border-indigo-100 mt-1">
                              <div className="flex items-center gap-2">
@@ -488,6 +491,7 @@ export default function Alabanza() {
                       </div>
                     )}
 
+                    {/* DEVOCIONAL */}
                     {ev.team.devo && (
                        <div className="flex items-center gap-2 text-left bg-amber-50 p-3 rounded-xl border border-amber-100 mb-4">
                          <BookOpen size={14} className="text-amber-600 shrink-0"/>
@@ -495,6 +499,7 @@ export default function Alabanza() {
                        </div>
                     )}
 
+                    {/* SETLIST DETALLADO */}
                     {eventSongs.length > 0 && (
                       <div className="border-t border-slate-100 pt-4 space-y-3">
                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-left mb-2 flex items-center justify-between">Setlist <span className="bg-slate-900 text-white px-2 py-0.5 rounded-md">Abrir Modo Ensayo</span></p>
@@ -520,6 +525,7 @@ export default function Alabanza() {
                       </div>
                     )}
 
+                    {/* OBSERVACIONES GENERALES */}
                     {ev.observations && (
                       <div className="mt-4 p-3 bg-slate-50 border-l-4 border-slate-300 rounded-r-xl text-left">
                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Observaciones</p>
@@ -533,6 +539,9 @@ export default function Alabanza() {
           </div>
         )}
 
+        {/* =========================================
+            PESTAÑA: MENSUAL 
+        ============================================= */}
         {activeTab === 'mensual' && (
           <div className="animate-slide-up space-y-4">
             <div className="flex items-center justify-between bg-white p-2 rounded-2xl shadow-sm border border-slate-100 mb-4">
@@ -571,6 +580,9 @@ export default function Alabanza() {
           </div>
         )}
 
+        {/* =========================================
+            PESTAÑA: CANCIONERO 
+        ============================================= */}
         {activeTab === 'cancionero' && (
           <div className="animate-slide-up space-y-4">
             <div className="flex gap-2">
@@ -631,6 +643,8 @@ export default function Alabanza() {
             </div>
 
             <form onSubmit={handleUpdateEvent} className="space-y-6 pb-6">
+              
+              {/* CULTO / ENSAYO: Toda la banda */}
               {(editingEvent.type.includes('Culto') || editingEvent.type.includes('Ensayo')) && (
                 <>
                   <div className="text-left">
@@ -663,6 +677,7 @@ export default function Alabanza() {
                     ))}
                   </div>
 
+                  {/* CONSTRUCTOR DE SETLIST DETALLADO */}
                   <div className="text-left border-t border-slate-100 pt-4">
                     <label className="text-[10px] font-black text-brand-600 uppercase tracking-widest ml-1 mb-3 flex items-center gap-2"><ListMusic size={12}/> Constructor de Setlist</label>
                     
@@ -681,7 +696,7 @@ export default function Alabanza() {
                                 if (isSelected) {
                                    newList = newList.filter(item => getSongId(item) !== song.id);
                                 } else {
-                                   newList.push({ songId: song.id, singer: '', keyType: 'man', notes: '' });
+                                   newList.push({ songId: song.id, singer: '', keyType: song.baseTone || 'man', notes: '' }); // <-- Usa su tono base por defecto
                                 }
                                 setEditingEvent({...editingEvent, setlist: newList});
                               }} className={`p-3 rounded-xl border-2 transition-all flex items-center justify-between cursor-pointer ${isSelected ? 'border-brand-500 bg-brand-50' : 'border-slate-100 bg-white'}`}>
@@ -696,12 +711,14 @@ export default function Alabanza() {
                       </div>
                     )}
 
+                    {/* CANCIONES SELECCIONADAS (Mini Formulario por canción) */}
                     <div className="space-y-3 mt-4">
                        {editingEvent.setlist.map((item, idx) => {
                           const songId = getSongId(item);
                           const song = songs.find(s => s.id === songId);
                           if(!song) return null;
-                          const config = typeof item === 'string' ? { songId, singer: '', keyType: 'man', notes: '' } : item;
+                          
+                          const config = typeof item === 'string' ? { songId, singer: '', keyType: song.baseTone || 'man', notes: '' } : item;
 
                           return (
                              <div key={idx} className="p-3 bg-white border border-slate-200 rounded-xl shadow-sm relative">
@@ -752,6 +769,7 @@ export default function Alabanza() {
                 </>
               )}
 
+              {/* ENSAYO: Observaciones */}
               {editingEvent.type.includes('Ensayo') && (
                 <div className="text-left pt-2 border-t border-slate-100">
                   <label className="text-[10px] font-black text-amber-600 uppercase tracking-widest ml-1 mb-2 flex items-center gap-2 mt-4"><FileText size={12}/> Observaciones del Ensayo</label>
@@ -759,6 +777,7 @@ export default function Alabanza() {
                 </div>
               )}
 
+              {/* DEVOCIONAL */}
               {(editingEvent.type === 'Devocional' || editingEvent.type.includes('Ensayo')) && (
                  <div className="text-left pt-2 border-t border-slate-100 mt-4">
                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block mt-4">Responsable Devocional</label>
@@ -818,6 +837,7 @@ export default function Alabanza() {
                  </div>
               </div>
 
+              {/* CAMPO DE ACORDES DE LA CANCIÓN */}
               <div className="mt-3">
                  <label className="text-[10px] font-black text-brand-600 uppercase tracking-widest ml-1 mb-1 block">Acordes de la canción (Separados por coma)</label>
                  <input placeholder="Ej: C, Dm, F, G..." className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-black outline-none focus:border-brand-500 text-slate-800" value={songForm.songChords || ''} onChange={e => setSongForm({...songForm, songChords: e.target.value})} />
@@ -841,15 +861,21 @@ export default function Alabanza() {
             </div>
           </div>
 
+          {/* TECLADO FLOTANTE HORIZONTAL COMPACTO */}
           <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-2 pb-6 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-50">
             <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 text-center mt-1">Deslizá para ver todos los acordes 👉</p>
             <div className="flex items-center gap-2 overflow-x-auto no-scrollbar px-2 pb-2">
+               
+               {/* Acordes guardados por el usuario */}
                {customChordsArr.map((c, i) => (
                  <button key={`custom-${i}`} type="button" onClick={() => insertChord(c)} className="shrink-0 h-12 min-w-[3.5rem] px-3 bg-brand-50 text-brand-700 rounded-xl text-sm font-black transition-colors border border-brand-200 shadow-sm active:scale-90">
                    {c}
                  </button>
                ))}
+               
                {customChordsArr.length > 0 && <div className="w-px h-8 bg-slate-300 mx-1 shrink-0"></div>}
+
+               {/* Todos los demás acordes */}
                {allChords.map(c => (
                  <button key={c} type="button" onClick={() => insertChord(c)} className="shrink-0 h-12 min-w-[3.5rem] px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-sm font-black transition-colors border border-slate-200 shadow-sm active:scale-90">
                    {c}
