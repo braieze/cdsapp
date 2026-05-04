@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { 
   X, Image as ImageIcon, Send, Loader2, Link as LinkIcon, 
   BarChart2, Plus, Trash2, Save, Archive, HandHeart, 
-  Anchor, Sun, CloudRain, Smile, Layers, Eye, Lock, Globe // ✅ Nuevos iconos
+  Anchor, Sun, CloudRain, Smile, Layers, Eye, Lock, Globe 
 } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { db, auth } from '../firebase'; 
@@ -24,7 +24,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [type, setType] = useState('Noticia');
-  const [visibility, setVisibility] = useState('publico'); // ✅ NUEVO ESTADO
+  const [visibility, setVisibility] = useState('publico'); 
   const [isArchived, setIsArchived] = useState(false);
   const [mood, setMood] = useState(''); 
   const [seriesName, setSeriesName] = useState(''); 
@@ -42,7 +42,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
       setLink(postToEdit.link || '');
       setLinkText(postToEdit.linkText || '');
       setType(postToEdit.type || 'Noticia');
-      setVisibility(postToEdit.visibility || 'publico'); // ✅ Carga visibilidad
+      setVisibility(postToEdit.visibility || 'publico');
       setPreview(postToEdit.image || null);
       setIsArchived(postToEdit.isArchived || false);
       setMood(postToEdit.mood || '');
@@ -60,31 +60,53 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     setMood(''); setSeriesName('');
   };
 
-  // ✅ FUNCIÓN NOTIFICACIÓN MEJORADA (Fix Error 400 y Deep Link)
+  // ✅ MEJORA: Función de notificación alineada con TopBar
   const sendPushNotification = async (notifTitle, notifContent, postUrl) => {
     try {
       const APP_ID = "742a62cd-6d15-427f-8bab-5b8759fabd0a";
       const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
-      if (!REST_API_KEY) return;
+      
+      if (!REST_API_KEY) {
+        console.error("Falta REST API KEY de OneSignal");
+        return;
+      }
 
-      // Si es privado para servidores, no mandamos push masivo (o podrías segmentarlo después)
-      if (visibility === 'servidores') return;
+      // Estructura de payload idéntica a la manual que sí funciona
+      const payload = {
+        app_id: APP_ID,
+        headings: { en: notifTitle, es: notifTitle },
+        contents: { en: notifContent, es: notifContent },
+        data: { route: postUrl }, // Deep linking al post
+        large_icon: "https://cdsapp.vercel.app/logo.png",
+        priority: 10,
+        android_visibility: 1,
+        android_accent_color: "FF0000"
+      };
 
-      await fetch("https://onesignal.com/api/v1/notifications", {
+      // Lógica de segmentación según visibilidad
+      if (visibility === 'servidores') {
+        // Si tienes tags de "area" como en TopBar, se pueden usar aquí
+        payload.filters = [{ field: "tag", key: "role", relation: "!=", value: "miembro" }];
+      } else {
+        payload.included_segments = ["Total Subscriptions"];
+      }
+
+      const response = await fetch("https://onesignal.com/api/v1/notifications", {
         method: "POST",
-        headers: { "Content-Type": "application/json; charset=utf-8", "Authorization": `Basic ${REST_API_KEY}` },
-        body: JSON.stringify({
-          app_id: APP_ID,
-          included_segments: ["Total Subscriptions"], 
-          headings: { en: notifTitle, es: notifTitle }, // ✅ Fix 400 (en/es)
-          contents: { en: notifContent, es: notifContent }, // ✅ Fix 400 (en/es)
-          data: { route: postUrl }, // ✅ Deep Link al post específico
-          large_icon: "https://cdsapp.vercel.app/logo.png",
-          priority: 10,
-          android_visibility: 1
-        })
+        headers: { 
+          "Content-Type": "application/json; charset=utf-8", 
+          "Authorization": `Basic ${REST_API_KEY}` 
+        },
+        body: JSON.stringify(payload)
       });
-    } catch (error) { console.error("Error notif:", error); }
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Error OneSignal API:", errorData);
+      }
+    } catch (error) { 
+      console.error("Error en el proceso de notificación:", error); 
+    }
   };
 
   const handleImageChange = async (e) => {
@@ -121,7 +143,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         linkText: linkText || 'Ver más', 
         image: imageUrl, 
         type: type,
-        visibility: visibility, // ✅ SE GUARDA LA VISIBILIDAD
+        visibility: visibility,
         isArchived: isArchived,
         mood: (type === 'Devocional' || type === 'Oración') ? mood : '', 
         seriesName: type === 'Devocional' ? seriesName : '', 
@@ -130,10 +152,11 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
       if (postToEdit) {
         const postRef = doc(db, 'posts', postToEdit.id);
         await updateDoc(postRef, { ...commonData, updatedAt: serverTimestamp() });
-        // Si se desarchiva, avisamos
+        
+        // Notificación si se desarchiva
         if (postToEdit.isArchived && !isArchived) {
             const cleanContent = text.length > 80 ? text.substring(0, 80) + "..." : text;
-            await sendPushNotification(commonData.title, cleanContent, `/post/${postToEdit.id}`);
+            await sendPushNotification(`📢 Actualización: ${commonData.title}`, cleanContent, `/post/${postToEdit.id}`);
         }
       } else {
         let finalPoll = null;
@@ -162,14 +185,19 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           commentsCount: 0
         });
 
-        // Notificación de nuevo post
+        // ✅ ENVÍO DE NOTIFICACIÓN AUTOMÁTICA
         if (!isArchived) {
             const cleanContent = text.length > 80 ? text.substring(0, 80) + "..." : text;
             await sendPushNotification(commonData.title, cleanContent, `/post/${docRef.id}`);
         }
       }
       resetForm(); setLoading(false); onClose();
-    } catch (error) { console.error("Error:", error); setLoading(false); }
+      toast.success("Publicación lanzada con éxito");
+    } catch (error) { 
+      console.error("Error al publicar:", error); 
+      setLoading(false); 
+      toast.error("Hubo un problema al publicar");
+    }
   };
 
   if (!isOpen) return null;
@@ -206,7 +234,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
             ))}
           </div>
 
-          {/* ✅ NUEVO: SELECTOR DE VISIBILIDAD (Segmentación) */}
+          {/* VISIBILIDAD */}
           <div className="space-y-2">
              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 flex items-center gap-2"><Eye size={12}/> Visibilidad del post</label>
              <div className="flex gap-2">
