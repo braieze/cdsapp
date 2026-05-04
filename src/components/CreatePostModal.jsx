@@ -7,6 +7,7 @@ import {
 import imageCompression from 'browser-image-compression';
 import { db, auth } from '../firebase'; 
 import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
+import { toast } from 'sonner'; // Asumiendo que usas sonner para notificaciones UI
 
 const MOOD_OPTIONS = [
   { id: 'Fortaleza', icon: Anchor, color: 'text-blue-500', bg: 'bg-blue-50' },
@@ -60,7 +61,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     setMood(''); setSeriesName('');
   };
 
-  // ✅ MEJORA: Función de notificación alineada con TopBar
+  // ✅ MEJORA: Función de notificación con Deep Linking habilitado
   const sendPushNotification = async (notifTitle, notifContent, postUrl) => {
     try {
       const APP_ID = "742a62cd-6d15-427f-8bab-5b8759fabd0a";
@@ -71,41 +72,30 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
         return;
       }
 
-      // Estructura de payload idéntica a la manual que sí funciona
-      const payload = {
-        app_id: APP_ID,
-        headings: { en: notifTitle, es: notifTitle },
-        contents: { en: notifContent, es: notifContent },
-        data: { route: postUrl }, // Deep linking al post
-        large_icon: "https://cdsapp.vercel.app/logo.png",
-        priority: 10,
-        android_visibility: 1,
-        android_accent_color: "FF0000"
-      };
+      // Si es privado para servidores, no mandamos push masivo en esta instancia
+      if (visibility === 'servidores') return;
 
-      // Lógica de segmentación según visibilidad
-      if (visibility === 'servidores') {
-        // Si tienes tags de "area" como en TopBar, se pueden usar aquí
-        payload.filters = [{ field: "tag", key: "role", relation: "!=", value: "miembro" }];
-      } else {
-        payload.included_segments = ["Total Subscriptions"];
-      }
-
-      const response = await fetch("https://onesignal.com/api/v1/notifications", {
+      await fetch("https://onesignal.com/api/v1/notifications", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json; charset=utf-8", 
           "Authorization": `Basic ${REST_API_KEY}` 
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          app_id: APP_ID,
+          included_segments: ["Total Subscriptions"], 
+          headings: { en: notifTitle, es: notifTitle }, 
+          contents: { en: notifContent, es: notifContent }, 
+          // ✅ DEEP LINK: Ruta hacia el post específico
+          data: { route: postUrl }, 
+          large_icon: "https://cdsapp.vercel.app/logo.png",
+          priority: 10,
+          android_visibility: 1,
+          android_accent_color: "FF0000"
+        })
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error("Error OneSignal API:", errorData);
-      }
     } catch (error) { 
-      console.error("Error en el proceso de notificación:", error); 
+      console.error("Error notif:", error); 
     }
   };
 
@@ -185,7 +175,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           commentsCount: 0
         });
 
-        // ✅ ENVÍO DE NOTIFICACIÓN AUTOMÁTICA
+        // ✅ ENVÍO DE NOTIFICACIÓN AUTOMÁTICA CON DEEP LINK
         if (!isArchived) {
             const cleanContent = text.length > 80 ? text.substring(0, 80) + "..." : text;
             await sendPushNotification(commonData.title, cleanContent, `/post/${docRef.id}`);

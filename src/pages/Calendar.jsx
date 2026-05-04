@@ -4,7 +4,7 @@ import { db, auth } from '../firebase';
 import {
   collection, query, orderBy, onSnapshot, addDoc,
   deleteDoc, doc, getDoc, serverTimestamp,
-  writeBatch, updateDoc
+  writeBatch, updateDoc, setDoc
 } from 'firebase/firestore';
 import {
   Plus, Calendar as CalIcon, List, Clock, Trash2, X,
@@ -43,7 +43,7 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [selectedDayEvents, setSelectedDayEvents] = useState(null); // ✅ PARA VER QUÉ HAY CADA DÍA
+  const [selectedDayEvents, setSelectedDayEvents] = useState(null); 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [userRole, setUserRole] = useState(null);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -72,7 +72,8 @@ export default function CalendarPage() {
   useEffect(() => {
     const fetchUserRole = async () => {
       if (currentUser) {
-        const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+        const userRef = doc(db, 'users', currentUser.uid);
+        const userSnap = await getDoc(userRef);
         if (userSnap.exists()) setUserRole(userSnap.data().role);
       }
     };
@@ -86,23 +87,47 @@ export default function CalendarPage() {
     return () => unsubscribeEvents();
   }, [currentUser]);
 
+  // ✅ MEJORA: Función de notificación con Deep Linking (route)
   const sendOneSignalNotification = async (notifTitle, notifBody, path) => {
     try {
       const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
-      if (!REST_API_KEY) return;
+      if (!REST_API_KEY) {
+        console.error("Falta REST API KEY de OneSignal");
+        return;
+      }
+
+      const payload = {
+        app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
+        included_segments: ["Total Subscriptions"],
+        headings: { en: notifTitle, es: notifTitle },
+        contents: { en: notifBody, es: notifBody },
+        // ✅ DEEP LINK: Esto asocia la notificación con la ruta interna
+        data: { route: path }, 
+        large_icon: "https://cdsapp.vercel.app/logo.png",
+        priority: 10,
+        android_visibility: 1,
+        android_accent_color: "FF0000"
+      };
+
       await fetch("https://onesignal.com/api/v1/notifications", {
         method: "POST",
-        headers: { "Content-Type": "application/json; charset=utf-8", "Authorization": `Basic ${REST_API_KEY}` },
-        body: JSON.stringify({
-          app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
-          included_segments: ["Total Subscriptions"],
-          headings: { en: notifTitle, es: notifTitle },
-          contents: { en: notifBody, es: notifBody },
-          data: { route: path }, 
-          priority: 10
-        })
+        headers: { 
+          "Content-Type": "application/json; charset=utf-8", 
+          "Authorization": `Basic ${REST_API_KEY}` 
+        },
+        body: JSON.stringify(payload)
       });
-    } catch (error) { console.error(error); }
+
+      // Registro en historial de notificaciones
+      await addDoc(collection(db, 'notificaciones_globales'), {
+        titulo: notifTitle,
+        mensaje: notifBody,
+        fecha: new Date().toISOString(),
+        destino: 'TODA LA IGLESIA',
+        link: path
+      });
+
+    } catch (error) { console.error("Error en notificación:", error); }
   };
 
   const executeConfirmedAction = async () => {
@@ -124,7 +149,14 @@ export default function CalendarPage() {
           batch.update(doc(db, 'events', e.id), { published: true, updatedAt: serverTimestamp() });
         });
         await batch.commit();
-        await sendOneSignalNotification(`📅 Agenda lista`, "Se publicaron las actividades del mes.", "/calendario");
+        
+        // ✅ DEEP LINK: Lleva a la vista principal del calendario
+        await sendOneSignalNotification(
+          `📅 Agenda lista`, 
+          "Se publicaron las actividades del mes. ¡Miralas ahora!", 
+          "/calendario"
+        );
+        
         setToast({ message: "¡Todo publicado!", type: "success" });
       } catch (e) { setToast({ message: "Error", type: "error" }); }
       finally { setIsPublishing(false); }
@@ -160,7 +192,16 @@ export default function CalendarPage() {
             setToast({ message: "Actualizado", type: "success" });
         } else {
             const docRef = await addDoc(collection(db, 'events'), { ...eventData, createdAt: serverTimestamp(), assignments: {} });
-            if (newEvent.published) await sendOneSignalNotification("Nueva actividad", newEvent.title, `/calendario/${docRef.id}`);
+            
+            // ✅ DEEP LINK: Lleva al detalle del evento recién creado
+            if (newEvent.published) {
+              await sendOneSignalNotification(
+                "Nueva actividad", 
+                `${newEvent.title} - ${format(parseISO(newEvent.date), "d 'de' MMMM", {locale: es})}`, 
+                `/calendario/${docRef.id}`
+              );
+            }
+            
             setToast({ message: "Evento creado", type: "success" });
         }
         setIsModalOpen(false);
@@ -371,7 +412,6 @@ export default function CalendarPage() {
         <button onClick={() => { setEditingId(null); setNewEvent({ title: '', type: 'culto', date: '', endDate: '', time: '19:30', published: false }); setIsModalOpen(true); }} className="fixed bottom-28 right-6 w-18 h-18 bg-slate-900 text-white rounded-[30px] shadow-2xl flex items-center justify-center z-40 border-4 border-white active:scale-90 transition-all"><Plus size={36}/></button>
       )}
 
-      {/* ✅ MODAL DETALLE DEL DÍA (GRILLA) - ESTO FALTABA */}
       {selectedDayEvents && (
         <div className="fixed inset-0 z-[600] bg-slate-900/60 backdrop-blur-sm flex items-end justify-center animate-fade-in" onClick={() => setSelectedDayEvents(null)}>
           <div className="bg-white w-full max-w-md rounded-t-[50px] p-10 shadow-2xl animate-slide-up" onClick={e => e.stopPropagation()}>
@@ -399,7 +439,6 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* MODAL PLANIFICAR */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
             <div className="bg-white w-full max-w-sm rounded-[50px] p-10 shadow-2xl max-h-[90vh] overflow-y-auto no-scrollbar relative animate-slide-up text-left">
@@ -444,7 +483,6 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* CONFIRMACIÓN ACCIONES */}
       {actionConfirm && (
         <div className="fixed inset-0 z-[1000] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-8 animate-fade-in">
           <div className="bg-white w-full max-w-xs rounded-[45px] p-10 shadow-2xl text-center">

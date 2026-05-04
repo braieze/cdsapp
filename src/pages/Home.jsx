@@ -159,7 +159,6 @@ export default function Home() {
     } catch (e) { console.error(e); }
   };
 
-  // ✅ SOLUCIÓN: Fijar/Desanclar Post
   const handlePin = async (postId, currentPinned) => {
     if (!isStaff) return;
     try {
@@ -169,16 +168,16 @@ export default function Home() {
     } catch (e) { console.error(e); }
   };
 
-  // ✅ SOLUCIÓN: Notificación Push real para Re-notificar
+  // ✅ SOLUCIÓN DEEP LINK: Implementación real de OneSignal para Re-notificar
   const handleReNotify = async (post) => {
     setMenuOpenId(null);
-    showToast("Lanzando aviso push...");
+    showToast("Enviando aviso push...");
 
     try {
-      // 1. Registro en base de datos
-      const notifRef = doc(collection(db, 'notificaciones_globales'));
       const notifBody = post.content ? post.content.substring(0, 100) + '...' : 'Toca para ver la novedad.';
       
+      // 1. Registro en base de datos para historial
+      const notifRef = doc(collection(db, 'notificaciones_globales'));
       await setDoc(notifRef, {
         titulo: `RECORDATORIO: ${post.title}`,
         mensaje: notifBody,
@@ -187,15 +186,17 @@ export default function Home() {
         link: `/post/${post.id}`
       });
 
-      // 2. Llamada real a OneSignal
+      // 2. Llamada real a OneSignal con Deep Link (route)
       const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
       const payload = {
         app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
-        headings: { en: post.title, es: post.title },
+        headings: { en: `RECORDATORIO: ${post.title}`, es: `RECORDATORIO: ${post.title}` },
         contents: { en: notifBody, es: notifBody },
+        // ✅ DEEP LINK: Esto asocia la notificación con la ruta del post
         data: { route: `/post/${post.id}` }, 
         large_icon: "https://cdsapp.vercel.app/logo.png",
-        priority: 10
+        priority: 10,
+        android_visibility: 1
       };
 
       if (post.visibility === 'servidores') {
@@ -204,13 +205,17 @@ export default function Home() {
         payload.included_segments = ["Total Subscriptions"];
       }
 
-      await fetch("https://onesignal.com/api/v1/notifications", {
+      const response = await fetch("https://onesignal.com/api/v1/notifications", {
         method: "POST",
         headers: { "Content-Type": "application/json; charset=utf-8", "Authorization": `Basic ${REST_API_KEY}` },
         body: JSON.stringify(payload)
       });
 
-      showToast("¡Aviso enviado con éxito!");
+      if (response.ok) {
+        showToast("¡Aviso enviado con éxito!");
+      } else {
+        throw new Error("Error en OneSignal");
+      }
     } catch (error) {
       console.error(error);
       showToast("Error al enviar el aviso.");
@@ -314,7 +319,6 @@ export default function Home() {
                   </div>
                 ) : (
                   <>
-                    {/* ✅ MEJORA: Imagen en la parte superior con aspect-ratio controlado */}
                     {post.image && (
                       <div className="w-full aspect-video bg-slate-100 cursor-pointer overflow-hidden border-b border-slate-50" onClick={() => navigate(`/post/${post.id}`)}>
                         <img src={post.image} className="w-full h-full object-cover" loading="lazy" referrerPolicy="no-referrer" alt="Post"/>
@@ -343,7 +347,6 @@ export default function Home() {
                             <button onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === post.id ? null : post.id); }} className="p-2 text-slate-300 hover:text-slate-600 transition-colors"><MoreVertical size={18}/></button>
                             {menuOpenId === post.id && (
                               <div className="absolute right-0 top-10 bg-white shadow-2xl rounded-2xl border border-slate-100 py-1.5 w-48 z-50 animate-scale-in origin-top-right">
-                                {/* ✅ FIX: Botón Fijar Restaurado */}
                                 <button onClick={(e) => { e.stopPropagation(); handlePin(post.id, post.isPinned); }} className="w-full text-left px-4 py-3 text-[9px] font-black uppercase tracking-widest text-amber-600 hover:bg-amber-50 flex items-center gap-3 border-b border-slate-50">
                                   <Pin size={14}/> {post.isPinned ? 'Desanclar' : 'Fijar arriba'}
                                 </button>
@@ -372,23 +375,25 @@ export default function Home() {
                       <CommentPreview postId={post.id} count={post.commentsCount || 0} onClick={() => navigate(`/post/${post.id}`)} />
                       
                       <div className="mt-4 pt-4 border-t border-slate-50 flex items-center justify-between">
-                          <div className="flex items-center gap-1">
-                             {['❤️', '🔥', '🙏'].map(e => {
+                          <div className="flex items-center gap-1.5 flex-1 overflow-x-auto no-scrollbar">
+                             {/* ✅ RESTAURACIÓN DE EMOJIS: Siempre visibles */}
+                             {['❤️', '🔥', '🙏', '👍'].map(e => {
                                 const reactions = post.reactions || [];
                                 const count = reactions.filter(r => r.emoji === e).length;
                                 const isSelected = reactions.some(r => r.uid === currentUser?.uid && r.emoji === e);
-                                if (count === 0 && !isSelected) return null;
                                 return (
                                   <button key={e} onClick={() => handleReaction(post.id, post.reactions, e)} 
-                                    className={`flex items-center gap-1.5 px-2 py-1 rounded-lg transition-all border ${isSelected ? 'bg-slate-900 border-slate-900' : 'bg-white border-slate-100'}`}>
-                                    <span className="text-sm">{e}</span>
-                                    <span className={`text-[9px] font-black ${isSelected ? 'text-white' : 'text-slate-900'}`}>{count}</span>
+                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all border active:scale-75 ${isSelected ? 'bg-slate-900 border-slate-900 text-white shadow-md' : 'bg-white border-slate-100 text-slate-900 hover:bg-slate-50'}`}>
+                                    <span className="text-base">{e}</span>
+                                    {count > 0 && <span className={`text-[10px] font-black ${isSelected ? 'text-white' : 'text-slate-900'}`}>{count}</span>}
                                   </button>
                                 )
                              })}
-                             <button onClick={() => navigate(`/post/${post.id}`)} className="p-2 text-slate-300 hover:text-brand-600 transition-colors"><PlusCircle size={18}/></button>
                           </div>
-                          <button onClick={() => navigate(`/post/${post.id}`)} className="px-4 py-2 bg-slate-50 text-slate-400 rounded-xl text-[8px] font-black uppercase tracking-widest">Ver más</button>
+                          <button onClick={() => navigate(`/post/${post.id}`)} className="ml-2 p-3 bg-brand-50 text-brand-600 rounded-2xl active:scale-95 transition-all relative">
+                             <MessageCircle size={20} />
+                             {post.commentsCount > 0 && <span className="absolute -top-1 -right-1 bg-brand-600 text-white text-[8px] font-black w-5 h-5 flex items-center justify-center rounded-full border-2 border-white">{post.commentsCount}</span>}
+                          </button>
                       </div>
                     </div>
                   </>

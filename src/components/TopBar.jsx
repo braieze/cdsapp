@@ -16,7 +16,6 @@ import OneSignal from 'onesignal-cordova-plugin';
 
 const VAPID_KEY = "BGMeg-zLHj3i9JZ09bYjrsV5P0eVEll09oaXMgHgs6ImBloOLHRFKKjELGxHrAEfd96ZnmlBf7XyoLKXiyIA3Wk";
 
-// ✅ NUEVO: PLANTILLAS RÁPIDAS
 const PUSH_TEMPLATES = [
   { id: 'urgente', label: '🚨 Aviso Urgente', title: '¡Aviso Importante!', body: 'Por favor, lee este comunicado urgente de la iglesia.', targetArea: 'todos', targetPath: '/' },
   { id: 'servicio', label: '⛪ Confirmar Servicio', title: 'Recordatorio de Servicio', body: 'No olvides confirmar tu asistencia para servir en el próximo culto.', targetArea: 'todos', targetPath: '/servicios' },
@@ -45,7 +44,7 @@ export default function TopBar() {
 
   const isNative = Capacitor.isNativePlatform(); 
 
-  // 0. DETECTOR DE USUARIO, ROL Y DEEP LINKING
+  // ✅ 0. DETECTOR DE USUARIO Y ESCUCHADOR DE DEEP LINKING
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged((user) => {
       if (user) {
@@ -66,6 +65,7 @@ export default function TopBar() {
       }
     });
 
+    // ✅ LÓGICA DE RECEPCIÓN: Navegar cuando el usuario toca la notificación
     if (isNative) {
       OneSignal.Notifications.addEventListener('click', (event) => {
         const data = event.notification.additionalData;
@@ -78,7 +78,6 @@ export default function TopBar() {
     return () => unsubscribeAuth();
   }, [isNative, navigate]);
 
-  // CARGAR METADATA
   useEffect(() => {
     const unsubAreas = onSnapshot(doc(db, 'metadata', 'areas'), (snap) => {
       if (snap.exists()) setOfficialAreas(snap.data().list || []);
@@ -89,7 +88,6 @@ export default function TopBar() {
     return () => { unsubAreas(); unsubLink(); };
   }, []);
 
-  // LÓGICA DE SUSCRIPCIÓN
   useEffect(() => {
     if (isNative) {
       setIsSupported(true);
@@ -160,7 +158,6 @@ export default function TopBar() {
     toast.info("Link cargado");
   };
 
-  // ✅ NUEVO: Aplicar Plantilla Rápida
   const applyTemplate = (template) => {
     setPushData({
       title: template.title,
@@ -172,18 +169,20 @@ export default function TopBar() {
     toast.success("Plantilla aplicada");
   };
 
+  // ✅ MEJORA: Función de envío manual con soporte para Deep Linking
   const sendManualPush = async () => {
     if (!pushData.title || !pushData.body) return toast.error("Completa título y mensaje");
     setLoadingAction(true);
     try {
-      // 1. Guardar en Base de Datos para el Historial (Fase 2)
+      // 1. Guardar en Firestore para el historial de la campanita
       const notifRef = doc(collection(db, 'notificaciones_globales'));
       await setDoc(notifRef, {
         titulo: pushData.title,
         mensaje: pushData.body,
         fecha: new Date().toISOString(),
         destino: pushData.targetArea.toUpperCase(),
-        link: pushData.link || pushData.targetPath
+        // Guardamos el link externo o la ruta interna seleccionada
+        link: pushData.link || pushData.targetPath 
       });
 
       // 2. Enviar a OneSignal
@@ -192,7 +191,8 @@ export default function TopBar() {
         app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
         headings: { en: pushData.title, es: pushData.title },
         contents: { en: pushData.body, es: pushData.body },
-        url: pushData.link || null, 
+        url: pushData.link || null, // URL externa si existe
+        // ✅ DEEP LINK: Pasamos la ruta seleccionada (ej: /servicios)
         data: { route: pushData.targetPath }, 
         large_icon: "https://cdsapp.vercel.app/logo.png",
         priority: 10,
@@ -213,7 +213,7 @@ export default function TopBar() {
       });
 
       if (response.ok) {
-          toast.success("¡Notificación enviada y guardada!");
+          toast.success("¡Notificación enviada!");
           setIsPastorPanelOpen(false);
           setPushData({ title: '', body: '', link: '', targetArea: 'todos', targetPath: '/' });
       }
@@ -221,11 +221,9 @@ export default function TopBar() {
     finally { setLoadingAction(false); }
   };
 
-  // ✅ NUEVO: FUSIONAR POSTS Y AVISOS PUSH EN LA CAMPANITA
   useEffect(() => {
     if (!activeUser) return;
     
-    // Escuchamos Posts
     const qPosts = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(15));
     const unsubPosts = onSnapshot(qPosts, (snap) => {
         const posts = snap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -242,7 +240,6 @@ export default function TopBar() {
             isUrgent: p.type === 'Urgente'
           }));
           
-        // Escuchamos Notificaciones Globales (Push manuales)
         const qNotifs = query(collection(db, 'notificaciones_globales'), orderBy('fecha', 'desc'), limit(15));
         const unsubGlobal = onSnapshot(qNotifs, (snapGlobal) => {
             const globals = snapGlobal.docs.map(d => {
@@ -260,7 +257,6 @@ export default function TopBar() {
               };
             });
 
-            // Juntamos todo y ordenamos por fecha
             const allMerged = [...posts, ...globals].sort((a, b) => b.timestamp - a.timestamp).slice(0, 20);
             setNotifications(allMerged);
         });
@@ -317,7 +313,6 @@ export default function TopBar() {
         </div>
       </div>
 
-      {/* --- PANEL NOTIFICACIONES --- */}
       {isOpen && (
         <div className="fixed inset-0 z-[100] bg-white animate-fade-in flex flex-col font-outfit">
             <div className="px-6 pt-14 pb-6 border-b border-slate-50 flex justify-between items-center bg-white sticky top-0">
@@ -364,7 +359,6 @@ export default function TopBar() {
         </div>
       )}
 
-      {/* --- PANEL DE PASTORES --- */}
       {isPastorPanelOpen && (
         <div className="fixed inset-0 z-[110] bg-slate-900/95 backdrop-blur-xl flex items-center justify-center p-5 font-outfit animate-fade-in text-left">
           <div className="bg-white w-full max-w-sm rounded-[40px] p-8 shadow-2xl animate-scale-in flex flex-col gap-6 max-h-[90vh] overflow-y-auto no-scrollbar">
@@ -377,7 +371,6 @@ export default function TopBar() {
               <button onClick={() => setIsPastorPanelOpen(false)} className="p-2 bg-slate-100 rounded-full active:scale-75 transition-all text-slate-400"><X size={20}/></button>
             </div>
 
-            {/* ✅ NUEVO: PLANTILLAS RÁPIDAS (CHIPS) */}
             <div>
               <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5"><Sparkles size={12}/> Plantillas Rápidas</p>
               <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">

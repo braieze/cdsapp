@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase';
 import { 
   doc, getDoc, updateDoc, collection, getDocs, deleteDoc, 
-  serverTimestamp, arrayUnion, arrayRemove 
+  serverTimestamp, arrayUnion, arrayRemove, addDoc
 } from 'firebase/firestore'; 
 import { 
   X, Calendar, Clock, Save, Trash2, Plus, Users, 
@@ -74,7 +74,7 @@ export default function EventDetails() {
     fetchData();
   }, [id, currentUser, navigate]);
 
-  // ✅ 2. LÓGICA DE NORMALIZACIÓN (PARA LEER Y ESCRIBIR)
+  // ✅ 2. LÓGICA DE NORMALIZACIÓN
   const getAssignedForRole = (roleKey) => {
     if (!assignments) return [];
     const foundKey = Object.keys(assignments).find(k => 
@@ -96,7 +96,6 @@ export default function EventDetails() {
       newList = activeRoleConfig.type === 'single' ? [userName] : [...currentList, userName];
     }
 
-    // Limpiamos llaves viejas para evitar duplicados (Ej: "Predicador" -> "predicador")
     const newAssignments = { ...assignments };
     const oldKey = Object.keys(newAssignments).find(k => 
       k.toLowerCase().replace(/[\s_]/g, '') === activeRoleKey.toLowerCase().replace(/[\s_]/g, '')
@@ -107,25 +106,39 @@ export default function EventDetails() {
     setAssignments(newAssignments);
   };
 
+  // ✅ MEJORA: Función de notificación con Deep Linking (route) para Servidores
   const sendPush = async (userNames, eventTitle) => {
     const KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
     if (!KEY) return;
+
+    // Obtenemos los IDs de OneSignal (external_id) de los usuarios asignados
     const targetIds = users.filter(u => userNames.includes(u.displayName)).map(u => u.id);
     if (targetIds.length === 0) return;
+
     try {
+      const payload = {
+        app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
+        include_external_user_ids: targetIds,
+        headings: { en: "📍 Tarea asignada", es: "📍 Tarea asignada" },
+        contents: { 
+          en: `Tienes una nueva tarea en: ${eventTitle}. Toca para ver detalles.`, 
+          es: `Tienes una nueva tarea en: ${eventTitle}. Toca para ver detalles.` 
+        },
+        // ✅ DEEP LINK: Lleva directamente al evento
+        data: { route: `/calendario/${id}` },
+        large_icon: "https://cdsapp.vercel.app/logo.png",
+        priority: 10,
+        android_accent_color: "FF0000",
+        android_visibility: 1
+      };
+
       await fetch("https://onesignal.com/api/v1/notifications", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Basic ${KEY}` },
-        body: JSON.stringify({
-          app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
-          include_external_user_ids: targetIds,
-          headings: { en: "📍 Tarea asignada", es: "📍 Tarea asignada" },
-          contents: { en: `Tarea en: ${eventTitle}`, es: `Tarea en: ${eventTitle}` },
-          data: { route: `/calendario/${id}` },
-          priority: 10
-        })
+        headers: { "Content-Type": "application/json; charset=utf-8", "Authorization": `Basic ${KEY}` },
+        body: JSON.stringify(payload)
       });
-    } catch (e) { console.log(e); }
+
+    } catch (e) { console.error("Error enviando push de tarea:", e); }
   };
 
   const handleConfirm = async (status) => {
@@ -142,7 +155,13 @@ export default function EventDetails() {
     try {
       const eRef = doc(db, 'events', id);
       await updateDoc(eRef, { ...event, assignments, updatedAt: serverTimestamp() });
-      if (isAssigning) await sendPush(Object.values(assignments).flat(), event.title);
+      
+      // ✅ Si estamos en modo asignación, enviamos las notificaciones con Deep Link
+      if (isAssigning) {
+        const assignedList = Object.values(assignments).flat();
+        await sendPush(assignedList, event.title);
+      }
+
       setIsAssigning(false);
       setIsEditingMeta(false);
       toast.success("Cambios guardados");
