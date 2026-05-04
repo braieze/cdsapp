@@ -85,8 +85,15 @@ export default function Alabanza() {
   const timerRef = useRef(null);
 
   // Formulario Canción y Acordes
-  const [songForm, setSongForm] = useState({ id: null, title: '', artist: '', keyMan: 'C', keyWoman: 'C', bpm: '', category: 'Adoración', link: '', content: '' });
+  const [songForm, setSongForm] = useState({ id: null, title: '', artist: '', keyMan: 'C', keyWoman: 'C', bpm: '', category: 'Adoración', link: '', content: '', songChords: '' });
   const textAreaRef = useRef(null);
+
+  // Generar lista completa de acordes para el carrusel
+  const allChords = useMemo(() => {
+    const list = [];
+    NOTAS.forEach(n => MODIFICADORES.forEach(m => list.push(n + m)));
+    return list;
+  }, []);
 
   // 🛡️ ACCESO
   const isPastor = dbUser?.role === 'pastor';
@@ -184,7 +191,6 @@ export default function Alabanza() {
     let currentSlide = [];
     let currentLines = 0;
     
-    // Calcula cuántas líneas caben según el tamaño de texto elegido
     const maxLines = textSize === 'sm' ? 14 : textSize === 'lg' ? 6 : 10;
     
     stanzas.forEach(stanza => {
@@ -275,7 +281,7 @@ export default function Alabanza() {
         title: songForm.title, artist: songForm.artist, 
         keyMan: songForm.keyMan || 'C', keyWoman: songForm.keyWoman || 'C', 
         bpm: Number(songForm.bpm) || 0, category: songForm.category, link: songForm.link, 
-        content: songForm.content, updatedAt: serverTimestamp()
+        content: songForm.content, songChords: songForm.songChords || '', updatedAt: serverTimestamp()
       };
       if (songForm.id) {
         await updateDoc(doc(db, 'songs', songForm.id), songData);
@@ -314,37 +320,55 @@ export default function Alabanza() {
     }, 0);
   };
 
+  // 100% RENOVADO: Evita superposición, el acorde va arriba en su propia mini-columna
   const renderLyricsWithChords = (text, steps, size) => {
     const lines = text.split('\n');
     
-    // Tamaños dinámicos
     const sizeClasses = { sm: 'text-lg md:text-xl', md: 'text-xl md:text-2xl', lg: 'text-2xl md:text-3xl' };
-    const chordSizeClasses = { sm: 'text-lg', md: 'text-xl', lg: 'text-2xl' };
-    const topClasses = { sm: '-top-5', md: '-top-6', lg: '-top-8' };
+    const chordSizeClasses = { sm: 'text-base', md: 'text-lg', lg: 'text-xl' };
 
     return lines.map((line, idx) => {
       if (line.trim().match(/^\[?(intro|coro|verso|puente|pre-coro|instrumental|final)\]?:?/i)) {
-        return <div key={idx} className="mt-6 mb-2 text-[11px] font-black text-brand-500 uppercase tracking-[0.2em] bg-brand-50 inline-block px-3 py-1 rounded-md">{line.replace(/\[|\]/g, '')}</div>;
+        return <div key={idx} className="mt-8 mb-3 text-[11px] font-black text-brand-500 uppercase tracking-[0.2em] bg-brand-50 inline-block px-3 py-1 rounded-md">{line.replace(/\[|\]/g, '')}</div>;
       }
+
       const parts = line.split(/(\[[^\]]+\])/g);
       let hasChords = parts.some(p => p.startsWith('[') && p.endsWith(']'));
-      if (!hasChords) return <div key={idx} className={`${sizeClasses[size]} font-bold text-slate-800 min-h-[2.5rem] whitespace-pre-wrap`}>{line}</div>;
       
+      // Si la línea no tiene acordes, la dibuja normal
+      if (!hasChords) {
+         return <div key={idx} className={`${sizeClasses[size]} font-bold text-slate-800 min-h-[2.5rem] whitespace-pre-wrap text-center`}>{line}</div>;
+      }
+      
+      // Lógica estructural inteligente para separar acorde de sílaba y agruparlos en una mini columna (evita superposiciones)
+      const segments = [];
+      let currentChord = null;
+      
+      parts.forEach(part => {
+        if (part.startsWith('[') && part.endsWith(']')) {
+          if (currentChord) segments.push({ chord: currentChord, text: '' });
+          currentChord = part.slice(1, -1);
+        } else {
+          segments.push({ chord: currentChord, text: part });
+          currentChord = null;
+        }
+      });
+      if (currentChord) segments.push({ chord: currentChord, text: '' });
+
       return (
-        <div key={idx} className="mt-10 mb-2 leading-loose whitespace-pre-wrap text-center">
-          {parts.map((part, i) => {
-            if (part.startsWith('[') && part.endsWith(']')) {
-              const chord = part.slice(1, -1);
-              return (
-                <span key={i} className="relative inline-block">
-                  <span className={`absolute ${topClasses[size]} left-0 text-brand-600 font-black tracking-tighter ${chordSizeClasses[size]}`}>
-                    {transposeChord(chord, steps)}
-                  </span>
-                </span>
-              );
-            }
-            return <span key={i} className={`${sizeClasses[size]} font-bold text-slate-800`}>{part}</span>;
-          })}
+        <div key={idx} className="flex flex-wrap items-end justify-center mb-5 w-full">
+          {segments.map((seg, i) => (
+            <div key={i} className="inline-flex flex-col items-start mx-[1px]">
+              {/* PISO 1: EL ACORDE */}
+              <span className={`text-brand-600 font-black leading-none min-h-[1.2em] ${chordSizeClasses[size]}`}>
+                {seg.chord ? transposeChord(seg.chord, steps) : '\u200B'}
+              </span>
+              {/* PISO 2: LA LETRA ASOCIADA A ESE ACORDE */}
+              <span className={`${sizeClasses[size]} font-bold text-slate-800 leading-tight mt-1 whitespace-pre-wrap text-left`}>
+                {seg.text || '\u200B'}
+              </span>
+            </div>
+          ))}
         </div>
       );
     });
@@ -364,6 +388,8 @@ export default function Alabanza() {
     const evDate = new Date(ev.date + 'T00:00:00');
     return evDate.getMonth() === viewMonth.getMonth() && evDate.getFullYear() === viewMonth.getFullYear();
   });
+
+  const customChordsArr = (songForm.songChords || '').split(',').map(s => s.trim()).filter(Boolean);
 
   if (loading) return <div className="flex h-screen items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-brand-600" size={40} /></div>;
 
@@ -431,7 +457,7 @@ export default function Alabanza() {
                           </div>
                         ))}
 
-                        {/* VOCES - MULTIPLE CHIPS (Diseño Limpio, nada de esconder) */}
+                        {/* VOCES - MULTIPLE CHIPS */}
                         {ev.team.voces?.length > 0 && (
                           <div className="col-span-2 flex flex-col gap-2 text-left bg-indigo-50 p-3 rounded-xl border border-indigo-100 mt-1">
                              <div className="flex items-center gap-2">
@@ -584,7 +610,7 @@ export default function Alabanza() {
       </div>
 
       {activeTab === 'cancionero' && (
-        <button onClick={() => { setSongForm({ id: null, title: '', artist: '', keyMan: 'C', keyWoman: 'C', bpm: '', category: 'Adoración', link: '', content: '' }); setIsFormOpen(true); }} className="fixed bottom-28 right-6 w-16 h-16 bg-slate-900 text-white rounded-[26px] shadow-2xl flex items-center justify-center active:scale-90 z-40 transition-all border-4 border-white"><PlusCircle size={32} /></button>
+        <button onClick={() => { setSongForm({ id: null, title: '', artist: '', keyMan: 'C', keyWoman: 'C', bpm: '', category: 'Adoración', link: '', content: '', songChords: '' }); setIsFormOpen(true); }} className="fixed bottom-28 right-6 w-16 h-16 bg-slate-900 text-white rounded-[26px] shadow-2xl flex items-center justify-center active:scale-90 z-40 transition-all border-4 border-white"><PlusCircle size={32} /></button>
       )}
 
       {/* =============================================================
@@ -757,7 +783,7 @@ export default function Alabanza() {
       )}
 
       {/* =============================================================
-          MODAL 2: NUEVA/EDITAR CANCIÓN CON TONOS HOMBRE/MUJER
+          MODAL 2: NUEVA/EDITAR CANCIÓN
       ================================================================= */}
       {isFormOpen && (
         <div className="fixed inset-0 z-[200] bg-slate-50 flex flex-col animate-slide-up h-[100dvh]">
@@ -788,6 +814,12 @@ export default function Alabanza() {
                 </div>
               </div>
 
+              {/* CAMPO DE ACORDES DE LA CANCIÓN */}
+              <div className="mt-3">
+                 <label className="text-[10px] font-black text-brand-600 uppercase tracking-widest ml-1 mb-1 block">Acordes de la canción (Separados por coma)</label>
+                 <input placeholder="Ej: C, Dm, F, G..." className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-black outline-none focus:border-brand-500 text-slate-800" value={songForm.songChords || ''} onChange={e => setSongForm({...songForm, songChords: e.target.value})} />
+              </div>
+
               <select className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-bold outline-none" value={songForm.category} onChange={e => setSongForm({...songForm, category: e.target.value})}>
                 {CATEGORIAS.filter(c => c !== 'Todas').map(c => <option key={c} value={c}>{c}</option>)}
               </select>
@@ -798,7 +830,7 @@ export default function Alabanza() {
               
               <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
                  <p className="text-[10px] font-black text-indigo-800 uppercase tracking-widest leading-relaxed">
-                   💡 TIP: Ubicá el cursor antes de la letra donde va el acorde y tocá el botón en el teclado de abajo. Ej: E<span className="text-brand-600 font-bold bg-white px-1 rounded">[Dm]</span>TERNO
+                   💡 TIP: Ubicá el cursor justo ANTES de la letra y tocá el acorde abajo. Ejemplo: E<span className="text-brand-600 font-bold bg-white px-1 rounded">[Dm]</span>TERNO
                  </p>
               </div>
 
@@ -806,21 +838,25 @@ export default function Alabanza() {
             </div>
           </div>
 
-          {/* TECLADO FLOTANTE DE ACORDES & GUARDAR */}
-          <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-3 pb-6 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-50">
-            <p className="text-[9px] font-black text-brand-600 uppercase tracking-[0.2em] mb-2 text-center">Teclado de Acordes</p>
-            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-3 justify-start px-2">
-               {NOTAS.map(nota => (
-                 <div key={nota} className="flex flex-col gap-1 shrink-0">
-                   {MODIFICADORES.map(mod => {
-                     const acorde = nota + mod;
-                     return (
-                       <button key={acorde} type="button" onClick={() => insertChord(acorde)} className="w-12 h-10 bg-slate-100 hover:bg-brand-100 hover:text-brand-700 text-slate-800 rounded-lg text-xs font-black transition-colors border border-slate-200 shadow-sm active:scale-90">
-                         {acorde}
-                       </button>
-                     );
-                   })}
-                 </div>
+          {/* TECLADO FLOTANTE HORIZONTAL COMPACTO */}
+          <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-2 pb-6 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-50">
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 text-center mt-1">Deslizá para ver todos los acordes 👉</p>
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar px-2 pb-2">
+               
+               {/* Acordes guardados por el usuario */}
+               {customChordsArr.map((c, i) => (
+                 <button key={`custom-${i}`} type="button" onClick={() => insertChord(c)} className="shrink-0 h-12 min-w-[3.5rem] px-3 bg-brand-50 text-brand-700 rounded-xl text-sm font-black transition-colors border border-brand-200 shadow-sm active:scale-90">
+                   {c}
+                 </button>
+               ))}
+               
+               {customChordsArr.length > 0 && <div className="w-px h-8 bg-slate-300 mx-1 shrink-0"></div>}
+
+               {/* Todos los demás acordes */}
+               {allChords.map(c => (
+                 <button key={c} type="button" onClick={() => insertChord(c)} className="shrink-0 h-12 min-w-[3.5rem] px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-sm font-black transition-colors border border-slate-200 shadow-sm active:scale-90">
+                   {c}
+                 </button>
                ))}
             </div>
             <button onClick={handleSaveSong} className="w-full mt-2 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl flex justify-center items-center gap-2"><Save size={18}/> Guardar Canción</button>
@@ -904,7 +940,7 @@ export default function Alabanza() {
              <div className="absolute left-0 top-0 bottom-0 w-1/2 z-10" onClick={handlePrevSlide}></div>
              <div className="absolute right-0 top-0 bottom-0 w-1/2 z-10" onClick={handleNextSlide}></div>
              
-             <div className="p-8 text-center w-full max-w-2xl transition-all duration-300 pointer-events-none">
+             <div className="p-8 w-full max-w-2xl transition-all duration-300 pointer-events-none">
                {renderLyricsWithChords(songSlides[currentSlideIdx] || '', effectiveSteps, textSize)}
              </div>
 
