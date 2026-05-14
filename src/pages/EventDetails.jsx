@@ -18,6 +18,7 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf'; 
 import { toast } from 'sonner';
 import { OPERATIVE_EVENT_TYPES } from './Calendar';
+import { ONESIGNAL_CONFIG } from '../oneSignalConfig'; // ✅ IMPORTACIÓN PARA FIX APK
 
 export default function EventDetails() {
   const { id } = useParams();
@@ -106,9 +107,11 @@ export default function EventDetails() {
     setAssignments(newAssignments);
   };
 
-  // ✅ MEJORA: Función de notificación con Deep Linking (route) para Servidores
+  // ✅ FIX APK: Función de notificación usando Configuración Centralizada
   const sendPush = async (userNames, eventTitle) => {
-    const KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
+    const KEY = ONESIGNAL_CONFIG.REST_API_KEY;
+    const APP_ID = ONESIGNAL_CONFIG.APP_ID;
+    
     if (!KEY) return;
 
     // Obtenemos los IDs de OneSignal (external_id) de los usuarios asignados
@@ -117,7 +120,7 @@ export default function EventDetails() {
 
     try {
       const payload = {
-        app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
+        app_id: APP_ID,
         include_external_user_ids: targetIds,
         headings: { en: "📍 Tarea asignada", es: "📍 Tarea asignada" },
         contents: { 

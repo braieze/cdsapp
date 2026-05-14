@@ -19,6 +19,7 @@ import {
 import { Capacitor } from '@capacitor/core'; 
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { ONESIGNAL_CONFIG } from '../oneSignalConfig'; // ✅ IMPORTACIÓN PARA FIX APK
 
 const MOODS = [
   { id: 'Fortaleza', label: 'Fortaleza', icon: Anchor, color: 'bg-blue-500' },
@@ -183,6 +184,7 @@ export default function Home() {
     } catch (e) { console.error(e); }
   };
 
+  // ✅ FIX APK: handleReNotify usando ONESIGNAL_CONFIG fija
   const handleReNotify = async (post) => {
     setMenuOpenId(null);
     showToast("Enviando aviso push...");
@@ -198,9 +200,9 @@ export default function Home() {
         link: `/post/${post.id}`
       });
 
-      const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
+      const REST_API_KEY = ONESIGNAL_CONFIG.REST_API_KEY; // ✅ Usamos Config Fija
       const payload = {
-        app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
+        app_id: ONESIGNAL_CONFIG.APP_ID, // ✅ Usamos Config Fija
         headings: { en: `RECORDATORIO: ${post.title}`, es: `RECORDATORIO: ${post.title}` },
         contents: { en: notifBody, es: notifBody },
         data: { route: `/post/${post.id}` }, 

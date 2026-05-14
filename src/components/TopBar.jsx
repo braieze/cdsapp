@@ -13,6 +13,7 @@ import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { Capacitor } from '@capacitor/core';
 import OneSignal from 'onesignal-cordova-plugin';
+import { ONESIGNAL_CONFIG } from '../oneSignalConfig'; // ✅ IMPORTACIÓN DE CONFIG SEGURA
 
 const VAPID_KEY = "BGMeg-zLHj3i9JZ09bYjrsV5P0eVEll09oaXMgHgs6ImBloOLHRFKKjELGxHrAEfd96ZnmlBf7XyoLKXiyIA3Wk";
 
@@ -65,7 +66,6 @@ export default function TopBar() {
       }
     });
 
-    // ✅ LÓGICA DE RECEPCIÓN: Navegar cuando el usuario toca la notificación
     if (isNative) {
       OneSignal.Notifications.addEventListener('click', (event) => {
         const data = event.notification.additionalData;
@@ -169,30 +169,27 @@ export default function TopBar() {
     toast.success("Plantilla aplicada");
   };
 
-  // ✅ MEJORA: Función de envío manual con soporte para Deep Linking
+  // ✅ FIX APK: Función de envío manual usando la clave fija
   const sendManualPush = async () => {
     if (!pushData.title || !pushData.body) return toast.error("Completa título y mensaje");
     setLoadingAction(true);
     try {
-      // 1. Guardar en Firestore para el historial de la campanita
       const notifRef = doc(collection(db, 'notificaciones_globales'));
       await setDoc(notifRef, {
         titulo: pushData.title,
         mensaje: pushData.body,
         fecha: new Date().toISOString(),
         destino: pushData.targetArea.toUpperCase(),
-        // Guardamos el link externo o la ruta interna seleccionada
         link: pushData.link || pushData.targetPath 
       });
 
-      // 2. Enviar a OneSignal
-      const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
+      // 🚨 USAMOS LA CONFIGURACIÓN HARDCODEADA PARA ANDROID
+      const REST_API_KEY = ONESIGNAL_CONFIG.REST_API_KEY; 
       const payload = {
-        app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
+        app_id: ONESIGNAL_CONFIG.APP_ID,
         headings: { en: pushData.title, es: pushData.title },
         contents: { en: pushData.body, es: pushData.body },
-        url: pushData.link || null, // URL externa si existe
-        // ✅ DEEP LINK: Pasamos la ruta seleccionada (ej: /servicios)
+        url: pushData.link || null, 
         data: { route: pushData.targetPath }, 
         large_icon: "https://cdsapp.vercel.app/logo.png",
         priority: 10,

@@ -20,6 +20,7 @@ import {
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import imageCompression from 'browser-image-compression';
+import { ONESIGNAL_CONFIG } from '../oneSignalConfig'; // ✅ IMPORTACIÓN PARA FIX APK
 
 export const OPERATIVE_EVENT_TYPES = {
   culto: { label: 'Culto', icon: Church, color: 'bg-blue-600', text: 'text-blue-600', light: 'bg-blue-50' },
@@ -87,21 +88,19 @@ export default function CalendarPage() {
     return () => unsubscribeEvents();
   }, [currentUser]);
 
-  // ✅ MEJORA: Función de notificación con Deep Linking (route)
+  // ✅ FIX APK: Función de notificación con Configuración Central
   const sendOneSignalNotification = async (notifTitle, notifBody, path) => {
     try {
-      const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
-      if (!REST_API_KEY) {
-        console.error("Falta REST API KEY de OneSignal");
-        return;
-      }
+      const REST_API_KEY = ONESIGNAL_CONFIG.REST_API_KEY;
+      const APP_ID = ONESIGNAL_CONFIG.APP_ID;
+      
+      if (!REST_API_KEY) return;
 
       const payload = {
-        app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
+        app_id: APP_ID,
         included_segments: ["Total Subscriptions"],
         headings: { en: notifTitle, es: notifTitle },
         contents: { en: notifBody, es: notifBody },
-        // ✅ DEEP LINK: Esto asocia la notificación con la ruta interna
         data: { route: path }, 
         large_icon: "https://cdsapp.vercel.app/logo.png",
         priority: 10,
@@ -118,7 +117,6 @@ export default function CalendarPage() {
         body: JSON.stringify(payload)
       });
 
-      // Registro en historial de notificaciones
       await addDoc(collection(db, 'notificaciones_globales'), {
         titulo: notifTitle,
         mensaje: notifBody,
@@ -150,7 +148,6 @@ export default function CalendarPage() {
         });
         await batch.commit();
         
-        // ✅ DEEP LINK: Lleva a la vista principal del calendario
         await sendOneSignalNotification(
           `📅 Agenda lista`, 
           "Se publicaron las actividades del mes. ¡Miralas ahora!", 
@@ -193,7 +190,6 @@ export default function CalendarPage() {
         } else {
             const docRef = await addDoc(collection(db, 'events'), { ...eventData, createdAt: serverTimestamp(), assignments: {} });
             
-            // ✅ DEEP LINK: Lleva al detalle del evento recién creado
             if (newEvent.published) {
               await sendOneSignalNotification(
                 "Nueva actividad", 

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase';
 import { 
   collection, query, orderBy, onSnapshot, doc, updateDoc, 
-  getDoc, serverTimestamp, getDocs 
+  getDoc, serverTimestamp, getDocs, addDoc 
 } from 'firebase/firestore';
 import { 
   Calendar, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, 
@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import { format, isSameMonth, isPast, isFuture, subDays, startOfDay, isAfter } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { toast } from 'sonner';
+import { ONESIGNAL_CONFIG } from '../oneSignalConfig'; // ✅ FIX APK
 
 export default function MyServices() {
   const navigate = useNavigate();
@@ -27,19 +29,34 @@ export default function MyServices() {
   const [unreadCounts, setUnreadCounts] = useState({}); 
   const [showAttendanceEvent, setShowAttendanceEvent] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null); 
-  const [toast, setToast] = useState(null); 
   const [loadingAction, setLoadingAction] = useState(false);
 
   const currentUser = auth.currentUser;
-
   const ayer = useMemo(() => subDays(startOfDay(new Date()), 1), []);
 
-  useEffect(() => {
-    if (toast) {
-      const timer = setTimeout(() => setToast(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [toast]);
+  // ✅ FUNCIÓN BASE PARA ENVÍO (ONESIGNAL APK FIX)
+  const sendOneSignalPush = async (targetUIDs, title, body, route) => {
+    const KEY = ONESIGNAL_CONFIG.REST_API_KEY;
+    const APP_ID = ONESIGNAL_CONFIG.APP_ID;
+    if (!KEY || targetUIDs.length === 0) return;
+
+    try {
+      await fetch("https://onesignal.com/api/v1/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8", "Authorization": `Basic ${KEY}` },
+        body: JSON.stringify({
+          app_id: APP_ID,
+          include_external_user_ids: targetUIDs,
+          headings: { en: title, es: title },
+          contents: { en: body, es: body },
+          data: { route: route },
+          priority: 10,
+          android_accent_color: "FF0000",
+          android_visibility: 1
+        })
+      });
+    } catch (e) { console.error("Error en Push:", e); }
+  };
 
   useEffect(() => {
     if (!currentUser || myEvents.length === 0) return;
@@ -129,49 +146,27 @@ export default function MyServices() {
     const now = new Date();
     const active = events.filter(e => e.confirmations?.[myName] !== 'declined');
     const thisMonth = active.filter(e => isSameMonth(new Date(e.date + 'T00:00:00'), now));
-    
     const future = active.filter(e => isAfter(new Date(e.date + 'T00:00:00'), subDays(now, 1)));
     const next = future.length > 0 ? future[0] : null;
-    
     let days = null;
     if (next) {
       const diff = Math.ceil((new Date(next.date + 'T00:00:00') - startOfDay(now)) / (1000 * 60 * 60 * 24));
       days = diff === 0 ? "HOY" : diff;
     }
-
-    setStats({ 
-      monthCount: thisMonth.length, 
-      lastServiceDate: '-', 
-      nextServiceDays: days 
-    });
+    setStats({ monthCount: thisMonth.length, lastServiceDate: '-', nextServiceDays: days });
   };
 
-  // ✅ NUEVA FUNCIÓN: Envío silencioso a Pastores Designados
-  const notifyPastors = async (title, body) => {
-    const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
-    if (!REST_API_KEY) return;
-    
-    // Obtenemos los pastores/lideres principales (Filtro anti-spam)
-    const adminPastors = allUsers.filter(u => 
-      u.role === 'pastor' && 
-      (u.area?.toLowerCase() === 'general' || u.area?.toLowerCase() === 'recepcion')
-    ).map(u => u.id); // Sus UIDs
+  // ✅ NUEVA LÓGICA: Notificar a Pastores sobre la confirmación/baja
+  const notifyPastorsOfResponse = async (status, eventTitle) => {
+    const adminPastors = allUsers.filter(u => u.role === 'pastor').map(u => u.id);
+    if (adminPastors.length === 0) return;
 
-    if (adminPastors.length === 0) return; // Nadie a quien avisar
+    const title = status === 'confirmed' ? "✅ Nueva Confirmación" : "🚨 Alerta: Baja de Servicio";
+    const body = status === 'confirmed' 
+      ? `${currentUser.displayName} confirmó para ${eventTitle}`
+      : `${currentUser.displayName} notificó que NO PUEDE asistir a ${eventTitle}`;
 
-    try {
-      await fetch("https://onesignal.com/api/v1/notifications", {
-        method: "POST",
-        headers: { "Content-Type": "application/json; charset=utf-8", "Authorization": `Basic ${REST_API_KEY}` },
-        body: JSON.stringify({
-          app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
-          headings: { en: title, es: title },
-          contents: { en: body, es: body },
-          include_external_user_ids: adminPastors, // Solo les llega a estos UIDs
-          priority: 10
-        })
-      });
-    } catch (e) { console.error("Error notificando pastores", e); }
+    await sendOneSignalPush(adminPastors, title, body, '/servicios');
   };
 
   const executeResponse = async () => {
@@ -185,18 +180,11 @@ export default function MyServices() {
             updatedAt: serverTimestamp() 
         });
         
-        // 🚀 FASE 3: Notificar a los pastores que respondió
-        const eventoBase = myEvents.find(e => e.id === eventId);
-        const myRoleForEvent = getMyRole(eventoBase);
+        // 🚀 Notificar respuesta a pastores
+        await notifyPastorsOfResponse(status, title);
         
-        if (status === 'confirmed') {
-          await notifyPastors("✅ Confirmación de Servicio", `${currentUser.displayName} confirmó asistencia en ${myRoleForEvent} para el culto de ${title}.`);
-          setToast({ message: "¡Asistencia confirmada!", type: "success" });
-        } else {
-          await notifyPastors("🚨 ALERTA: Baja de Servicio", `${currentUser.displayName} acaba de notificar que NO PUEDE ASISTIR a ${myRoleForEvent} para el culto de ${title}.`);
-          setToast({ message: "Baja notificada correctamente", type: "success" });
-        }
-    } catch (error) { setToast({ message: "Error al actualizar", type: "error" }); }
+        toast.success(status === 'confirmed' ? "Asistencia confirmada" : "Baja notificada");
+    } catch (error) { toast.error("Error al actualizar"); }
     finally { 
       setConfirmAction(null); 
       setLoadingAction(false); 
@@ -210,41 +198,44 @@ export default function MyServices() {
             [`confirmations.${currentUser.displayName}`]: null,
             updatedAt: serverTimestamp()
         }); 
-        setToast({ message: "Estado restablecido", type: "info" });
-    } catch (e) { setToast({ message: "Error", type: "error" }); }
+        toast.info("Estado restablecido");
+    } catch (e) { toast.error("Error"); }
     finally { setLoadingAction(false); }
   };
 
-  // ✅ NUEVA FUNCIÓN: Recordatorio Automático a Inactivos
+  // ✅ MEJORA: Recordatorio a Pendientes con APK FIX
   const handleRemindPending = async (event) => {
     if (!window.confirm("¿Avisar a todos los pendientes?")) return;
-    
     const pendingNames = getGroupedAttendance(event).pending.map(p => p.name);
     if (pendingNames.length === 0) return;
 
-    // Buscamos los UIDs de esas personas
     const pendingUIDs = allUsers.filter(u => pendingNames.includes(u.displayName)).map(u => u.id);
+    toast.info("Enviando recordatorios...");
     
-    setToast({ message: "Enviando recordatorios...", type: "info" });
+    await sendOneSignalPush(
+      pendingUIDs, 
+      "⚠️ Recordatorio de Servicio", 
+      `Tenés un servicio sin confirmar para ${event.title}. Por favor, responde en la App.`,
+      '/servicios'
+    );
+    toast.success("Recordatorios enviados");
+  };
+
+  // ✅ NUEVA FUNCIÓN: Notificar por Chat (Unread messages)
+  const handleNotifyUnreadChat = async (event) => {
+    const assignedNames = Object.values(event.assignments || {}).flat();
+    const targetUIDs = allUsers.filter(u => assignedNames.includes(u.displayName) && u.id !== currentUser.uid).map(u => u.id);
     
-    try {
-      const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
-      await fetch("https://onesignal.com/api/v1/notifications", {
-        method: "POST",
-        headers: { "Content-Type": "application/json; charset=utf-8", "Authorization": `Basic ${REST_API_KEY}` },
-        body: JSON.stringify({
-          app_id: "742a62cd-6d15-427f-8bab-5b8759fabd0a",
-          headings: { en: "⚠️ Recordatorio de Servicio", es: "⚠️ Recordatorio de Servicio" },
-          contents: { en: `Tenés un servicio sin confirmar para ${event.title}. Por favor, entrá a la App a responder.`, es: `Tenés un servicio sin confirmar para ${event.title}. Por favor, entrá a la App a responder.` },
-          include_external_user_ids: pendingUIDs, // Solo le llega a los pendientes
-          data: { route: '/servicios' }
-        })
-      });
-      setToast({ message: "Recordatorios enviados", type: "success" });
-    } catch (e) {
-      console.error(e);
-      setToast({ message: "Error al enviar", type: "error" });
-    }
+    if (targetUIDs.length === 0) return;
+    
+    toast.info("Avisando al equipo sobre el chat...");
+    await sendOneSignalPush(
+      targetUIDs,
+      "💬 Mensajes en el Chat",
+      `Hay novedades en el chat de servicio para ${event.title}. ¡No te las pierdas!`,
+      `/servicios/${event.id}`
+    );
+    toast.success("Aviso enviado");
   };
 
   const getMyRole = (event) => {
@@ -288,7 +279,7 @@ export default function MyServices() {
         <h1 className="text-2xl font-black text-slate-900 mb-1">Hola, {currentUser?.displayName?.split(' ')[0]} 👋</h1>
         {(userRole === 'pastor' || userRole === 'lider') && (
             <div className="flex p-1 bg-white border border-slate-200 rounded-xl mt-4 shadow-sm relative">
-                <button onClick={() => setActiveTab('me')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all relative ${activeTab === 'me' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500'}`}>
+                <button onClick={() => setActiveTab('me')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all relative ${activeTab === 'me' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-50'}`}>
                     Mis Turnos {alerts.me > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white flex items-center justify-center rounded-full text-[9px] border-2 border-white animate-pulse font-black">{alerts.me}</span>}
                 </button>
                 <button onClick={() => setActiveTab('team')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 relative ${activeTab === 'team' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500'}`}>
@@ -305,7 +296,6 @@ export default function MyServices() {
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-28 relative overflow-hidden"><div className="absolute top-0 right-0 p-3 opacity-10 text-purple-600"><Clock size={60}/></div><span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{stats.nextServiceDays === 'HOY' ? 'Atención' : 'Faltan'}</span><div><span className="text-4xl font-black text-slate-800">{stats.nextServiceDays || '-'}</span>{stats.nextServiceDays !== 'HOY' && <span className="text-xs font-medium text-slate-500 uppercase"> días</span>}</div></div>
               </div>
 
-              {/* SERVICIOS PENDIENTES DE RESPUESTA */}
               {myEvents.filter(e => (!e.confirmations || !e.confirmations[currentUser.displayName])).map(event => (
                   <div key={event.id} className="bg-slate-900 rounded-[35px] p-7 text-white shadow-xl mb-6 relative overflow-hidden">
                       <div className="relative z-10">
@@ -335,36 +325,13 @@ export default function MyServices() {
                               <div className="flex items-center gap-1 mt-1 text-[9px] text-green-600 font-black uppercase tracking-widest"><CheckCircle size={10}/> Servicio Confirmado</div>
                             </div>
                         </div>
-                        
                         <button onClick={() => navigate(`/servicios/${event.id}`)} className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl text-[10px] uppercase flex items-center justify-center gap-3 shadow-xl transition-all active:scale-95 relative tracking-widest">
-                            <MessageSquare size={16}/> 
-                            CHAT DE SERVICIO
-                            {unreadCounts[event.id] > 0 && (
-                                <span className="absolute -top-2 -right-2 bg-red-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-[10px] border-2 border-white shadow-md animate-bounce font-black">
-                                    {unreadCounts[event.id]}
-                                </span>
-                            )}
+                            <MessageSquare size={16}/> CHAT DE SERVICIO
+                            {unreadCounts[event.id] > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-[10px] border-2 border-white shadow-md animate-bounce font-black">{unreadCounts[event.id]}</span>}
                         </button>
                     </div>
                 ))}
               </div>
-
-              {myEvents.filter(e => e.confirmations && e.confirmations[currentUser.displayName] === 'declined').length > 0 && (
-                  <div className="mb-6">
-                      <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 px-2">Bajas Notificadas</h2>
-                      <div className="space-y-3">
-                        {myEvents.filter(e => e.confirmations && e.confirmations[currentUser.displayName] === 'declined').map(event => (
-                            <div key={event.id} className="bg-white/50 p-5 rounded-[28px] border border-slate-100 flex items-center justify-between opacity-60 grayscale-[0.5]">
-                                <div className="flex items-center gap-4 min-w-0">
-                                    <div className="bg-slate-100 p-3 rounded-xl text-slate-400 shrink-0"><XCircle size={20}/></div>
-                                    <div className="min-w-0"><h4 className="font-black text-slate-600 text-xs truncate uppercase">{event.title}</h4><p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">{format(new Date(event.date + 'T00:00:00'), 'dd MMM', { locale: es })}</p></div>
-                                </div>
-                                <button onClick={() => handleUndo(event.id)} className="text-[9px] font-black text-brand-600 flex items-center gap-2 bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm active:scale-90 transition-all uppercase shrink-0"><RefreshCcw size={12}/> Reconsiderar</button>
-                            </div>
-                        ))}
-                      </div>
-                  </div>
-              )}
           </div>
       )}
 
@@ -381,31 +348,32 @@ export default function MyServices() {
                       const hasIssues = status.declined > 0;
                       const progress = Math.round(((status.confirmed + status.declined) / status.total) * 100);
                       const pendingCount = status.total - status.confirmed - status.declined;
+                      const hasUnreadChat = unreadCounts[event.id] > 0;
 
                       return (
                           <div key={event.id} className={`bg-white p-6 rounded-[35px] border-2 shadow-sm transition-all ${hasIssues ? 'border-red-100 bg-red-50/10' : 'border-slate-50'}`}>
                               <div className="flex justify-between items-start mb-5">
                                   <div className="min-w-0 flex-1"><h4 className="font-black text-slate-900 text-base uppercase tracking-tight truncate leading-tight">{event.title}</h4><p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">{format(new Date(event.date + 'T00:00:00'), 'EEEE d MMMM', { locale: es })}</p></div>
                                   <div className="flex gap-2">
+                                    {/* ✅ BOTÓN: Avisar a los que no confirmaron */}
                                     {pendingCount > 0 && (
-                                      <button onClick={() => handleRemindPending(event)} className="bg-slate-100 hover:bg-brand-100 text-brand-600 px-2 py-1.5 rounded-xl transition-colors active:scale-90" title="Avisar a Pendientes">
+                                      <button onClick={() => handleRemindPending(event)} className="bg-slate-100 hover:bg-brand-100 text-brand-600 px-2 py-1.5 rounded-xl transition-colors active:scale-90 shadow-sm" title="Avisar a Pendientes">
                                         <BellRing size={16}/>
                                       </button>
                                     )}
-                                    {hasIssues && <div className="bg-red-500 text-white px-3 py-1.5 rounded-full text-[9px] font-black flex items-center gap-1.5 uppercase shadow-lg shadow-red-100 shrink-0"><ShieldAlert size={12}/> {status.declined} Baja(s)</div>}
+                                    {/* ✅ BOTÓN: Avisar sobre chat no leído */}
+                                    <button onClick={() => handleNotifyUnreadChat(event)} className="bg-slate-100 hover:bg-indigo-100 text-indigo-600 px-2 py-1.5 rounded-xl transition-colors active:scale-90 shadow-sm">
+                                      <MessageSquare size={16}/>
+                                    </button>
+                                    {hasIssues && <div className="bg-red-500 text-white px-3 py-1.5 rounded-full text-[9px] font-black flex items-center gap-1.5 uppercase shadow-lg shrink-0"><ShieldAlert size={12}/> {status.declined} Baja(s)</div>}
                                   </div>
                               </div>
                               <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden mb-6 shadow-inner"><div className={`h-full rounded-full transition-all duration-1000 ${hasIssues ? 'bg-amber-400' : 'bg-emerald-500'}`} style={{ width: `${progress}%` }}></div></div>
                               <div className="flex gap-2">
                                 <button onClick={() => setShowAttendanceEvent(event)} className="flex-1 bg-slate-50 hover:bg-slate-100 text-slate-600 py-4 rounded-2xl text-[10px] font-black uppercase flex items-center justify-center gap-2 border border-slate-100 transition-all active:scale-95 tracking-widest">DETALLES</button>
-                                
                                 <button onClick={() => navigate(`/servicios/${event.id}`)} className="p-4 bg-brand-50 text-brand-600 rounded-2xl hover:bg-brand-100 transition-colors relative active:scale-90">
                                     <MessageSquare size={20}/>
-                                    {unreadCounts[event.id] > 0 && (
-                                        <span className="absolute -top-1.5 -right-1.5 bg-red-500 w-5 h-5 rounded-full flex items-center justify-center text-[9px] text-white border-2 border-white font-black shadow-md">
-                                            {unreadCounts[event.id]}
-                                        </span>
-                                    )}
+                                    {hasUnreadChat && <span className="absolute -top-1.5 -right-1.5 bg-red-500 w-5 h-5 rounded-full flex items-center justify-center text-[9px] text-white border-2 border-white font-black shadow-md">{unreadCounts[event.id]}</span>}
                                 </button>
                               </div>
                           </div>
@@ -422,7 +390,7 @@ export default function MyServices() {
             <div className={`w-20 h-20 rounded-[28px] mx-auto mb-6 flex items-center justify-center ${confirmAction.status === 'confirmed' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
               {confirmAction.status === 'confirmed' ? <CheckCircle size={40} strokeWidth={3}/> : <AlertCircle size={40} strokeWidth={3}/>}
             </div>
-            <h4 className="font-black text-slate-900 text-xl mb-2 tracking-tighter uppercase leading-tight">
+            <h4 className="font-black text-slate-900 text-xl mb-2 tracking-tighter uppercase">
               {confirmAction.status === 'confirmed' ? 'Confirmar Asistencia' : 'Informar Ausencia'}
             </h4>
             <p className="text-[10px] text-slate-400 font-black mb-10 uppercase tracking-widest leading-relaxed px-2">{confirmAction.title}</p>
@@ -430,41 +398,36 @@ export default function MyServices() {
               <button onClick={executeResponse} disabled={loadingAction} className={`w-full py-5 rounded-[22px] font-black text-xs uppercase shadow-xl flex items-center justify-center gap-2 ${confirmAction.status === 'confirmed' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'} disabled:opacity-50`}>
                 {loadingAction ? <Loader2 className="animate-spin" size={16}/> : 'Sí, Confirmar'}
               </button>
-              <button onClick={() => setConfirmAction(null)} disabled={loadingAction} className="w-full py-5 rounded-[22px] font-black text-xs uppercase text-slate-400 bg-slate-50 active:scale-95 transition-transform disabled:opacity-50">
-                Cancelar
-              </button>
+              <button onClick={() => setConfirmAction(null)} disabled={loadingAction} className="w-full py-5 rounded-[22px] font-black text-xs uppercase text-slate-400 bg-slate-50 disabled:opacity-50">Cancelar</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL DETALLE ASISTENCIA (PUNTO 8: FIX IMÁGENES) */}
+      {/* MODAL DETALLE ASISTENCIA */}
       {showAttendanceEvent && (() => {
         const grouped = getGroupedAttendance(showAttendanceEvent);
         return (
           <div className="fixed inset-0 z-[600] bg-slate-900/90 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in" onClick={() => setShowAttendanceEvent(null)}>
             <div className="bg-white w-full sm:max-w-md rounded-t-[50px] sm:rounded-[45px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-slide-up" onClick={e => e.stopPropagation()}>
               <div className="p-8 border-b border-slate-50 flex justify-between items-center bg-white flex-shrink-0">
-                <div className="text-left">
-                  <h3 className="font-black text-slate-900 text-xl leading-none uppercase tracking-tighter">{showAttendanceEvent.title}</h3>
-                  <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest mt-2">{format(new Date(showAttendanceEvent.date + 'T00:00:00'), 'd MMMM yyyy', {locale: es})}</p>
-                </div>
+                <div className="text-left"><h3 className="font-black text-slate-900 text-xl leading-none uppercase tracking-tighter">{showAttendanceEvent.title}</h3><p className="text-[10px] font-black text-brand-600 uppercase tracking-widest mt-2">{format(new Date(showAttendanceEvent.date + 'T00:00:00'), 'd MMMM yyyy', {locale: es})}</p></div>
                 <button onClick={() => setShowAttendanceEvent(null)} className="p-3 bg-slate-50 rounded-full text-slate-400 active:scale-75 transition-all"><X size={24}/></button>
               </div>
               <div className="flex-1 overflow-y-auto p-8 space-y-10 pb-12 no-scrollbar">
                 {grouped.confirmed.length > 0 && (
                   <div className="text-left"><h4 className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em] mb-5 flex items-center gap-2 px-1"><CheckCircle size={16}/> Listos para servir ({grouped.confirmed.length})</h4><div className="space-y-4">{grouped.confirmed.map((item, idx) => (
-                        <div key={idx} className="flex items-center gap-4 bg-emerald-50/20 p-4 rounded-[24px] border border-emerald-100/50"><div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white shadow-md bg-emerald-100"><img src={item.photo || `https://ui-avatars.com/api/?name=${item.name}&background=10b981&color=fff`} className="w-full h-full object-cover" referrerPolicy="no-referrer"/></div><div className="flex-1 min-w-0"><h4 className="font-black text-slate-800 text-xs truncate uppercase">{item.name}</h4><p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest truncate">{item.role}</p></div><CheckCircle size={18} className="text-emerald-500 shrink-0" /></div>
+                        <div key={idx} className="flex items-center gap-4 bg-emerald-50/20 p-4 rounded-[24px] border border-emerald-100/50"><div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white shadow-md bg-emerald-100"><img src={item.photo || `https://ui-avatars.com/api/?name=${item.name}&background=10b981&color=fff`} className="w-full h-full object-cover" /></div><div className="flex-1 min-w-0"><h4 className="font-black text-slate-800 text-xs truncate uppercase">{item.name}</h4><p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest truncate">{item.role}</p></div><CheckCircle size={18} className="text-emerald-500 shrink-0" /></div>
                       ))}</div></div>
                 )}
                 {grouped.declined.length > 0 && (
                   <div className="text-left"><h4 className="text-[10px] font-black text-rose-600 uppercase tracking-[0.2em] mb-5 flex items-center gap-2 px-1"><XCircle size={16}/> Bajas confirmadas ({grouped.declined.length})</h4><div className="space-y-4">{grouped.declined.map((item, idx) => (
-                        <div key={idx} className="flex items-center gap-4 bg-rose-50/20 p-4 rounded-[24px] border border-rose-100/50 grayscale-[0.3]"><div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white shadow-md bg-rose-100"><img src={item.photo || `https://ui-avatars.com/api/?name=${item.name}&background=ef4444&color=fff`} className="w-full h-full object-cover" referrerPolicy="no-referrer"/></div><div className="flex-1 min-w-0"><h4 className="font-black text-slate-500 text-xs truncate uppercase line-through">{item.name}</h4><p className="text-[9px] font-black text-rose-600 uppercase tracking-widest truncate">{item.role}</p></div></div>
+                        <div key={idx} className="flex items-center gap-4 bg-rose-50/20 p-4 rounded-[24px] border border-rose-100/50 grayscale-[0.3]"><div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white shadow-md bg-rose-100"><img src={item.photo || `https://ui-avatars.com/api/?name=${item.name}&background=ef4444&color=fff`} className="w-full h-full object-cover" /></div><div className="flex-1 min-w-0"><h4 className="font-black text-slate-500 text-xs truncate uppercase line-through">{item.name}</h4><p className="text-[9px] font-black text-rose-600 uppercase tracking-widest truncate">{item.role}</p></div></div>
                       ))}</div></div>
                 )}
                 {grouped.pending.length > 0 && (
                   <div className="text-left"><h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-5 flex items-center gap-2 px-1"><HelpCircle size={16}/> Pendientes ({grouped.pending.length})</h4><div className="space-y-4">{grouped.pending.map((item, idx) => (
-                        <div key={idx} className="flex items-center gap-4 bg-slate-50 p-4 rounded-[24px] border border-slate-100"><div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white shadow-md bg-slate-200"><img src={item.photo || `https://ui-avatars.com/api/?name=${item.name}&background=94a3b8&color=fff`} className="w-full h-full object-cover opacity-50" referrerPolicy="no-referrer"/></div><div className="flex-1 min-w-0"><h4 className="font-black text-slate-700 text-xs truncate uppercase">{item.name}</h4><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">{item.role}</p></div><HelpCircle size={18} className="text-slate-200 animate-pulse" /></div>
+                        <div key={idx} className="flex items-center gap-4 bg-slate-50 p-4 rounded-[24px] border border-slate-100"><div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white shadow-md bg-slate-200"><img src={item.photo || `https://ui-avatars.com/api/?name=${item.name}&background=94a3b8&color=fff`} className="w-full h-full object-cover opacity-50" /></div><div className="flex-1 min-w-0"><h4 className="font-black text-slate-700 text-xs truncate uppercase">{item.name}</h4><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">{item.role}</p></div><HelpCircle size={18} className="text-slate-200 animate-pulse" /></div>
                       ))}</div></div>
                 )}
               </div>
@@ -476,16 +439,6 @@ export default function MyServices() {
           </div>
         );
       })()}
-
-      {/* TOASTS */}
-      {toast && (
-        <div className="fixed bottom-28 left-6 right-6 z-[1000] animate-slide-up">
-          <div className={`flex items-center gap-4 px-8 py-5 rounded-[28px] shadow-2xl border-2 ${toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-400' : toast.type === 'error' ? 'bg-rose-600 text-white border-rose-400' : 'bg-slate-900 text-white border-slate-700'}`}>
-            {toast.type === 'success' ? <CheckCircle size={24}/> : <AlertCircle size={24}/>}
-            <span className="text-[11px] font-black uppercase tracking-widest leading-none">{toast.message}</span>
-          </div>
-        </div>
-      )}
 
       <button onClick={() => navigate('/historial')} className="w-full py-8 text-center text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] hover:text-brand-600 flex items-center justify-center gap-3 transition-all active:scale-95"><History size={16}/> Ver mi historial completo</button>
     </div>

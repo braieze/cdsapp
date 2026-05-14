@@ -8,6 +8,7 @@ import imageCompression from 'browser-image-compression';
 import { db, auth } from '../firebase'; 
 import { collection, addDoc, serverTimestamp, doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
 import { toast } from 'sonner'; 
+import { ONESIGNAL_CONFIG } from '../oneSignalConfig'; // ✅ IMPORTACIÓN PARA FIX APK
 
 const MOOD_OPTIONS = [
   { id: 'Fortaleza', icon: Anchor, color: 'text-blue-500', bg: 'bg-blue-50' },
@@ -29,7 +30,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
   const [isArchived, setIsArchived] = useState(false);
   const [mood, setMood] = useState(''); 
   const [seriesName, setSeriesName] = useState(''); 
-  const [existingSeries, setExistingSeries] = useState([]); // ✅ Estado para series globales
+  const [existingSeries, setExistingSeries] = useState([]); 
 
   const [showPoll, setShowPoll] = useState(false);
   const [pollOptions, setPollOptions] = useState(['', '']); 
@@ -37,7 +38,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
   const CLOUD_NAME = "djmkggzjp"; 
   const UPLOAD_PRESET = "ml_default"; 
 
-  // ✅ 1. Cargar la lista de series existentes al abrir el modal
   useEffect(() => {
     const fetchSeriesMetadata = async () => {
       try {
@@ -76,7 +76,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     setMood(''); setSeriesName('');
   };
 
-  // ✅ 2. Función para registrar la serie en la base de datos centralizada
   const updateGlobalSeriesMetadata = async (name) => {
     if (!name.trim()) return;
     try {
@@ -86,7 +85,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
       let updatedList = [name];
       if (seriesSnap.exists()) {
         const currentList = seriesSnap.data().list || [];
-        // Evitamos duplicados con una comparación insensible a mayúsculas
         const alreadyExists = currentList.some(s => s.toLowerCase() === name.toLowerCase());
         if (alreadyExists) return;
         updatedList = [...currentList, name];
@@ -95,16 +93,21 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     } catch (e) { console.error("Error actualizando metadatos de serie:", e); }
   };
 
+  // ✅ FIX APK: Función usando ONESIGNAL_CONFIG fija
   const sendPushNotification = async (notifTitle, notifContent, postUrl) => {
     try {
-      const APP_ID = "742a62cd-6d15-427f-8bab-5b8759fabd0a";
-      const REST_API_KEY = import.meta.env.VITE_ONESIGNAL_REST_API_KEY;
+      const APP_ID = ONESIGNAL_CONFIG.APP_ID;
+      const REST_API_KEY = ONESIGNAL_CONFIG.REST_API_KEY;
+      
       if (!REST_API_KEY) return;
       if (visibility === 'servidores') return;
 
       await fetch("https://onesignal.com/api/v1/notifications", {
         method: "POST",
-        headers: { "Content-Type": "application/json; charset=utf-8", "Authorization": `Basic ${REST_API_KEY}` },
+        headers: { 
+          "Content-Type": "application/json; charset=utf-8", 
+          "Authorization": `Basic ${REST_API_KEY}` 
+        },
         body: JSON.stringify({
           app_id: APP_ID,
           included_segments: ["Total Subscriptions"], 
@@ -163,8 +166,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
       if (postToEdit) {
         const postRef = doc(db, 'posts', postToEdit.id);
         await updateDoc(postRef, { ...commonData, updatedAt: serverTimestamp() });
-        
-        // Registro de serie si es devocional
         if (type === 'Devocional' && seriesName) await updateGlobalSeriesMetadata(seriesName);
 
         if (postToEdit.isArchived && !isArchived) {
@@ -198,7 +199,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           commentsCount: 0
         });
 
-        // ✅ Registro de serie si es devocional
         if (type === 'Devocional' && seriesName) await updateGlobalSeriesMetadata(seriesName);
 
         if (!isArchived) {
@@ -210,7 +210,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
       toast.success("Publicación lanzada con éxito");
     } catch (error) { 
       console.error("Error al publicar:", error); 
-      setLoading(false); 
+      setLoadingAction(false); 
       toast.error("Hubo un problema al publicar");
     }
   };
@@ -276,7 +276,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
               <div className="space-y-4 animate-fade-in">
                  <div className="p-5 bg-indigo-50/50 rounded-[30px] border-2 border-indigo-100/50">
                     <p className="text-[9px] font-black text-indigo-600 uppercase mb-4 ml-2 flex items-center gap-2"><Layers size={12}/> Serie (Opcional)</p>
-                    {/* ✅ UI MEJORADA: Input con sugerencias globales */}
                     <input 
                       list="series-suggestions"
                       placeholder="Ej: El Sermón del Monte"
