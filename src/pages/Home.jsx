@@ -19,13 +19,13 @@ import {
 import { Capacitor } from '@capacitor/core'; 
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ONESIGNAL_CONFIG } from '../oneSignalConfig'; // ✅ IMPORTACIÓN PARA FIX APK
+import { ONESIGNAL_CONFIG } from '../oneSignalConfig'; // ✅ IMPORTACIÓN FIJA
 
 const MOODS = [
-  { id: 'Fortaleza', label: 'Fortaleza', icon: Anchor, color: 'bg-blue-500' },
-  { id: 'Gozo', label: 'Gozo', icon: Sun, color: 'bg-amber-500' },
-  { id: 'Necesidad', label: 'Necesidad', icon: CloudRain, color: 'bg-slate-500' },
-  { id: 'Paz', label: 'Paz', icon: Smile, color: 'bg-emerald-500' },
+  { id: 'Fortaleza', label: 'Fortaleza', icon: Anchor, color: 'text-blue-500', bg: 'bg-blue-50' },
+  { id: 'Gozo', label: 'Gozo', icon: Sun, color: 'text-amber-500', bg: 'bg-amber-50' },
+  { id: 'Necesidad', label: 'Necesidad', icon: CloudRain, color: 'text-slate-500', bg: 'bg-slate-50' },
+  { id: 'Paz', label: 'Paz', icon: Smile, color: 'text-emerald-500', bg: 'bg-emerald-50' },
 ];
 
 // --- 💬 SUB-COMPONENTE: PREVIEW DE COMENTARIOS ---
@@ -46,16 +46,16 @@ function CommentPreview({ postId, count, onClick }) {
   if (realCount === 0 && previewComments.length === 0) return null;
 
   return (
-    <div className="mt-4 bg-slate-50/70 hover:bg-slate-100/70 rounded-2xl p-4 border border-slate-100/80 cursor-pointer transition-all duration-200" onClick={(e) => { e.stopPropagation(); onClick(); }}>
-      <div className="flex items-center gap-2 mb-2.5">
-        <MessageCircle size={13} className="text-slate-400" />
-        <span className="text-[11px] font-bold text-slate-500 tracking-tight">Ver los {realCount} comentarios</span>
+    <div className="mt-4 bg-slate-50/60 hover:bg-slate-50 rounded-2xl p-4 border border-slate-100/50 cursor-pointer transition-all duration-200" onClick={(e) => { e.stopPropagation(); onClick(); }}>
+      <div className="flex items-center gap-2 mb-2">
+        <MessageCircle size={14} className="text-slate-400" />
+        <span className="text-xs font-semibold text-slate-500">Ver los {realCount} comentarios</span>
       </div>
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {previewComments.map((c, idx) => (
-          <div key={idx} className="flex gap-2 text-left items-start text-sm">
-            <span className="font-bold text-slate-800 text-[13px]">{c.name?.split(' ')[0]}</span>
-            <span className="text-slate-600 font-normal text-[13px] line-clamp-2">{c.text}</span>
+          <div key={idx} className="flex gap-2 text-left items-start text-[13px]">
+            <span className="font-bold text-slate-800 shrink-0">{c.name?.split(' ')[0]}:</span>
+            <span className="text-slate-600 line-clamp-1 font-normal">{c.text}</span>
           </div>
         ))}
       </div>
@@ -64,15 +64,15 @@ function CommentPreview({ postId, count, onClick }) {
 }
 
 const PostSkeleton = () => (
-  <div className="bg-white p-5 rounded-[28px] border border-slate-100 shadow-sm animate-pulse mb-5 mx-4">
+  <div className="bg-white p-6 rounded-[32px] border border-slate-100/80 shadow-[0_4px_20px_rgba(0,0,0,0.01)] animate-pulse mb-5">
     <div className="flex gap-3 mb-4">
-      <div className="w-10 h-10 bg-slate-200 rounded-full"></div>
+      <div className="w-11 h-11 bg-slate-200 rounded-full"></div>
       <div className="flex-1 space-y-2 py-1">
         <div className="h-3 bg-slate-200 rounded w-1/4"></div>
         <div className="h-2 bg-slate-200 rounded w-1/6"></div>
       </div>
     </div>
-    <div className="h-44 bg-slate-100 rounded-[20px] w-full mb-2"></div>
+    <div className="h-48 bg-slate-100 rounded-[24px] w-full mb-2"></div>
   </div>
 );
 
@@ -178,29 +178,29 @@ export default function Home() {
     try {
       await updateDoc(doc(db, 'posts', postId), { isPinned: !currentPinned });
       setMenuOpenId(null);
-      showToast(currentPinned ? "Publicación desanclada" : "Publicación anclada");
+      showToast(currentPinned ? "Publicación desanclada" : "Publicación destacada arriba");
     } catch (e) { console.error(e); }
   };
 
   const handleDeletePost = async (postId) => {
     if (!isModerator) return;
-    if (!window.confirm("¿Deseas eliminar permanentemente esta publicación?")) return;
+    if (!window.confirm("¿Seguro que deseas eliminar permanentemente este post?")) return;
     try {
       await deleteDoc(doc(db, 'posts', postId));
       setMenuOpenId(null);
-      showToast("Publicación eliminada");
+      showToast("Post eliminado de forma definitiva");
     } catch (e) { 
       console.error(e); 
-      showToast("Error al eliminar");
+      showToast("Error al procesar la baja");
     }
   };
 
   const handleReNotify = async (post) => {
     setMenuOpenId(null);
-    showToast("Enviando aviso push...");
+    showToast("Re-enviando alerta push...");
 
     try {
-      const notifBody = post.content ? post.content.substring(0, 100) + '...' : 'Toca para ver la novedad.';
+      const notifBody = post.content ? post.content.substring(0, 100) + '...' : 'Toca para ver el anuncio.';
       const notifRef = doc(collection(db, 'notificaciones_globales'));
       await setDoc(notifRef, {
         titulo: `RECORDATORIO: ${post.title}`,
@@ -234,13 +234,13 @@ export default function Home() {
       });
 
       if (response.ok) {
-        showToast("¡Aviso enviado!");
+        showToast("¡Alerta empujada correctamente!");
       } else {
-        throw new Error("Error en OneSignal");
+        throw new Error("OneSignal Error");
       }
     } catch (error) {
       console.error(error);
-      showToast("Error al enviar el aviso.");
+      showToast("Error en los servidores de alerta.");
     }
   };
 
@@ -261,38 +261,38 @@ export default function Home() {
   }, [filter, posts, selectedMood, selectedSeries]);
 
   const storyDevocionales = useMemo(() => {
-    return posts.filter(p => p.type === 'Devocional' && !p.isArchived).slice(0, 7);
+    return posts.filter(p => p.type === 'Devocional' && !p.isArchived).slice(0, 8);
   }, [posts]);
 
   const displayedPosts = filteredPosts.slice(0, visibleCount);
   const hasMorePosts = visibleCount < filteredPosts.length;
 
   return (
-    <div className="pb-36 min-h-screen bg-slate-50 font-outfit relative animate-fade-in">
+    <div className="pb-32 min-h-screen bg-slate-50/70 font-outfit text-left tracking-tight animate-fade-in antialiased">
+      {/* GLOBAL TOAST NOTIFICATION POPUP */}
       {toast.show && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[200] bg-slate-900/95 backdrop-blur-md text-white px-5 py-3 rounded-2xl text-xs font-semibold shadow-xl border border-white/10 animate-slide-up">
+        <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[250] bg-slate-950/90 backdrop-blur-xl text-white px-5 py-3 rounded-2xl text-[13px] font-bold shadow-xl shadow-slate-950/10 border border-white/10 animate-slide-up">
           {toast.message}
         </div>
       )}
 
       <TopBar />
 
-      {/* CONTENEDOR DE FILTROS Y CONTENIDO SUPERIOR */}
-      <div className="px-4 mt-3 space-y-4">
+      <div className="max-w-md mx-auto px-4 mt-4 space-y-5">
           
-          {/* CUMPLEANIOS - BANNER ESTILO HISTORIA */}
+          {/* BANNER RE-DISEÑADO DE CUMPLEAÑOS (ESTILO RECOMPENSA DE RED SOCIAL) */}
           {birthdays.length > 0 && (
             <div onClick={() => setIsBirthdayModalOpen(true)} 
-                 className="bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 p-[1.5px] rounded-3xl shadow-md active:scale-[0.99] transition-all cursor-pointer">
-              <div className="bg-white px-4 py-3 rounded-[22px] flex items-center justify-between">
-                <div className="flex items-center gap-3 text-left">
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-pink-100 to-purple-100 flex items-center justify-center text-pink-600 shrink-0">
-                    <Cake size={18} />
+                 className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 p-[1.5px] rounded-[26px] shadow-sm active:scale-[0.99] transition-all cursor-pointer">
+              <div className="bg-white/95 backdrop-blur-md px-4 py-3.5 rounded-[24px] flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-50 to-purple-50 flex items-center justify-center text-indigo-600 shrink-0">
+                    <Cake size={18} className="animate-bounce" />
                   </div>
                   <div>
-                    <h4 className="text-xs font-bold text-slate-900 tracking-tight">Celebraciones de Hoy</h4>
-                    <p className="text-[11px] text-purple-600 font-medium mt-0.5">
-                      Hay {birthdays.length} hermanos de festejo. ¡Saludalos! 🎂
+                    <h4 className="text-[13px] font-bold text-slate-900 leading-tight">Celebraciones de la Comunidad</h4>
+                    <p className="text-xs text-purple-600 font-medium mt-0.5">
+                      Hay {birthdays.length} hermanos de cumpleaños hoy. ¡Toca para saludar! ✨
                     </p>
                   </div>
                 </div>
@@ -300,11 +300,11 @@ export default function Home() {
             </div>
           )}
 
-          {/* INSTAGRAM LOOK: STORIES PARA DEVOCIONALES */}
+          {/* HISTORIAS RE-DISEÑADAS (STORIES CAROUSEL TIPO INSTAGRAM PREMIUM) */}
           {storyDevocionales.length > 0 && (
-            <div className="bg-white py-3.5 px-4 rounded-[26px] border border-slate-100 shadow-sm space-y-2 text-left">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider ml-1 flex items-center gap-1.5">
-                <Sparkles size={12} className="text-indigo-500 animate-pulse"/> Últimos Devocionales
+            <div className="bg-white py-4 px-4 rounded-[28px] border border-slate-100 shadow-[0_4px_24px_rgba(15,23,42,0.01)] space-y-3">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1 flex items-center gap-2">
+                <Sparkles size={13} className="text-indigo-500 animate-pulse"/> Historias de Fe Activas
               </span>
               <div className="flex gap-4 overflow-x-auto no-scrollbar py-1 px-0.5">
                 {storyDevocionales.map((post) => {
@@ -313,14 +313,14 @@ export default function Home() {
                     <button 
                       key={post.id} 
                       onClick={() => navigate(`/post/${post.id}`)}
-                      className="flex flex-col items-center gap-1 shrink-0 transition-all active:scale-90"
+                      className="flex flex-col items-center gap-1.5 shrink-0 transition-transform active:scale-90"
                     >
-                      <div className="w-13 h-13 rounded-full p-[2px] bg-gradient-to-tr from-amber-400 via-pink-500 to-purple-600 shadow-sm">
-                        <div className="w-full h-full rounded-full border-2 border-white overflow-hidden bg-slate-100">
+                      <div className="w-14 h-14 rounded-full p-[2.5px] bg-gradient-to-tr from-amber-400 via-pink-500 to-indigo-600 shadow-sm">
+                        <div className="w-full h-full rounded-full border-[2.5px] border-white overflow-hidden bg-slate-50">
                           <img src={storyPhoto} alt="Story Avatar" className="w-full h-full object-cover" />
                         </div>
                       </div>
-                      <span className="text-[10px] font-medium text-slate-700 max-w-[56px] truncate tracking-tight">
+                      <span className="text-[11px] font-semibold text-slate-800 max-w-[60px] truncate">
                         {post.title?.split(' ')[0] || 'Palabra'}
                       </span>
                     </button>
@@ -330,8 +330,8 @@ export default function Home() {
             </div>
           )}
 
-          {/* PÍLDORAS DE FILTRADO - MINIMALISTAS THREADS STYLE */}
-          <div className="flex gap-2 overflow-x-auto no-scrollbar py-0.5">
+          {/* PÍLDORAS DE NAVEGACIÓN ESTILO THREADS (CÁPSULAS FLOTANTES MÍNIMAS) */}
+          <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
             {['Todo', 'Devocional', 'Oración', 'Noticia', 'Archivados'].map((cat) => {
               if (cat === 'Archivados' && !isPastor) return null;
               const isActive = filter === cat;
@@ -344,10 +344,10 @@ export default function Home() {
                     setSelectedMood(null); 
                     setSelectedSeries(null); 
                   }} 
-                  className={`py-2 px-4 rounded-full text-xs font-semibold tracking-tight transition-all border whitespace-nowrap ${
+                  className={`py-2 px-4 rounded-full text-[13px] font-bold tracking-tight transition-all border whitespace-nowrap shadow-sm ${
                     isActive 
-                      ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
-                      : 'bg-white text-slate-500 border-slate-200/60 hover:bg-slate-100'
+                      ? 'bg-slate-950 border-slate-950 text-white scale-102'
+                      : 'bg-white text-slate-500 border-slate-200/50 hover:bg-slate-100/50'
                   }`}
                 >
                   {cat}
@@ -356,35 +356,33 @@ export default function Home() {
             })}
           </div>
 
-          {/* FILTROS AVANZADOS DE DEVOCIONALES */}
+          {/* MENÚ DE FILTRADO ANIDADO MINIMALISTA */}
           {filter === 'Devocional' && (
-            <div className="space-y-3 bg-white p-4 rounded-2xl border border-slate-100 animate-slide-up">
-              {/* Ánimos */}
-              <div className="flex gap-3 overflow-x-auto no-scrollbar justify-start">
+            <div className="space-y-3 bg-white p-4 rounded-[24px] border border-slate-100 shadow-inner animate-slide-up">
+              <div className="flex gap-2 overflow-x-auto no-scrollbar justify-start">
                 {MOODS.map(m => (
                   <button key={m.id} onClick={() => setSelectedMood(selectedMood === m.id ? null : m.id)}
-                   className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all border text-xs font-medium ${selectedMood === m.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-slate-50 text-slate-500 border-transparent opacity-50'}`}
+                   className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all border text-xs font-bold ${selectedMood === m.id ? 'bg-slate-900 text-white border-slate-900 shadow-sm' : 'bg-slate-50 text-slate-400 border-transparent opacity-60'}`}
                   >
-                     <m.icon size={14} />
+                     <m.icon size={13} />
                      <span>{m.label}</span>
                   </button>
                 ))}
               </div>
 
-              {/* Series Pills */}
               {allSeries.length > 0 && (
-                <div className="flex gap-1.5 overflow-x-auto no-scrollbar pt-1">
+                <div className="flex gap-1.5 overflow-x-auto no-scrollbar pt-1 border-t border-slate-50">
                   <button 
                     onClick={() => setSelectedSeries(null)}
-                    className={`px-3 py-1 rounded-full text-[11px] font-medium border transition-all whitespace-nowrap flex items-center gap-1 ${!selectedSeries ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white text-slate-400 border-slate-100'}`}
+                    className={`px-3 py-1 rounded-full text-xs font-bold border transition-all whitespace-nowrap flex items-center gap-1 ${!selectedSeries ? 'bg-indigo-50 border-indigo-100 text-indigo-700' : 'bg-white text-slate-400 border-slate-100'}`}
                   >
-                    <Layers size={11}/> Todas
+                    <Layers size={12}/> Todas
                   </button>
                   {allSeries.map((s, idx) => (
                     <button 
                       key={idx}
                       onClick={() => setSelectedSeries(selectedSeries === s ? null : s)}
-                      className={`px-3 py-1 rounded-full text-[11px] font-medium border transition-all whitespace-nowrap ${selectedSeries === s ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white text-slate-400 border-slate-100'}`}
+                      className={`px-3 py-1 rounded-full text-xs font-bold border transition-all whitespace-nowrap ${selectedSeries === s ? 'bg-indigo-50 border-indigo-100 text-indigo-700' : 'bg-white text-slate-400 border-slate-100'}`}
                     >
                       {s}
                     </button>
@@ -395,14 +393,14 @@ export default function Home() {
           )}
       </div>
 
-      {/* FEED DE PUBLICACIONES (ESTILO RED SOCIAL LIMPIA) */}
-      <div className="space-y-5 px-4 mt-4">
+      {/* RE-DISEÑO DEL FEED DE CONTENIDOS (MÁXIMA CALIDAD ESTILO RED SOCIAL) */}
+      <div className="max-w-md mx-auto space-y-6 px-4 mt-5">
         {loading ? (
             <div className="space-y-4"><PostSkeleton /><PostSkeleton /></div>
         ) : filteredPosts.length === 0 ? (
-            <div className="text-center py-20 opacity-40 flex flex-col items-center">
-              <Sparkles size={36} className="mb-2 text-slate-300"/>
-              <p className="text-sm font-medium text-slate-400">No hay publicaciones disponibles</p>
+            <div className="text-center py-24 bg-white rounded-[28px] border border-slate-100 flex flex-col items-center">
+              <Sparkles size={32} className="mb-2 text-slate-300"/>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Muro al día / Sin registros</p>
             </div>
         ) : (
             displayedPosts.map(post => {
@@ -411,44 +409,44 @@ export default function Home() {
               const profileImg = post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}&background=0f172a&color=fff`;
 
               return (
-              <div key={post.id} className={`bg-white border border-slate-100 rounded-[24px] shadow-[0_2px_8px_rgba(15,23,42,0.02)] mb-4 overflow-hidden hover:shadow-[0_4px_16px_rgba(15,23,42,0.04)] transition-all duration-300 ${
-                post.isPinned ? 'border-amber-200/80 bg-gradient-to-b from-amber-50/10 to-white' : ''
+              <div key={post.id} className={`bg-white border border-slate-100/80 rounded-[32px] shadow-[0_8px_30px_rgb(0,0,0,0.015)] mb-5 overflow-hidden border-b-2 hover:border-slate-200 transition-all duration-300 ${
+                post.isPinned ? 'border-amber-200 bg-gradient-to-b from-amber-50/20 to-white shadow-[0_8px_30px_rgba(245,158,11,0.02)]' : ''
               }`}>
                 
-                {/* 1. HEADER INTEGRADO DEL AUTOR (IG / THREADS STYLE) */}
-                <div className="p-4 flex justify-between items-center">
-                  <div className="flex items-center gap-3 text-left">
-                      <div className="w-9 h-9 rounded-full border border-slate-100 shadow-sm overflow-hidden shrink-0 bg-slate-50">
+                {/* INTERFAZ MODERNA DE AUTORIA (TOP COMPONENT) */}
+                <div className="p-4 sm:p-5 flex justify-between items-center bg-white">
+                  <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full border border-slate-100 shadow-inner overflow-hidden shrink-0 bg-slate-50">
                         <img src={profileImg} className="w-full h-full object-cover" alt="Avatar"/>
                       </div>
-                      <div>
+                      <div className="text-left">
                         <div className="flex items-center gap-1.5">
-                          <h3 className="text-[13px] font-bold text-slate-900 tracking-tight">{post.authorName}</h3>
-                          {post.isPinned && <Pin size={11} className="text-amber-500" fill="currentColor"/>}
+                          <h3 className="text-sm font-black text-slate-900 tracking-tight leading-none">{post.authorName}</h3>
+                          {post.isPinned && <Pin size={11} className="text-amber-500 fill-amber-500" />}
                         </div>
-                        <span className={`text-[10px] font-bold tracking-tight mt-0.5 inline-block ${isOracion ? 'text-purple-600' : 'text-slate-400'}`}>
-                          {isOracion ? '🛐 Pedido de Oración' : isDevocional ? '📖 Devocional' : `📢 ${post.role}`}
+                        <span className={`text-[10px] font-bold tracking-wider uppercase mt-1 inline-block ${isOracion ? 'text-purple-600' : isDevocional ? 'text-indigo-600' : 'text-slate-400'}`}>
+                          {isOracion ? '🛐 Causa de Oración' : isDevocional ? '📖 Devocional de Fe' : `📢 ${post.role}`}
                         </span>
                       </div>
                   </div>
                   
                   {isModerator && (
                     <div className="relative">
-                      <button onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === post.id ? null : post.id); }} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-50 transition-all"><MoreVertical size={16}/></button>
+                      <button onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === post.id ? null : post.id); }} className="p-2 text-slate-400 hover:text-slate-800 rounded-full hover:bg-slate-50 transition-all"><MoreVertical size={16}/></button>
                       {menuOpenId === post.id && (
-                        <div className="absolute right-0 top-8 bg-white shadow-xl rounded-2xl border border-slate-100 py-1.5 w-44 z-50 animate-scale-in origin-top-right">
-                          <button onClick={(e) => { e.stopPropagation(); handlePin(post.id, post.isPinned); }} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 border-b border-slate-50">
+                        <div className="absolute right-0 top-9 bg-white shadow-xl rounded-2xl border border-slate-100/70 py-1.5 w-44 z-50 animate-scale-in origin-top-right">
+                          <button onClick={(e) => { e.stopPropagation(); handlePin(post.id, post.isPinned); }} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 border-b border-slate-50">
                             <Pin size={13}/> {post.isPinned ? 'Desanclar' : 'Fijar arriba'}
                           </button>
-                          <button onClick={(e) => { e.stopPropagation(); handleReNotify(post); }} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 flex items-center gap-2.5 border-b border-slate-50">
+                          <button onClick={(e) => { e.stopPropagation(); handleReNotify(post); }} className="w-full text-left px-4 py-2.5 text-xs font-bold text-indigo-600 hover:bg-indigo-50 flex items-center gap-2.5 border-b border-slate-50">
                             <BellRing size={13}/> Re-Notificar
                           </button>
                           {isPastor && (
-                            <button onClick={(e) => { e.stopPropagation(); handleArchive(post.id, post.isArchived); }} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-slate-500 hover:bg-slate-50 flex items-center gap-2.5 border-b border-slate-50">
+                            <button onClick={(e) => { e.stopPropagation(); handleArchive(post.id, post.isArchived); }} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-50 flex items-center gap-2.5 border-b border-slate-50">
                               <Archive size={13}/> {post.isArchived ? 'Desarchivar' : 'Archivar'}
                             </button>
                           )}
-                          <button onClick={(e) => { e.stopPropagation(); handleDeletePost(post.id); }} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 flex items-center gap-2.5">
+                          <button onClick={(e) => { e.stopPropagation(); handleDeletePost(post.id); }} className="w-full text-left px-4 py-2.5 text-xs font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-2.5">
                             <Trash2 size={13}/> Eliminar Post
                           </button>
                         </div>
@@ -457,31 +455,31 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* 2. AREA MULTIMEDIA CENTRAL */}
+                {/* VISUALIZACIÓN DE CONTENIDO IMAGEN INMERSIVA */}
                 {post.image && (
-                  <div className="w-full aspect-square sm:aspect-video bg-slate-50 cursor-pointer overflow-hidden border-y border-slate-100/60" onClick={() => navigate(`/post/${post.id}`)}>
-                    <img src={post.image} className="w-full h-full object-cover" loading="lazy" referrerPolicy="no-referrer" alt="Post"/>
+                  <div className="w-full aspect-square sm:aspect-video bg-slate-50 cursor-pointer overflow-hidden border-y border-slate-100/50" onClick={() => navigate(`/post/${post.id}`)}>
+                    <img src={post.image} className="w-full h-full object-cover transition-transform duration-500 hover:scale-102" loading="lazy" referrerPolicy="no-referrer" alt="Post"/>
                   </div>
                 )}
 
-                {/* 3. BLOQUE DE TEXTO DEL FEED */}
-                <div className="p-4 pt-3 text-left">
+                {/* CUERPO CENTRAL DE INFORMACIÓN */}
+                <div className="p-4 sm:p-5 pt-3 text-left">
                   {isDevocional && post.seriesName && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold mb-2 border border-indigo-100">
-                      Serie: {post.seriesName}
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold mb-3 border border-indigo-100/50">
+                      <Layers size={10} /> Serie: {post.seriesName}
                     </span>
                   )}
                   
-                  <div className="cursor-pointer" onClick={() => navigate(`/post/${post.id}`)}>
-                    <h2 className="text-base font-bold text-slate-900 tracking-tight leading-snug mb-1">{post.title}</h2>
-                    <div className="text-[13.5px] text-slate-600 line-clamp-3 leading-relaxed font-normal mb-2">{post.content}</div>
+                  <div className="cursor-pointer space-y-1.5" onClick={() => navigate(`/post/${post.id}`)}>
+                    <h2 className="text-[17px] font-black text-slate-900 tracking-tight leading-snug uppercase italic">{post.title}</h2>
+                    <div className="text-sm text-slate-600 line-clamp-3 leading-relaxed font-normal tracking-wide">{post.content}</div>
                   </div>
 
-                  {/* PREVIEW COMPONENT DE COMENTARIOS */}
+                  {/* PREVIEW COMPONENT COMENTARIOS INTEGRADO */}
                   <CommentPreview postId={post.id} count={post.commentsCount || 0} onClick={() => navigate(`/post/${post.id}`)} />
                   
-                  {/* 4. BARRA DE REACCIONES LIMPIA (TIPO INSTAGRAM/THREADS) */}
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                  {/* BARRA DE INTERACCIONES FINAS (CÁPSULAS DE DISEÑO NETO) */}
+                  <div className="mt-5 pt-4 border-t border-slate-100/80 flex items-center justify-between">
                       <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
                          {['❤️', '🔥', '🙏', '👍'].map(e => {
                             const reactions = post.reactions || [];
@@ -489,22 +487,22 @@ export default function Home() {
                             const isSelected = reactions.some(r => r.uid === currentUser?.uid && r.emoji === e);
                             return (
                               <button key={e} onClick={() => handleReaction(post.id, post.reactions, e)} 
-                                className={`flex items-center gap-1 px-2.5 py-1 rounded-full transition-transform active:scale-70 shrink-0 border ${
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-transform active:scale-75 shrink-0 border shadow-sm ${
                                   isSelected 
-                                    ? 'bg-slate-900 border-slate-900 text-white shadow-sm' 
-                                    : 'bg-slate-50/50 border-slate-100 text-slate-800 hover:bg-slate-50'
+                                    ? 'bg-slate-950 border-slate-950 text-white' 
+                                    : 'bg-slate-50/60 border-slate-100/80 text-slate-800 hover:bg-slate-50'
                                 }`}>
-                                <span className="text-sm">{e}</span>
-                                {count > 0 && <span className="text-[11px] font-bold ml-1">{count}</span>}
+                                <span className="text-xs leading-none">{e}</span>
+                                {count > 0 && <span className="text-xs font-bold ml-0.5">{count}</span>}
                               </button>
                             )
                          })}
                       </div>
                       
-                      <button onClick={() => navigate(`/post/${post.id}`)} className="p-2 text-slate-400 hover:text-brand-600 transition-colors relative shrink-0">
-                         <MessageCircle size={20} />
+                      <button onClick={() => navigate(`/post/${post.id}`)} className="p-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-100 text-slate-400 hover:text-slate-700 rounded-xl transition-all relative shrink-0 shadow-sm">
+                         <MessageCircle size={18} />
                          {post.commentsCount > 0 && (
-                           <span className="absolute -top-0.5 -right-0.5 bg-brand-500 text-white text-[9px] font-bold w-4 h-4 flex items-center justify-center rounded-full">
+                           <span className="absolute -top-1 -right-1 bg-brand-600 text-white text-[9px] font-bold w-4.5 h-4.5 flex items-center justify-center rounded-full border border-white">
                              {post.commentsCount}
                            </span>
                          )}
@@ -515,20 +513,21 @@ export default function Home() {
             )})
         )}
 
+        {/* CARGAR MÁS COMPONENT CONTROLLER */}
         {hasMorePosts && !loading && (
-          <div className="flex justify-center mt-3 pb-10">
-            <button onClick={() => setVisibleCount(prev => prev + 4)} className="bg-white text-slate-500 border border-slate-200/80 px-5 py-2.5 rounded-full text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition-all shadow-sm">
-              <ChevronDown size={14} /> Cargar más
+          <div className="flex justify-center mt-4 pb-12">
+            <button onClick={() => setVisibleCount(prev => prev + 4)} className="bg-white text-slate-600 border border-slate-200/60 px-6 py-3 rounded-full text-xs font-bold flex items-center gap-1.5 active:scale-95 transition-all shadow-sm">
+              <ChevronDown size={14} /> Descubrir más contenido
             </button>
           </div>
         )}
       </div>
 
-      {/* BOTON FLOTANTE DE CREACION */}
+      {/* BOTON DE ACCION DE ESCRITURA FLOTANTE */}
       {canCreatePost && (
         <button onClick={() => { setEditingPost(null); setIsModalOpen(true); }} 
-          className="fixed bottom-28 right-5 w-14 h-14 bg-slate-900 text-white rounded-full shadow-lg flex items-center justify-center active:scale-90 z-40 transition-all border border-white/20">
-          <PlusCircle size={24} />
+          className="fixed bottom-24 right-5 w-14 h-14 bg-slate-950 text-white rounded-full shadow-xl flex items-center justify-center active:scale-90 z-40 transition-all border border-white/10 shadow-slate-950/20">
+          <PlusCircle size={22} />
         </button>
       )}
 
