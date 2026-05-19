@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
   Home, CalendarDays, Briefcase, LayoutGrid, UserCircle, 
-  BookOpen, HandHeart 
+  BookOpen, HandHeart, Plus, Play, Search, User
 } from 'lucide-react';
 import { auth, db } from '../firebase';
 import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
@@ -14,13 +14,13 @@ export default function BottomNavigation({ dbUser }) {
 
   const [badges, setBadges] = useState({ agenda: 0, servicios: 0, apps: 0, perfil: 0 });
 
-  // ✅ DEFINICIÓN DE ROLES SEGÚN TU REGLA
+  // DEFINICION DE ROLES SEGUN TU REGLA
   const isPastor = dbUser?.role === 'pastor';
   const isLider = dbUser?.role === 'lider';
   const isServidor = isPastor || isLider; // Staff
   const isMiembro = dbUser?.role === 'miembro';
 
-  // 1. DETECCIÓN PWA
+  // 1. DETECCION PWA
   useEffect(() => {
     const checkUpdate = () => { if (window.swUpdateAvailable) setBadges(prev => ({ ...prev, apps: 1 })); };
     window.addEventListener('swUpdated', checkUpdate);
@@ -28,7 +28,7 @@ export default function BottomNavigation({ dbUser }) {
     return () => window.removeEventListener('swUpdated', checkUpdate);
   }, []);
 
-  // 2. LÓGICA DE SERVICIOS Y AGENDA
+  // 2. LOGICA DE SERVICIOS Y AGENDA
   useEffect(() => {
     if (!currentUser || !dbUser || !isServidor) return;
 
@@ -76,15 +76,15 @@ export default function BottomNavigation({ dbUser }) {
     setBadges(prev => ({ ...prev, perfil: isIncomplete }));
   }, [dbUser]);
 
-  // 3. 🎯 EL FILTRO MAESTRO DE NAVEGACIÓN
+  // 3. EL FILTRO MAESTRO DE NAVEGACION
   const navItems = isMiembro ? [
-    // 🏠 VISTA MIEMBRO (Solo 4 cosas)
+    // VISTA MIEMBRO (Solo 4 cosas)
     { path: '/', icon: Home, label: 'Inicio' },
     { path: '/ofrendar', icon: HandHeart, label: 'Ofrendar' },
     { path: '/estudio', icon: BookOpen, label: 'Series' },
     { path: '/perfil', icon: UserCircle, label: 'Perfil', badge: badges.perfil }
   ] : [
-    // 🛠️ VISTA SERVIDOR / PASTOR (Los 5 originales)
+    // VISTA SERVIDOR / PASTOR (Los 5 originales)
     { path: '/', icon: Home, label: 'Inicio' },
     { path: '/calendario', icon: CalendarDays, label: 'Agenda', badge: badges.agenda },
     { path: '/servicios', icon: Briefcase, label: 'Servicios', badge: badges.servicios },
@@ -92,40 +92,85 @@ export default function BottomNavigation({ dbUser }) {
     { path: '/perfil', icon: UserCircle, label: 'Perfil', badge: badges.perfil }
   ];
 
+  // Dividir items para el layout estilo SocialYo (2 izquierda, boton central, 2 derecha)
+  const leftItems = navItems.slice(0, 2);
+  const rightItems = navItems.slice(2, 4);
+  const centerAction = navItems.length > 4 ? navItems[4] : null;
+
   return (
-    // Contenedor invisible que centra la píldora y la mantiene abajo
-    <div className="fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4 pointer-events-none">
-      
-      {/* Píldora de navegación estilo SocialYo */}
-      <nav className="w-full max-w-md bg-white/95 backdrop-blur-xl rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-gray-100 flex items-center justify-around h-16 px-2 pointer-events-auto">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = path === item.path;
-          
-          return (
-            <Link 
-              key={item.path} 
-              to={item.path} 
-              className="relative flex flex-col items-center justify-center w-full h-full active:scale-90 transition-transform duration-200"
-            >
-              <div className={`relative p-1.5 transition-colors duration-300 ${isActive ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600'}`}>
-                <Icon size={24} strokeWidth={isActive ? 2.5 : 2} />
+    // Contenedor fijo en la parte inferior
+    <div className="fixed bottom-0 left-0 right-0 z-50">
+      {/* Fondo blanco con sombra superior sutil */}
+      <nav className="bg-white border-t border-gray-100 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+        <div className="max-w-md mx-auto px-6 py-2">
+          <div className="flex items-center justify-between relative">
+            
+            {/* Items izquierda */}
+            <div className="flex items-center gap-8">
+              {leftItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = path === item.path;
                 
-                {/* Badge rediseñado: Limpio, pequeño y sin rebote */}
-                {item.badge > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[9px] font-bold h-4 min-w-[16px] px-1 flex items-center justify-center rounded-full border-2 border-white shadow-sm">
-                    {item.badge}
-                  </span>
-                )}
-              </div>
-              
-              {/* Etiqueta de texto sutil */}
-              <span className={`text-[9px] font-semibold tracking-tight mt-0.5 transition-colors duration-300 ${isActive ? 'text-blue-500' : 'text-gray-400'}`}>
-                {item.label}
-              </span>
-            </Link>
-          );
-        })}
+                return (
+                  <Link 
+                    key={item.path} 
+                    to={item.path} 
+                    className="relative flex flex-col items-center py-2 active:scale-90 transition-transform duration-200"
+                  >
+                    <div className={`relative transition-colors duration-300 ${isActive ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}>
+                      <Icon size={24} strokeWidth={isActive ? 2 : 1.5} />
+                      
+                      {/* Badge */}
+                      {item.badge > 0 && (
+                        <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-[9px] font-bold h-4 min-w-[16px] px-1 flex items-center justify-center rounded-full border-2 border-white">
+                          {item.badge}
+                        </span>
+                      )}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+
+            {/* Boton central flotante estilo SocialYo */}
+            <div className="absolute left-1/2 -translate-x-1/2 -top-6">
+              <Link 
+                to={centerAction?.path || '/crear'}
+                className="w-14 h-14 bg-blue-500 rounded-full flex items-center justify-center shadow-lg shadow-blue-500/30 hover:bg-blue-600 active:scale-95 transition-all duration-200"
+              >
+                <Plus size={28} className="text-white" strokeWidth={2.5} />
+              </Link>
+            </div>
+
+            {/* Items derecha */}
+            <div className="flex items-center gap-8">
+              {rightItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = path === item.path;
+                
+                return (
+                  <Link 
+                    key={item.path} 
+                    to={item.path} 
+                    className="relative flex flex-col items-center py-2 active:scale-90 transition-transform duration-200"
+                  >
+                    <div className={`relative transition-colors duration-300 ${isActive ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}>
+                      <Icon size={24} strokeWidth={isActive ? 2 : 1.5} />
+                      
+                      {/* Badge */}
+                      {item.badge > 0 && (
+                        <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-[9px] font-bold h-4 min-w-[16px] px-1 flex items-center justify-center rounded-full border-2 border-white">
+                          {item.badge}
+                        </span>
+                      )}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+
+          </div>
+        </div>
       </nav>
     </div>
   );
