@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
   Home, CalendarDays, Briefcase, LayoutGrid, UserCircle, 
-  BookOpen, HandHeart // ✅ Iconos para la vista de Miembro
+  BookOpen, HandHeart 
 } from 'lucide-react';
 import { auth, db } from '../firebase';
 import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
@@ -20,7 +20,7 @@ export default function BottomNavigation({ dbUser }) {
   const isServidor = isPastor || isLider; // Staff
   const isMiembro = dbUser?.role === 'miembro';
 
-  // 1. DETECCIÓN PWA (Mantenida)
+  // 1. DETECCIÓN PWA
   useEffect(() => {
     const checkUpdate = () => { if (window.swUpdateAvailable) setBadges(prev => ({ ...prev, apps: 1 })); };
     window.addEventListener('swUpdated', checkUpdate);
@@ -28,9 +28,9 @@ export default function BottomNavigation({ dbUser }) {
     return () => window.removeEventListener('swUpdated', checkUpdate);
   }, []);
 
-  // 2. LÓGICA DE SERVICIOS Y AGENDA (Mantenida e intacta)
+  // 2. LÓGICA DE SERVICIOS Y AGENDA
   useEffect(() => {
-    if (!currentUser || !dbUser || !isServidor) return; // Solo el staff procesa badges de servicio
+    if (!currentUser || !dbUser || !isServidor) return;
 
     const unsubscribes = [];
     const readIds = dbUser.readNotifications || [];
@@ -77,7 +77,6 @@ export default function BottomNavigation({ dbUser }) {
   }, [dbUser]);
 
   // 3. 🎯 EL FILTRO MAESTRO DE NAVEGACIÓN
-  // Definimos qué ve cada uno según tu esquema exacto
   const navItems = isMiembro ? [
     // 🏠 VISTA MIEMBRO (Solo 4 cosas)
     { path: '/', icon: Home, label: 'Inicio' },
@@ -94,27 +93,40 @@ export default function BottomNavigation({ dbUser }) {
   ];
 
   return (
-    <nav className="fixed bottom-0 w-full bg-white border-t border-slate-100 z-50 h-24 pb-6 shadow-[0_-4px_30px_-10px_rgba(0,0,0,0.1)] flex items-center">
-      <div className="max-w-md mx-auto flex justify-between w-full px-2">
+    // Contenedor invisible que centra la píldora y la mantiene abajo
+    <div className="fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4 pointer-events-none">
+      
+      {/* Píldora de navegación estilo SocialYo */}
+      <nav className="w-full max-w-md bg-white/95 backdrop-blur-xl rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-gray-100 flex items-center justify-around h-16 px-2 pointer-events-auto">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = path === item.path;
+          
           return (
-            <Link key={item.path} to={item.path} className="flex-1 flex flex-col items-center justify-center transition-transform active:scale-95 relative group">
-              {isActive && <div className="absolute -top-5 w-10 h-1.5 bg-brand-600 rounded-b-full shadow-sm"></div>}
-              <div className="relative p-1.5">
-                <Icon size={28} strokeWidth={isActive ? 2.5 : 2} className={`transition-all duration-300 ${isActive ? 'text-brand-600 -translate-y-1' : 'text-slate-400'}`} />
+            <Link 
+              key={item.path} 
+              to={item.path} 
+              className="relative flex flex-col items-center justify-center w-full h-full active:scale-90 transition-transform duration-200"
+            >
+              <div className={`relative p-1.5 transition-colors duration-300 ${isActive ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600'}`}>
+                <Icon size={24} strokeWidth={isActive ? 2.5 : 2} />
+                
+                {/* Badge rediseñado: Limpio, pequeño y sin rebote */}
                 {item.badge > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-black px-1.5 h-5 min-w-[20px] flex items-center justify-center rounded-full border-2 border-white animate-bounce shadow-md">
+                  <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[9px] font-bold h-4 min-w-[16px] px-1 flex items-center justify-center rounded-full border-2 border-white shadow-sm">
                     {item.badge}
                   </span>
                 )}
               </div>
-              <span className={`text-[10px] font-bold tracking-tight ${isActive ? 'text-brand-600' : 'text-slate-400'}`}>{item.label}</span>
+              
+              {/* Etiqueta de texto sutil */}
+              <span className={`text-[9px] font-semibold tracking-tight mt-0.5 transition-colors duration-300 ${isActive ? 'text-blue-500' : 'text-gray-400'}`}>
+                {item.label}
+              </span>
             </Link>
           );
         })}
-      </div>
-    </nav>
+      </nav>
+    </div>
   );
 }
