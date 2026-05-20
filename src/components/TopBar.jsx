@@ -6,7 +6,7 @@ import { getToken } from 'firebase/messaging';
 import { 
   Bell, X, Clock, Loader2, Send, Link as LinkIcon, 
   Activity, HandHeart, Lock, Unlock, Globe, Save,
-  Megaphone, Sparkles, BellRing, AlertTriangle, BookOpen, UserCircle
+  Megaphone, Sparkles, BellRing, AlertTriangle, BookOpen, UserCircle, MessageCircle
 } from 'lucide-react';
 import { format, isToday } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -32,7 +32,9 @@ export default function TopBar() {
   const [isOpen, setIsOpen] = useState(false);
   const [isPastorPanelOpen, setIsPastorPanelOpen] = useState(false);
   const [displayLimit, setDisplayLimit] = useState(10);
+  
   const [userRole, setUserRole] = useState('miembro');
+  const [userArea, setUserArea] = useState(''); // ✅ Para mostrar el área de la persona
   const [activeUser, setActiveUser] = useState(null);
 
   const [loadingAction, setLoadingAction] = useState(false);
@@ -55,6 +57,7 @@ export default function TopBar() {
           if (docSnap.exists()) {
             const data = docSnap.data();
             setUserRole(data.role || 'miembro');
+            setUserArea(data.area || '');
             setReadIds(data.readNotifications || []); 
             
             if (isNative) {
@@ -169,7 +172,6 @@ export default function TopBar() {
     toast.success("Plantilla aplicada");
   };
 
-  // ✅ FIX APK: Función de envío manual usando la clave fija
   const sendManualPush = async () => {
     if (!pushData.title || !pushData.body) return toast.error("Completa título y mensaje");
     setLoadingAction(true);
@@ -183,7 +185,6 @@ export default function TopBar() {
         link: pushData.link || pushData.targetPath 
       });
 
-      // 🚨 USAMOS LA CONFIGURACIÓN HARDCODEADA PARA ANDROID
       const REST_API_KEY = ONESIGNAL_CONFIG.REST_API_KEY; 
       const payload = {
         app_id: ONESIGNAL_CONFIG.APP_ID,
@@ -233,7 +234,7 @@ export default function TopBar() {
             timestamp: p.createdAt?.toMillis() || Date.now(),
             link: `/post/${p.id}`,
             icon: p.type === 'Devocional' ? BookOpen : Megaphone,
-            color: p.type === 'Urgente' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600',
+            color: p.type === 'Urgente' ? 'text-red-500 bg-red-50' : 'text-blue-500 bg-blue-50',
             isUrgent: p.type === 'Urgente'
           }));
           
@@ -249,7 +250,7 @@ export default function TopBar() {
                 timestamp: new Date(data.fecha).getTime(),
                 link: data.link || '/',
                 icon: BellRing,
-                color: 'bg-amber-100 text-amber-600',
+                color: 'text-amber-500 bg-amber-50',
                 isUrgent: false
               };
             });
@@ -282,137 +283,165 @@ export default function TopBar() {
     return format(date, "d MMM", { locale: es });
   };
 
+  const formattedRole = userRole.charAt(0).toUpperCase() + userRole.slice(1);
+
   return (
     <>
-      <div className="sticky top-0 z-40 bg-slate-50/95 backdrop-blur-md px-5 pt-5 pb-3 flex justify-between items-center font-outfit">
-        <div className="flex items-center gap-3">
-            <div className="w-11 h-11 bg-slate-900 rounded-2xl flex items-center justify-center shadow-xl border-2 border-white overflow-hidden">
-                <img src="/logo.png" alt="Logo" className="w-full h-full object-cover" />
+      {/* 🌟 CABECERA PREMIUM SOCIALYO STYLE */}
+      <div className="sticky top-0 z-40 bg-slate-50/95 backdrop-blur-md px-4 pt-4 pb-3 flex justify-between items-center font-sans">
+        
+        {/* SALUDO PERSONALIZADO Y ROL */}
+        <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/perfil')}>
+            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center border-2 border-white shadow-sm overflow-hidden">
+               <UserCircle className="w-6 h-6 text-blue-500" />
             </div>
             <div className="flex flex-col text-left">
-                <span className="text-xl font-black text-slate-900 tracking-tighter leading-none">CDS APP</span>
-                <p className="text-[9px] text-brand-600 font-black uppercase tracking-[0.2em] mt-1.5 flex items-center gap-1.5">
-                  <Activity size={10}/> {userRole}
+                <span className="text-[15px] font-bold text-slate-900 tracking-tight leading-none">
+                  Hola, {activeUser?.displayName?.split(' ')[0] || 'Familia'}
+                </span>
+                <p className="text-[11px] font-semibold text-blue-600 mt-1 uppercase tracking-wider">
+                  {formattedRole} {userArea && `• ${userArea}`}
                 </p>
             </div>
         </div>
         
+        {/* BOTONERA DE ACCIONES (Notificaciones y Chat) */}
         <div className="flex items-center gap-2">
           {userRole === 'pastor' && activeUser && (
-            <button onClick={() => setIsPastorPanelOpen(true)} className="p-2.5 bg-brand-50 text-brand-600 rounded-xl active:scale-90 border border-brand-100 shadow-sm">
-              <Megaphone size={22} />
+            <button onClick={() => setIsPastorPanelOpen(true)} className="w-10 h-10 rounded-full border border-slate-200 bg-white flex items-center justify-center hover:bg-slate-50 transition-colors shadow-sm">
+              <Megaphone className="w-5 h-5 text-indigo-600" />
             </button>
           )}
-          <button onClick={() => setIsOpen(true)} className="relative p-2.5 bg-white rounded-xl border border-slate-100 shadow-sm text-slate-800 active:scale-90">
-              <Bell size={22} />
-              {unreadCount > 0 && <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 bg-red-500 border-2 border-white rounded-full flex items-center justify-center text-[9px] font-black text-white animate-bounce">{unreadCount}</span>}
+          
+          <button onClick={() => setIsOpen(true)} className="relative w-10 h-10 rounded-full border border-slate-200 bg-white flex items-center justify-center hover:bg-slate-50 transition-colors shadow-sm">
+              <Bell className="w-5 h-5 text-slate-700" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white border-2 border-white shadow-sm">
+                  {unreadCount}
+                </span>
+              )}
+          </button>
+          
+          {/* NUEVO ÍCONO DE CHAT PREPARADO */}
+          <button className="w-10 h-10 rounded-full border border-slate-200 bg-white flex items-center justify-center hover:bg-slate-50 transition-colors shadow-sm">
+              <MessageCircle className="w-5 h-5 text-slate-700" />
           </button>
         </div>
       </div>
 
+      {/* 📌 MODAL DE NOTIFICACIONES */}
       {isOpen && (
-        <div className="fixed inset-0 z-[100] bg-white animate-fade-in flex flex-col font-outfit">
-            <div className="px-6 pt-14 pb-6 border-b border-slate-50 flex justify-between items-center bg-white sticky top-0">
+        <div className="fixed inset-0 z-[100] bg-slate-50 animate-fade-in flex flex-col font-sans">
+            <div className="px-5 pt-12 pb-4 flex justify-between items-center bg-white border-b border-slate-100 shadow-sm sticky top-0">
                 <div className="text-left">
-                  <h3 className="font-black text-2xl text-slate-900 uppercase tracking-tighter">Notificaciones</h3>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Historial de Avisos</p>
+                  <h3 className="font-bold text-xl text-slate-900 tracking-tight">Notificaciones</h3>
                 </div>
-                <button onClick={() => setIsOpen(false)} className="p-3 bg-slate-50 rounded-full text-slate-400 active:scale-75 transition-all"><X size={24}/></button>
+                <button onClick={() => setIsOpen(false)} className="w-10 h-10 bg-slate-50 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 transition-colors">
+                  <X size={20}/>
+                </button>
             </div>
 
-            <div className="px-5 py-4 bg-slate-50/50 border-b border-slate-100 text-left">
+            <div className="px-4 py-4 bg-white border-b border-slate-100 text-left">
                 {isSubscribed ? (
-                    <button onClick={disableNotifications} disabled={loadingAction} className="w-full py-3 bg-white border border-slate-200 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">Silenciar avisos en este equipo</button>
+                    <button onClick={disableNotifications} disabled={loadingAction} className="w-full py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl font-bold text-xs transition-colors">Silenciar avisos en este equipo</button>
                 ) : (
-                    <button onClick={enableNotifications} disabled={loadingAction} className="w-full py-3 bg-slate-900 text-white rounded-2xl shadow-xl font-black text-[10px] uppercase tracking-widest animate-pulse">🔔 ACTIVAR NOTIFICACIONES</button>
+                    <button onClick={enableNotifications} disabled={loadingAction} className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-bold text-xs shadow-sm hover:bg-blue-700 transition-colors">Activar Notificaciones</button>
                 )}
             </div>
 
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 no-scrollbar">
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 no-scrollbar">
                 {notifications.length === 0 ? (
-                    <div className="py-32 text-center opacity-20 flex flex-col items-center">
-                        <Sparkles size={64} className="mb-4 text-slate-300"/>
-                        <p className="text-xs font-black uppercase text-center">Bandeja Vacía</p>
+                    <div className="py-32 text-center flex flex-col items-center">
+                        <div className="w-16 h-16 bg-white shadow-sm border border-slate-100 rounded-full flex items-center justify-center mb-3">
+                          <Bell className="text-slate-300 w-8 h-8"/>
+                        </div>
+                        <p className="text-sm font-semibold text-slate-500">Bandeja Vacía</p>
                     </div>
                 ) : (
                     notifications.slice(0, displayLimit).map((notif) => (
                         <div key={notif.id} onClick={() => { setIsOpen(false); navigate(notif.link); }} 
-                             className={`p-5 rounded-[28px] flex items-start gap-4 transition-all border-2 mb-2 relative ${!readIds.includes(notif.id) ? 'bg-white border-brand-50 shadow-md shadow-brand-100/20' : 'bg-slate-50 border-transparent opacity-60'}`}>
-                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${notif.color}`}><notif.icon size={24}/></div>
+                             className={`p-4 rounded-[24px] flex items-start gap-4 transition-all border cursor-pointer ${!readIds.includes(notif.id) ? 'bg-white border-slate-100 shadow-sm' : 'bg-transparent border-transparent opacity-70'}`}>
+                            <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${notif.color}`}>
+                              <notif.icon size={22}/>
+                            </div>
                             <div className="flex-1 min-w-0 text-left pt-1">
-                                <h4 className={`text-sm font-black uppercase tracking-tight leading-tight ${notif.isUrgent ? 'text-red-600' : 'text-slate-800'}`}>{notif.title}</h4>
-                                <p className="text-[11px] text-slate-500 font-semibold mt-1 leading-snug">{notif.subtitle}</p>
-                                <div className="flex items-center gap-1.5 text-[9px] text-slate-400 mt-2 font-black uppercase tracking-widest"><Clock size={10}/> {formatNotifTime(notif.timestamp)}</div>
+                                <h4 className={`text-[14px] font-bold tracking-tight leading-snug ${notif.isUrgent ? 'text-red-600' : 'text-slate-900'}`}>{notif.title}</h4>
+                                <p className="text-xs text-slate-500 font-medium mt-0.5">{notif.subtitle}</p>
+                                <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-2 font-semibold"><Clock size={12}/> {formatNotifTime(notif.timestamp)}</div>
                             </div>
                         </div>
                     ))
                 )}
             </div>
 
-            <div className="p-8 border-t border-slate-50 bg-white flex gap-3 pb-12">
-                <button onClick={markAllAsRead} className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-xl">Limpiar</button>
-                <button onClick={() => setIsOpen(false)} className="flex-1 py-4 bg-slate-50 text-slate-400 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em]">Cerrar</button>
+            <div className="p-5 border-t border-slate-100 bg-white flex gap-3 pb-10 shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
+                <button onClick={markAllAsRead} className="flex-1 py-3.5 bg-slate-900 text-white rounded-xl font-bold text-sm shadow-sm">Marcar leídas</button>
+                <button onClick={() => setIsOpen(false)} className="flex-1 py-3.5 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm">Cerrar</button>
             </div>
         </div>
       )}
 
+      {/* 📌 PANEL DE PASTOR (LANZAR PUSH) */}
       {isPastorPanelOpen && (
-        <div className="fixed inset-0 z-[110] bg-slate-900/95 backdrop-blur-xl flex items-center justify-center p-5 font-outfit animate-fade-in text-left">
-          <div className="bg-white w-full max-w-sm rounded-[40px] p-8 shadow-2xl animate-scale-in flex flex-col gap-6 max-h-[90vh] overflow-y-auto no-scrollbar">
+        <div className="fixed inset-0 z-[110] bg-slate-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 font-sans animate-fade-in text-left">
+          <div className="bg-white w-full max-w-sm rounded-t-[32px] sm:rounded-[32px] p-6 shadow-2xl animate-slide-up flex flex-col gap-5 max-h-[90vh] overflow-y-auto no-scrollbar">
             
-            <div className="flex justify-between items-center border-b pb-4">
+            {/* Indicador de arrastre para mobile */}
+            <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-2 sm:hidden shrink-0"></div>
+
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div>
-                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter leading-none">Aviso Push</h3>
-                <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest mt-1">Lanzamiento Manual</p>
+                <h3 className="text-xl font-bold text-slate-900 tracking-tight leading-none">Aviso Push</h3>
+                <p className="text-xs font-semibold text-blue-600 mt-1">Lanzamiento Manual</p>
               </div>
-              <button onClick={() => setIsPastorPanelOpen(false)} className="p-2 bg-slate-100 rounded-full active:scale-75 transition-all text-slate-400"><X size={20}/></button>
+              <button onClick={() => setIsPastorPanelOpen(false)} className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-200"><X size={18}/></button>
             </div>
 
             <div>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5"><Sparkles size={12}/> Plantillas Rápidas</p>
+              <p className="text-xs font-bold text-slate-500 mb-2 flex items-center gap-1.5"><Sparkles size={14} className="text-amber-500"/> Plantillas Rápidas</p>
               <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
                 {PUSH_TEMPLATES.map((tmpl) => (
                   <button key={tmpl.id} onClick={() => applyTemplate(tmpl)}
-                    className="shrink-0 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-bold transition-colors">
+                    className="shrink-0 px-3.5 py-2 bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-full text-xs font-semibold transition-colors">
                     {tmpl.label}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className="p-4 bg-indigo-50 border-2 border-indigo-100 rounded-3xl space-y-3 text-left">
+            <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-[24px] space-y-3 text-left">
                 <div className="flex justify-between items-center">
-                    <p className="text-[10px] font-black text-indigo-600 uppercase flex items-center gap-2 tracking-widest"><HandHeart size={16}/> Link de Oración</p>
-                    <button onClick={() => setPrayerLinkData({...prayerLinkData, isLocked: !prayerLinkData.isLocked})} className="text-indigo-400">
-                        {prayerLinkData.isLocked ? <Lock size={16}/> : <Unlock size={16} className="text-brand-600 animate-pulse"/>}
+                    <p className="text-xs font-bold text-indigo-700 flex items-center gap-2"><HandHeart size={16}/> Link de Oración</p>
+                    <button onClick={() => setPrayerLinkData({...prayerLinkData, isLocked: !prayerLinkData.isLocked})} className="text-indigo-400 hover:text-indigo-600">
+                        {prayerLinkData.isLocked ? <Lock size={16}/> : <Unlock size={16} className="text-blue-600 animate-pulse"/>}
                     </button>
                 </div>
                 <div className="flex gap-2">
                     <input 
                       disabled={prayerLinkData.isLocked}
                       placeholder="https://meet.google.com/..." 
-                      className={`flex-1 p-3 rounded-xl text-[10px] font-bold outline-none transition-all ${prayerLinkData.isLocked ? 'bg-indigo-100/50 text-indigo-400' : 'bg-white text-indigo-700 shadow-inner border border-indigo-200'}`}
+                      className={`flex-1 p-3 rounded-xl text-xs font-medium outline-none transition-all ${prayerLinkData.isLocked ? 'bg-indigo-100/30 text-indigo-400' : 'bg-white text-indigo-700 border border-indigo-200'}`}
                       value={prayerLinkData.url} onChange={e => setPrayerLinkData({...prayerLinkData, url: e.target.value})}
                     />
                     {!prayerLinkData.isLocked && (
-                        <button onClick={savePrayerLink} className="bg-brand-600 text-white p-3 rounded-xl shadow-lg active:scale-90 transition-all"><Save size={16}/></button>
+                        <button onClick={savePrayerLink} className="bg-blue-600 text-white px-4 rounded-xl shadow-sm hover:bg-blue-700 transition-colors"><Save size={16}/></button>
                     )}
                 </div>
-                <button onClick={setPrayerTemplate} className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md active:scale-95 transition-all">Usar como aviso</button>
+                <button onClick={setPrayerTemplate} className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors">Cargar a la plantilla</button>
             </div>
 
             <div className="space-y-4 text-left">
               <div className="grid grid-cols-2 gap-3">
                  <div className="space-y-1.5">
-                    <label className="text-[9px] font-black text-slate-400 uppercase ml-2 tracking-widest flex items-center gap-1.5"><Globe size={10}/> Enviar a:</label>
-                    <select className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-black uppercase outline-none" value={pushData.targetArea} onChange={e => setPushData({...pushData, targetArea: e.target.value})}>
+                    <label className="text-xs font-bold text-slate-600 ml-1 flex items-center gap-1.5"><Globe size={14}/> Enviar a:</label>
+                    <select className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-blue-500" value={pushData.targetArea} onChange={e => setPushData({...pushData, targetArea: e.target.value})}>
                        <option value="todos">Toda la Iglesia</option>
                        {officialAreas.map(a => <option key={a} value={a.toLowerCase()}>{a}</option>)}
                     </select>
                  </div>
                  <div className="space-y-1.5">
-                    <label className="text-[9px] font-black text-slate-400 uppercase ml-2 tracking-widest flex items-center gap-1.5"><LinkIcon size={10}/> Redirigir a:</label>
-                    <select className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-black uppercase outline-none" value={pushData.targetPath} onChange={e => setPushData({...pushData, targetPath: e.target.value})}>
+                    <label className="text-xs font-bold text-slate-600 ml-1 flex items-center gap-1.5"><LinkIcon size={14}/> Redirigir a:</label>
+                    <select className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-blue-500" value={pushData.targetPath} onChange={e => setPushData({...pushData, targetPath: e.target.value})}>
                        <option value="/">Muro Principal</option>
                        <option value="/calendario">Agenda Global</option>
                        <option value="/servicios">Mis Servicios</option>
@@ -422,17 +451,17 @@ export default function TopBar() {
                  </div>
               </div>
 
-              <input placeholder="Título del mensaje..." className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-sm outline-none focus:border-brand-500 transition-all shadow-inner" value={pushData.title} onChange={e => setPushData({...pushData, title: e.target.value})} />
-              <textarea placeholder="Contenido del aviso..." className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-semibold text-sm h-24 resize-none outline-none focus:border-brand-500 transition-all shadow-inner" value={pushData.body} onChange={e => setPushData({...pushData, body: e.target.value})} />
+              <input placeholder="Título del mensaje..." className="w-full p-3.5 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none focus:border-blue-500 transition-colors" value={pushData.title} onChange={e => setPushData({...pushData, title: e.target.value})} />
+              <textarea placeholder="Contenido del aviso..." className="w-full p-3.5 bg-white border border-slate-200 rounded-xl font-medium text-sm h-24 resize-none outline-none focus:border-blue-500 transition-colors" value={pushData.body} onChange={e => setPushData({...pushData, body: e.target.value})} />
               
-              <div className="p-4 bg-slate-50 rounded-2xl border-dashed border-2 border-slate-200">
-                <p className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-2 mb-2"><Globe size={12}/> Link Externo (Opcional)</p>
-                <input placeholder="https://..." className="w-full p-2 bg-white rounded-lg border border-slate-100 font-bold text-[10px] outline-none text-brand-600" value={pushData.link} onChange={e => setPushData({...pushData, link: e.target.value})} />
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                <p className="text-xs font-bold text-slate-500 flex items-center gap-1.5 mb-2"><Globe size={14}/> Link Externo (Opcional)</p>
+                <input placeholder="https://..." className="w-full p-2.5 bg-white rounded-lg border border-slate-200 font-medium text-xs outline-none focus:border-blue-500 text-blue-600" value={pushData.link} onChange={e => setPushData({...pushData, link: e.target.value})} />
               </div>
             </div>
 
-            <button onClick={sendManualPush} disabled={loadingAction} className="w-full py-5 bg-slate-900 text-white rounded-[24px] font-black text-xs uppercase tracking-[0.3em] flex items-center justify-center gap-3 shadow-2xl active:scale-95 transition-all disabled:opacity-50">
-              {loadingAction ? <Loader2 className="animate-spin" size={20}/> : <Send size={20}/>} Lanzar Aviso
+            <button onClick={sendManualPush} disabled={loadingAction} className="w-full py-3.5 bg-slate-900 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all disabled:opacity-50 mt-2 pb-6">
+              {loadingAction ? <Loader2 className="animate-spin" size={18}/> : <Send size={18}/>} Lanzar Aviso
             </button>
           </div>
         </div>
