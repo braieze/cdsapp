@@ -4,10 +4,7 @@ import {
   Cake, MessageCircle, MoreVertical, PlusCircle, Trash2, 
   Archive, Pin, ChevronDown, Sparkles, BellRing, X
 } from 'lucide-react';
-
-// --- IMPORTACIÓN DEL TOPBAR (Agregada aquí) ---
-import Topbar from '../components/Topbar'; 
-
+import Topbar from '../components/TopBar';
 import CreatePostModal from '../components/CreatePostModal';
 import BirthdayModal from '../components/BirthdayModal';
 import { db, auth } from '../firebase';
@@ -56,8 +53,10 @@ function ReactionsListModal({ isOpen, onClose, reactions = [] }) {
   
   if (!isOpen) return null;
 
+  // Extraer emojis únicos usados en este post
   const usedEmojis = [...new Set(reactions.map(r => r.emoji))];
   
+  // Filtrar lista según la pestaña
   const displayedReactions = activeTab === 'Todas' 
     ? reactions 
     : reactions.filter(r => r.emoji === activeTab);
@@ -155,8 +154,8 @@ export default function Home() {
   const [birthdays, setBirthdays] = useState([]);
   const [menuOpenId, setMenuOpenId] = useState(null);
   
-  const [activeReactionPost, setActiveReactionPost] = useState(null);
-  const [viewReactionsPostId, setViewReactionsPostId] = useState(null);
+  const [activeReactionPost, setActiveReactionPost] = useState(null); // Popover para dar reacción
+  const [viewReactionsPostId, setViewReactionsPostId] = useState(null); // Modal para ver la lista de reacciones
   
   const [editingPost, setEditingPost] = useState(null);
   const [toast, setToast] = useState({ show: false, message: '' });
@@ -194,6 +193,7 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
+  // ✅ NUEVOS EMOJIS (Se reemplazó 👍 por 🙌)
   const EMOJIS = ['❤️', '🔥', '🙏', '🙌'];
 
   const handleReaction = async (postId, reactions, emoji) => {
@@ -291,12 +291,13 @@ export default function Home() {
   const hasMorePosts = visibleCount < filteredPosts.length;
 
   return (
+    // EL FONDO AHORA ES GRIS CLARO (bg-slate-50)
     <div className="min-h-screen bg-slate-50 pb-24 font-sans relative">
-      
-      {/* 🚀 EL TOPBAR SE AGREGA AQUÍ EN LA PARTE SUPERIOR */}
-      <Topbar dbUser={dbUser} />
+    
+	{/* 🚀 EL TOPBAR SE AGREGA AQUÍ EN LA PARTE SUPERIOR */}
+      <Topbar dbUser={dbUser} />	
 
-      {/* Toast */}
+	{/* Toast */}
       {toast.show && (
         <div className="fixed top-12 left-1/2 -translate-x-1/2 z-[250] bg-slate-900 text-white px-5 py-2.5 rounded-full text-sm font-bold shadow-xl animate-slide-up">
           {toast.message}
@@ -346,11 +347,14 @@ export default function Home() {
               const isOracion = post.type === 'Oración';
               const isDevocional = post.type === 'Devocional';
               const postReactions = post.reactions || [];
+
+              // Extraer solo los emojis usados para el resumen derecho
               const usedEmojisDisplay = [...new Set(postReactions.map(r => r.emoji))].slice(0, 3);
 
               return (
               <div key={post.id} className={`bg-white rounded-[32px] p-5 mb-5 mx-4 shadow-[0_4px_20px_rgba(0,0,0,0.02)] border border-slate-100 overflow-hidden relative ${post.isPinned ? 'border-amber-200/50 bg-gradient-to-b from-amber-50/10 to-white' : ''}`}>
                 
+                {/* Etiqueta flotante de fijado */}
                 {post.isPinned && <div className="absolute top-0 right-0 bg-amber-500 text-white px-3 py-1 rounded-bl-xl text-[9px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm"><Pin size={10} fill="currentColor"/> Fijado</div>}
 
                 {/* Post Header */}
@@ -400,18 +404,22 @@ export default function Home() {
                   </p>
                 </div>
 
-                {/* Post Image */}
+                {/* 📸 Post Image (DISEÑO DIFERENCIADO) */}
                 {post.image && (
                   <div className={`mb-4 cursor-pointer overflow-hidden bg-slate-50 border border-slate-100 ${isDevocional ? 'rounded-[24px] aspect-square' : 'rounded-[18px] max-h-72'}`} onClick={() => navigate(`/post/${post.id}`)}>
                     <img src={post.image} alt="Post image" className="w-full h-full object-cover transition-transform duration-500 hover:scale-105" />
                   </div>
                 )}
 
+                {/* LÍNEA SEPARADORA SUTIL */}
                 <div className="h-px w-full bg-slate-100 my-3"></div>
 
-                {/* Engagement Bar */}
+                {/* 🌟 NUEVO ENGAGEMENT BAR (Facebook Style Avanzado) */}
                 <div className="flex items-center justify-between relative pt-1">
+                  
+                  {/* Izquierda: Botones de Acción limpios */}
                   <div className="flex items-center gap-1.5">
+                    {/* Botón Reaccionar con Popover */}
                     <div className="relative">
                       {activeReactionPost === post.id && (
                         <div className="absolute bottom-10 left-0 bg-white rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-slate-100 px-2 py-1.5 flex items-center gap-1 z-50 animate-slide-up">
@@ -436,6 +444,7 @@ export default function Home() {
                       </button>
                     </div>
 
+                    {/* Botón Comentar */}
                     <button onClick={() => navigate(`/post/${post.id}`)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-slate-500 hover:bg-slate-50 active:scale-95 transition-all font-semibold text-xs">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -444,6 +453,7 @@ export default function Home() {
                     </button>
                   </div>
 
+                  {/* Derecha: Acumulado de Reacciones */}
                   {postReactions.length > 0 && (
                     <button onClick={() => setViewReactionsPostId(post.id)} className="flex items-center gap-1 px-2 py-1 rounded-full hover:bg-slate-50 transition-colors">
                       <div className="flex -space-x-1">
@@ -456,6 +466,7 @@ export default function Home() {
                   )}
                 </div>
 
+                {/* Sub-componente de comentarios */}
                 <CommentPreview postId={post.id} count={post.commentsCount || 0} onClick={() => navigate(`/post/${post.id}`)} />
               </div>
             )})
@@ -473,6 +484,7 @@ export default function Home() {
       <CreatePostModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} postToEdit={editingPost} />
       <BirthdayModal isOpen={isBirthdayModalOpen} onClose={() => setIsBirthdayModalOpen(false)} users={birthdays} dbUser={dbUser} />
       
+      {/* EL NUEVO MODAL DE LISTA DE REACCIONES */}
       {viewReactionsPostId && (
         <ReactionsListModal 
           isOpen={true} 
