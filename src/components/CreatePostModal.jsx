@@ -8,13 +8,13 @@ import imageCompression from 'browser-image-compression';
 import { db, auth } from '../firebase'; 
 import { collection, addDoc, serverTimestamp, doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
 import { toast } from 'sonner'; 
-import { ONESIGNAL_CONFIG } from '../oneSignalConfig'; // ✅ IMPORTACIÓN PARA FIX APK
+import { ONESIGNAL_CONFIG } from '../oneSignalConfig'; 
 
 const MOOD_OPTIONS = [
-  { id: 'Fortaleza', icon: Anchor, color: 'text-blue-500', bg: 'bg-blue-500/10 border-blue-500/20' },
-  { id: 'Gozo', icon: Sun, color: 'text-amber-500', bg: 'bg-amber-500/10 border-amber-500/20' },
-  { id: 'Necesidad', icon: CloudRain, color: 'text-slate-500', bg: 'bg-slate-500/10 border-slate-500/20' },
-  { id: 'Paz', icon: Smile, color: 'text-emerald-500', bg: 'bg-emerald-500/10 border-emerald-500/20' },
+  { id: 'Fortaleza', icon: Anchor, color: 'text-blue-500', bg: 'bg-blue-50 border-blue-100' },
+  { id: 'Gozo', icon: Sun, color: 'text-amber-500', bg: 'bg-amber-50 border-amber-100' },
+  { id: 'Necesidad', icon: CloudRain, color: 'text-slate-500', bg: 'bg-slate-50 border-slate-200' },
+  { id: 'Paz', icon: Smile, color: 'text-emerald-500', bg: 'bg-emerald-50 border-emerald-100' },
 ];
 
 export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
@@ -38,7 +38,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
   const CLOUD_NAME = "djmkggzjp"; 
   const UPLOAD_PRESET = "ml_default"; 
 
-  // Variable de control por si venía declarada externamente
   let setLoadingAction = () => {};
 
   useEffect(() => {
@@ -125,7 +124,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     } catch (error) { console.error("Error notif:", error); }
   };
 
-  // ✅ FIX NATIVO ANDROID/WEB: Compresión + Conversión limpia a Base64
   const handleImageChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -138,8 +136,8 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
       reader.readAsDataURL(compressedFile);
       reader.onloadend = () => {
         const base64String = reader.result;
-        setImage(base64String); // Guardamos la cadena base64 directo
-        setPreview(base64String); // Visualización instantánea libre de bugs de rutas
+        setImage(base64String); 
+        setPreview(base64String); 
       };
     } catch (error) { console.log(error); } finally { setLoading(false); }
   };
@@ -152,7 +150,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
       let imageUrl = postToEdit ? postToEdit.image : null;
       if (image) {
         const formData = new FormData();
-        formData.append("file", image); // Cloudinary recibe Base64 nativamente
+        formData.append("file", image); 
         formData.append("upload_preset", UPLOAD_PRESET); 
         const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { method: "POST", body: formData });
         const data = await response.json();
@@ -228,66 +226,69 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[150] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-xl font-outfit text-left transition-all duration-300 animate-fade-in">
-      <div className="bg-white w-full sm:max-w-md rounded-t-[40px] sm:rounded-[45px] p-6 sm:p-8 shadow-2xl relative max-h-[94vh] overflow-y-auto flex flex-col no-scrollbar border-t-[6px] border-slate-900 animate-slide-up">
+    <div className="fixed inset-0 z-[150] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/40 backdrop-blur-sm font-sans text-left transition-all duration-300 animate-fade-in">
+      <div className="bg-white w-full sm:max-w-md rounded-t-[32px] sm:rounded-[32px] p-5 sm:p-8 shadow-2xl relative max-h-[95vh] overflow-y-auto flex flex-col no-scrollbar animate-slide-up border border-slate-100">
         
         {/* INDICADOR DE ARRASTRE PARA MOBILE */}
-        <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-6 sm:hidden shrink-0"></div>
+        <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-4 sm:hidden shrink-0"></div>
 
-        {/* HEADER MODERNO */}
-        <div className="flex justify-between items-center mb-6 shrink-0">
+        {/* HEADER MODERNO PREMIUM */}
+        <div className="flex justify-between items-center mb-5 shrink-0">
           <div>
-            <h3 className="font-black text-slate-900 text-2xl uppercase tracking-tighter leading-none italic">
-              {postToEdit ? 'Editar Palabra' : 'Nueva Publicación'}
+            <h3 className="font-bold text-slate-900 text-xl tracking-tight leading-none">
+              {postToEdit ? 'Editar Publicación' : 'Crear Contenido'}
             </h3>
-            <p className="text-[9px] font-black text-brand-600 uppercase tracking-widest mt-1.5 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse"></span> Panel de Edición Social
+            <p className="text-xs font-semibold text-blue-600 mt-1 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span> Panel de Edición
             </p>
           </div>
-          <button onClick={onClose} className="p-3 bg-slate-50 hover:bg-slate-100 active:scale-90 rounded-full transition-all text-slate-400 border border-slate-100/50 shadow-sm">
-            <X size={20} />
+          <button onClick={onClose} className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors">
+            <X size={18} />
           </button>
         </div>
 
         {/* CUERPO DEL PANEL */}
         <div className="flex-1 space-y-6 pb-24">
           
-          {/* TABS TIPO BURBUJA RED SOCIAL */}
+          {/* TABS TIPO PASTILLERO (SEGMENTED CONTROL SOCIALYO) */}
           <div className="space-y-2">
-            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Estilo de Contenido</label>
-            <div className="flex gap-2 overflow-x-auto no-scrollbar py-1 px-0.5">
-              {['Noticia', 'Devocional', 'Oración', 'Urgente'].map(t => (
-                <button 
-                  key={t} onClick={() => { setType(t); if(t !== 'Devocional') setMood(''); }}
-                  className={`px-5 py-3 text-[9px] font-black uppercase tracking-widest rounded-2xl transition-all shrink-0 border shadow-sm ${
-                    type === t 
-                      ? 'bg-slate-950 text-white border-slate-950 scale-105 shadow-slate-950/20' 
-                      : 'bg-slate-50/50 text-slate-400 border-slate-100 hover:bg-slate-50'
-                  }`}
-                >
-                  {t === 'Oración' && <HandHeart size={11} className="inline mr-1 text-purple-500" />}
-                  {t === 'Urgente' && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 animate-ping mr-1"></span>}
-                  {t}
-                </button>
-              ))}
+            <label className="text-xs font-bold text-slate-500 ml-1">Tipo de contenido</label>
+            <div className="flex bg-slate-100/80 p-1 rounded-full overflow-x-auto no-scrollbar border border-slate-200/50">
+              {['Noticia', 'Devocional', 'Oración', 'Urgente'].map(t => {
+                const isActive = type === t;
+                return (
+                  <button 
+                    key={t} onClick={() => { setType(t); if(t !== 'Devocional') setMood(''); }}
+                    className={`flex-1 min-w-fit px-3 py-2 text-xs font-bold rounded-full transition-all duration-300 flex items-center justify-center gap-1.5 ${
+                      isActive 
+                        ? (t === 'Urgente' ? 'bg-red-500 text-white shadow-sm' : 'bg-blue-500 text-white shadow-sm') 
+                        : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    {t === 'Oración' && <HandHeart size={14} className={isActive ? 'text-white' : 'text-purple-500'} />}
+                    {t === 'Urgente' && !isActive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>}
+                    {t}
+                  </button>
+                )
+              })}
             </div>
           </div>
 
-          {/* CONTROL DE VISIBILIDAD */}
-          <div className="space-y-2 bg-slate-50/40 p-4 rounded-3xl border border-slate-100/50">
-             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2"><Eye size={12} className="text-slate-400"/> Destinatarios del Mensaje</label>
+          {/* CONTROL DE VISIBILIDAD (Pills Limpios) */}
+          <div className="space-y-2">
+             <label className="text-xs font-bold text-slate-500 ml-1 flex items-center gap-1.5"><Eye size={14}/> Destinatarios</label>
              <div className="flex gap-2">
                 <button 
                   onClick={() => setVisibility('publico')}
-                  className={`flex-1 py-3 rounded-xl text-[9px] font-black uppercase transition-all border flex items-center justify-center gap-2 shadow-sm ${visibility === 'publico' ? 'bg-emerald-500 border-emerald-500 text-white shadow-emerald-500/20 scale-[1.01]' : 'bg-white text-slate-400 border-slate-100'}`}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-2 ${visibility === 'publico' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'}`}
                 >
-                  <Globe size={12}/> Toda la Iglesia
+                  <Globe size={14}/> Toda la Iglesia
                 </button>
                 <button 
                   onClick={() => setVisibility('servidores')}
-                  className={`flex-1 py-3 rounded-xl text-[9px] font-black uppercase transition-all border flex items-center justify-center gap-2 shadow-sm ${visibility === 'servidores' ? 'bg-amber-500 border-amber-500 text-white shadow-amber-500/20 scale-[1.01]' : 'bg-white text-slate-400 border-slate-100'}`}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-2 ${visibility === 'servidores' ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'}`}
                 >
-                  <Lock size={12}/> Servidores
+                  <Lock size={14}/> Solo Servidores
                 </button>
              </div>
           </div>
@@ -295,22 +296,22 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           {/* ENTRADAS PRINCIPALES */}
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Encabezado Principal</label>
+              <label className="text-xs font-bold text-slate-500 ml-1">Título</label>
               <input 
                 type="text" placeholder="Escribe un título llamativo..." value={title} onChange={(e) => setTitle(e.target.value)}
-                className="w-full p-4 bg-slate-50/60 rounded-2xl border-2 border-slate-50 font-bold text-slate-800 focus:outline-none focus:border-slate-900 focus:bg-white transition-all uppercase text-xs tracking-tight shadow-inner"
+                className="w-full p-3.5 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm"
               />
             </div>
 
             {/* SECCIÓN ESPECIAL DE DEVOCIONALES */}
             {type === 'Devocional' && (
-              <div className="space-y-4 animate-fade-in">
-                 <div className="p-5 bg-gradient-to-br from-indigo-50/50 to-purple-50/30 rounded-[30px] border border-indigo-100/40 shadow-inner text-left">
-                    <p className="text-[9px] font-black text-indigo-600 uppercase mb-3 ml-1 flex items-center gap-2"><Layers size={12}/> Vincular a una Serie Activa</p>
+              <div className="space-y-4 animate-fade-in p-4 bg-slate-50 border border-slate-100 rounded-3xl">
+                 <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-indigo-600 flex items-center gap-1.5 ml-1"><Layers size={14}/> Serie Activa</label>
                     <input 
                       list="series-suggestions"
-                      placeholder="Ej: El Sermón del Monte o Serie Nueva"
-                      className="w-full p-3.5 bg-white border border-indigo-100/70 rounded-xl text-xs font-bold outline-none shadow-sm focus:border-indigo-500 transition-colors"
+                      placeholder="Ej: El Sermón del Monte"
+                      className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm"
                       value={seriesName} 
                       onChange={e => setSeriesName(e.target.value)}
                     />
@@ -321,16 +322,16 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
                     </datalist>
                  </div>
                  
-                 <div className="p-5 bg-slate-50/70 rounded-[30px] border border-slate-100/80">
-                    <p className="text-[9px] font-black text-slate-400 uppercase mb-3 ml-1 text-left">Estado Espiritual / Enfoque</p>
+                 <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 ml-1">Estado Espiritual</label>
                     <div className="grid grid-cols-4 gap-2">
                        {MOOD_OPTIONS.map(m => (
                          <button 
                            key={m.id} onClick={() => setMood(m.id)}
-                           className={`flex flex-col items-center gap-1.5 p-3 rounded-2xl border transition-all ${mood === m.id ? 'border-slate-950 bg-white shadow-md scale-105 text-slate-950' : 'border-slate-100 opacity-30 grayscale bg-white/40'}`}
+                           className={`flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl border transition-all ${mood === m.id ? `border-blue-300 bg-blue-50 shadow-sm` : 'border-slate-200 bg-white hover:bg-slate-50'}`}
                          >
-                           <div className={`p-2 rounded-xl ${m.bg}`}><m.icon size={18} className={m.color} /></div>
-                           <span className="text-[7.5px] font-black uppercase tracking-tighter">{m.id}</span>
+                           <m.icon size={20} className={mood === m.id ? m.color : 'text-slate-400'} />
+                           <span className={`text-[10px] font-bold ${mood === m.id ? 'text-slate-800' : 'text-slate-400'}`}>{m.id}</span>
                          </button>
                        ))}
                     </div>
@@ -339,72 +340,73 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
             )}
 
             <div className="space-y-1.5">
-              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Mensaje / Cuerpo del Post</label>
+              <label className="text-xs font-bold text-slate-500 ml-1">Mensaje principal</label>
               <textarea
                 value={text} onChange={(e) => setText(e.target.value)}
-                placeholder={type === 'Devocional' ? "Desarrolla la palabra inspirada por Dios hoy..." : type === 'Oración' ? "Describe detalladamente la causa del clamor..." : "Escribe las novedades de la congregación aquí..."}
-                className="w-full h-44 p-4 bg-slate-50/60 rounded-3xl border-2 border-slate-50 focus:outline-none focus:border-slate-900 focus:bg-white resize-none text-sm font-medium text-slate-700 leading-relaxed shadow-inner transition-all"
+                placeholder={type === 'Devocional' ? "Desarrolla la palabra inspirada por Dios hoy..." : type === 'Oración' ? "Describe la causa del clamor..." : "¿Qué novedades hay en la congregación?"}
+                className="w-full h-36 p-4 bg-white border border-slate-200 rounded-2xl text-sm font-medium text-slate-700 leading-relaxed placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm resize-none"
               />
             </div>
 
-            {/* INTERRUPTOR ARCHIVAR */}
-            <button 
-                onClick={() => setIsArchived(!isArchived)}
-                className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all ${isArchived ? 'bg-amber-500/10 border-amber-500/20 text-amber-800' : 'bg-slate-50/40 border-slate-100 text-slate-400'}`}
-            >
-                <div className="flex items-center gap-2.5">
-                    <Archive size={16} className={isArchived ? 'text-amber-600' : 'text-slate-400'}/>
-                    <span className="text-[10px] font-black uppercase tracking-widest">Ocultar y Archivar Post</span>
+            {/* INTERRUPTOR ARCHIVAR (Estilo Toggle Limpio) */}
+            <div className="flex items-center justify-between p-4 rounded-2xl bg-white border border-slate-200 shadow-sm cursor-pointer" onClick={() => setIsArchived(!isArchived)}>
+                <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isArchived ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-500'}`}>
+                      <Archive size={16} />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold text-slate-800">Archivar Post</span>
+                      <span className="text-xs text-slate-500">Ocultar del muro principal</span>
+                    </div>
                 </div>
-                <div className={`w-10 h-5 rounded-full relative transition-all duration-300 ${isArchived ? 'bg-amber-500' : 'bg-slate-200'}`}>
-                    <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-all duration-300 ${isArchived ? 'right-0.5' : 'left-0.5'}`}></div>
+                <div className={`w-12 h-6 rounded-full relative transition-all duration-300 ${isArchived ? 'bg-amber-500' : 'bg-slate-200'}`}>
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all duration-300 ${isArchived ? 'right-1' : 'left-1'}`}></div>
                 </div>
-            </button>
+            </div>
 
             {/* ENCUESTAS DINÁMICAS */}
             {type !== 'Oración' && !postToEdit && (
               <button 
                 onClick={() => setShowPoll(!showPoll)} 
-                className={`flex items-center gap-2 px-5 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${showPoll ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-400 border border-slate-100'}`}
+                className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl text-xs font-bold transition-all border ${showPoll ? 'bg-slate-900 text-white border-slate-900 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 shadow-sm'}`}
               >
-                <BarChart2 size={14} /> {showPoll ? 'Eliminar Encuesta' : 'Añadir Encuesta'}
+                <BarChart2 size={16} /> {showPoll ? 'Quitar Encuesta' : 'Añadir Encuesta'}
               </button>
             )}
 
             {showPoll && (
-              <div className="bg-slate-50/60 p-5 rounded-[30px] border border-slate-100 space-y-2.5 animate-slide-up text-left">
-                <p className="text-[8px] font-black text-slate-400 uppercase ml-1">Opciones de votación</p>
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3 animate-slide-up text-left">
+                <p className="text-xs font-bold text-slate-500 ml-1">Opciones de votación</p>
                 {pollOptions.map((opt, idx) => (
                   <input 
-                    key={idx} type="text" placeholder={`Opción de respuesta ${idx + 1}`} value={opt} onChange={(e) => {
+                    key={idx} type="text" placeholder={`Opción ${idx + 1}`} value={opt} onChange={(e) => {
                         const newOptions = [...pollOptions];
                         newOptions[idx] = e.target.value;
                         setPollOptions(newOptions);
                     }}
-                    className="w-full p-3 bg-white rounded-xl border border-slate-100 text-xs font-bold uppercase outline-none shadow-sm focus:border-slate-400 transition-colors"
+                    className="w-full p-3 bg-white rounded-xl border border-slate-200 text-sm font-semibold outline-none focus:border-blue-400 transition-colors shadow-sm"
                   />
                 ))}
                 {pollOptions.length < 5 && (
-                  <button onClick={() => setPollOptions([...pollOptions, ''])} className="w-full py-2.5 border border-dashed border-slate-200 rounded-xl text-[8px] text-slate-400 font-black uppercase tracking-widest hover:bg-white transition-colors">+ Añadir Alternativa</button>
+                  <button onClick={() => setPollOptions([...pollOptions, ''])} className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-xs text-slate-500 font-bold hover:bg-white transition-colors">+ Añadir Alternativa</button>
                 )}
               </div>
             )}
 
             {/* ENLACES EXTERNOS COMPONENT */}
-            <div className="p-4 bg-slate-50/40 rounded-3xl border border-slate-100 space-y-3">
-              <p className="text-[8px] font-black text-slate-400 uppercase ml-1 flex items-center gap-1"><LinkIcon size={10}/> Tarjeta de Enlace Externo</p>
+            <div className="p-4 bg-white rounded-2xl border border-slate-200 space-y-3 shadow-sm">
+              <p className="text-xs font-bold text-slate-500 ml-1 flex items-center gap-1.5"><LinkIcon size={14}/> Botón de Enlace Externo</p>
               <div className="flex gap-2 text-left">
-                <input type="text" placeholder="https://dirección-web-link" value={link} onChange={e => setLink(e.target.value)} className="flex-1 p-3 bg-white rounded-xl border border-slate-100 text-[10px] outline-none font-bold text-brand-600 shadow-sm focus:border-slate-300" />
-                <input type="text" placeholder="Botón" value={linkText} onChange={e => setLinkText(e.target.value)} className="w-1/3 p-3 bg-white rounded-xl border border-slate-100 text-[10px] outline-none font-black uppercase shadow-sm text-center focus:border-slate-300" />
+                <input type="text" placeholder="https://..." value={link} onChange={e => setLink(e.target.value)} className="flex-1 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs outline-none font-semibold text-blue-600 focus:border-blue-400" />
+                <input type="text" placeholder="Texto botón" value={linkText} onChange={e => setLinkText(e.target.value)} className="w-1/3 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs outline-none font-bold text-center focus:border-blue-400" />
               </div>
             </div>
 
             {/* PREVIEW DE FOTO SOCIAL */}
             {preview && (
-              <div className="relative rounded-3xl overflow-hidden border-[3px] border-slate-100 shadow-xl animate-scale-in">
+              <div className="relative rounded-[24px] overflow-hidden border border-slate-200 shadow-sm animate-scale-in">
                 <img src={preview} alt="Preview" className="w-full h-48 object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none"></div>
-                <button onClick={() => { setImage(null); setPreview(null); }} className="absolute top-3 right-3 bg-slate-900/90 text-white p-2.5 rounded-full backdrop-blur-md active:scale-75 transition-all border border-white/10 shadow-lg">
+                <button onClick={() => { setImage(null); setPreview(null); }} className="absolute top-3 right-3 w-8 h-8 bg-black/60 text-white rounded-full flex items-center justify-center backdrop-blur-md active:scale-75 transition-all">
                   <X size={16} />
                 </button>
               </div>
@@ -412,21 +414,20 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           </div>
         </div>
 
-        {/* ACCIONES DEL FOOTER FLOTANTE */}
-        <div className="absolute bottom-0 left-0 right-0 p-5 bg-white/80 backdrop-blur-md border-t border-slate-50 flex gap-3 shrink-0 rounded-t-3xl shadow-xl z-30">
-          <label className="flex-1 flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 p-4 rounded-xl text-slate-600 cursor-pointer active:scale-95 transition-all border border-slate-200/50 shadow-sm">
-            {loading ? <Loader2 size={16} className="animate-spin text-slate-600" /> : <ImageIcon size={16} className="text-slate-500" />}
-            <span className="text-[10px] font-black uppercase tracking-widest">Multimedia</span>
+        {/* ACCIONES DEL FOOTER FIJO SOCIALYO */}
+        <div className="absolute bottom-0 left-0 right-0 p-4 bg-white border-t border-slate-100 flex items-center gap-3 shrink-0 rounded-b-[32px] sm:rounded-b-[32px]">
+          <label className="w-14 h-14 flex items-center justify-center bg-slate-50 hover:bg-slate-100 rounded-2xl text-slate-500 cursor-pointer active:scale-95 transition-colors border border-slate-200">
+            {loading ? <Loader2 size={24} className="animate-spin text-slate-400" /> : <ImageIcon size={24} />}
             <input type="file" className="hidden" accept="image/*" onChange={handleImageChange} disabled={loading} />
           </label>
 
           <button 
             onClick={handleSubmit} 
             disabled={loading || (!text && !image && !preview && !title)} 
-            className="flex-[2] bg-slate-950 text-white p-4 rounded-xl font-black text-[11px] uppercase tracking-[0.25em] shadow-lg shadow-slate-950/20 flex items-center justify-center gap-2 active:scale-[0.98] transition-all disabled:opacity-30"
+            className="flex-1 h-14 bg-blue-600 text-white rounded-2xl font-bold text-sm shadow-sm flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100"
           >
-            {loading ? <Loader2 size={16} className="animate-spin" /> : <Send size={14} />} 
-            {postToEdit ? 'Guardar Cambios' : 'Lanzar Alerta'}
+            {loading ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />} 
+            {postToEdit ? 'Guardar Cambios' : 'Publicar'}
           </button>
         </div>
       </div>
