@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom'; 
 import { 
-  MessageCircle, MoreVertical, Trash2, 
+  Cake, MessageCircle, MoreVertical, Trash2, 
   Archive, Pin, Sparkles, BellRing, X, Plus
 } from 'lucide-react';
-import TopBar from '../components/TopBar'; // ✅ Corrección del import
+import TopBar from '../components/TopBar'; 
 import CreatePostModal from '../components/CreatePostModal';
 import BirthdayModal from '../components/BirthdayModal';
 import { db, auth } from '../firebase';
@@ -54,7 +54,6 @@ function ReactionsListModal({ isOpen, onClose, reactions = [] }) {
   if (!isOpen) return null;
 
   const usedEmojis = [...new Set(reactions.map(r => r.emoji))];
-  
   const displayedReactions = activeTab === 'Todas' 
     ? reactions 
     : reactions.filter(r => r.emoji === activeTab);
@@ -69,7 +68,7 @@ function ReactionsListModal({ isOpen, onClose, reactions = [] }) {
         </div>
 
         {usedEmojis.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto no-scrollbar px-4 py-3 border-b border-slate-50 shrink-0">
+          <div className="flex gap-2 overflow-x-auto px-4 py-3 border-b border-slate-50 shrink-0" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
             <button 
               onClick={() => setActiveTab('Todas')}
               className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors whitespace-nowrap ${activeTab === 'Todas' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
@@ -91,7 +90,7 @@ function ReactionsListModal({ isOpen, onClose, reactions = [] }) {
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
           {displayedReactions.length === 0 ? (
             <p className="text-center text-sm text-slate-400 mt-10">No hay reacciones aún.</p>
           ) : (
@@ -277,61 +276,97 @@ export default function Home() {
     return result;
   }, [filter, posts]);
 
+  const storyDevocionales = useMemo(() => {
+    return posts.filter(p => p.type === 'Devocional' && !p.isArchived).slice(0, 8);
+  }, [posts]);
+
   const displayedPosts = filteredPosts.slice(0, visibleCount);
   const hasMorePosts = visibleCount < filteredPosts.length;
 
-  // Foto de perfil para la caja de creación
   const myProfileImg = currentUser?.photoURL || `https://ui-avatars.com/api/?name=${currentUser?.displayName}&background=0f172a&color=fff`;
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24 font-sans relative">
       
-      {/* 🚀 TOPBAR CORREGIDO */}
-      <TopBar />
+      {/* 🚀 TOPBAR: Usamos propiedades para pasar la funcionalidad de cumpleaños */}
+      <TopBar birthdaysCount={birthdays.length} onBirthdayClick={() => setIsBirthdayModalOpen(true)} />
 
-      {/* Toast */}
       {toast.show && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[250] bg-slate-900 text-white px-5 py-2.5 rounded-full text-sm font-bold shadow-xl animate-slide-up">
           {toast.message}
         </div>
       )}
 
-      <div className="px-4 mt-4 max-w-md mx-auto space-y-4">
+      {/* 🚀 STORIES: Scroll invisible y restablecidas */}
+      <div 
+        className="flex gap-4 px-4 pb-3 pt-4 overflow-x-auto bg-slate-50" 
+        style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }} // Oculta barra en Firefox/Edge
+      >
+        {canCreatePost && (
+          <div className="flex flex-col items-center gap-1.5 min-w-fit cursor-pointer" onClick={() => { setEditingPost(null); setIsModalOpen(true); }}>
+            <div className="w-16 h-16 rounded-full border-[2.5px] border-dashed border-slate-300 bg-white flex items-center justify-center active:scale-95 transition-transform">
+              <Plus size={24} className="text-slate-400" />
+            </div>
+            <span className="text-[11px] text-slate-600 font-bold">Crear</span>
+          </div>
+        )}
         
-        {/* 🚀 NUEVA CAJA "QUÉ ESTÁS PENSANDO" (SOLO STAFF) */}
+        {storyDevocionales.map((post) => {
+          const storyPhoto = post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}&background=0f172a&color=fff`;
+          return (
+            <div key={post.id} className="flex flex-col items-center gap-1.5 min-w-fit cursor-pointer active:scale-95 transition-transform" onClick={() => navigate(`/post/${post.id}`)}>
+              <div className="w-16 h-16 rounded-full p-[2.5px] bg-gradient-to-br from-blue-400 via-indigo-500 to-purple-600">
+                <img src={storyPhoto} alt={post.authorName} className="w-full h-full rounded-full object-cover border-[2.5px] border-white bg-white" />
+              </div>
+              <span className="text-[11px] text-slate-700 font-bold max-w-[64px] truncate">{post.authorName?.split(' ')[0]}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="px-4 mt-2 max-w-md mx-auto space-y-4">
+        
+        {/* 🚀 NUEVA CAJA "QUÉ ESTÁS PENSANDO" (Integrada y Premium) */}
         {canCreatePost && (
           <div 
             onClick={() => { setEditingPost(null); setIsModalOpen(true); }}
-            className="bg-white rounded-[24px] p-4 flex items-center gap-3 shadow-[0_2px_10px_rgba(0,0,0,0.02)] border border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors"
+            className="bg-white rounded-full p-2 flex items-center shadow-[0_2px_10px_rgba(0,0,0,0.02)] border border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors"
           >
-            <img src={myProfileImg} alt="Mi perfil" className="w-10 h-10 rounded-full object-cover border border-slate-100" />
-            <div className="flex-1 bg-slate-50 rounded-full py-2.5 px-4 border border-slate-100">
-              <p className="text-sm font-medium text-slate-400 truncate">¿Con qué nos quieres bendecir hoy?</p>
+            <img src={myProfileImg} alt="Mi perfil" className="w-10 h-10 rounded-full object-cover ml-1 border border-slate-100" />
+            <div className="flex-1 px-4">
+              <p className="text-[13px] font-medium text-slate-400 truncate">¿Con qué nos quieres bendecir hoy?</p>
             </div>
-            <div className="w-9 h-9 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center shrink-0">
-              <Plus size={20} />
+            {/* Botón "+" integrado idéntico al mockup */}
+            <div className="w-10 h-10 bg-blue-500 text-white rounded-full flex items-center justify-center shrink-0 shadow-sm shadow-blue-500/30">
+              <Plus size={20} strokeWidth={2.5} />
             </div>
           </div>
         )}
 
-        {/* 🚀 PESTAÑAS PASTILLERO SOCIALYO (Sin scroll horizontal visible) */}
+        {/* 🚀 PESTAÑAS PASTILLERO SOCIALYO (Sin 'Noticia') */}
         <div className="bg-white p-1.5 rounded-full border border-slate-100 flex shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
-          {['Todo', 'Devocional', 'Oración', 'Noticia'].map((cat) => (
+          {['Todo', 'Devocional', 'Oración'].map((cat) => (
             <button 
               key={cat} onClick={() => { setFilter(cat); setVisibleCount(5); }} 
-              className={`flex-1 py-2 rounded-full text-[12px] font-bold transition-all duration-300 ${
-                filter === cat ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              className={`flex-1 py-2.5 rounded-full text-[12px] font-bold transition-all duration-300 ${
+                filter === cat ? 'bg-blue-600 text-white shadow-sm scale-[1.02]' : 'text-slate-500 hover:text-slate-700'
               }`}
             >
               {cat}
             </button>
           ))}
+          {isPastor && (
+            <button onClick={() => { setFilter('Archivados'); setVisibleCount(5); }} 
+              className={`flex-1 py-2 rounded-full text-[12px] font-bold transition-all duration-300 ${filter === 'Archivados' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+              Archivados
+            </button>
+          )}
         </div>
 
       </div>
 
-      {/* Post Feed */}
-      <div className="pb-6 max-w-md mx-auto mt-4">
+      {/* Feed */}
+      <div className="pb-6 max-w-md mx-auto mt-5">
         {loading ? (
             <><PostSkeleton /><PostSkeleton /></>
         ) : displayedPosts.length === 0 ? (
@@ -355,7 +390,6 @@ export default function Home() {
                 
                 {post.isPinned && <div className="absolute top-0 right-0 bg-amber-500 text-white px-3 py-1 rounded-bl-xl text-[9px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm"><Pin size={10} fill="currentColor"/> Fijado</div>}
 
-                {/* Post Header */}
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <img src={profileImg} alt="Avatar" className="w-10 h-10 rounded-full object-cover border border-slate-100 bg-slate-50" />
@@ -394,7 +428,6 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* Post Content */}
                 <div className="cursor-pointer" onClick={() => navigate(`/post/${post.id}`)}>
                   {post.title && <h2 className={`font-black text-slate-900 tracking-tight leading-snug mb-2 ${isDevocional ? 'text-lg uppercase italic' : 'text-[16px]'}`}>{post.title}</h2>}
                   <p className="text-[14px] text-slate-600 mb-4 leading-relaxed whitespace-pre-wrap line-clamp-4">
@@ -410,7 +443,6 @@ export default function Home() {
 
                 <div className="h-px w-full bg-slate-100 my-3"></div>
 
-                {/* Engagement Bar */}
                 <div className="flex items-center justify-between relative pt-1">
                   <div className="flex items-center gap-1.5">
                     <div className="relative">
@@ -430,9 +462,7 @@ export default function Home() {
                       )}
                       
                       <button onClick={() => setActiveReactionPost(activeReactionPost === post.id ? null : post.id)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-slate-500 hover:bg-slate-50 active:scale-95 transition-all font-semibold text-xs">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
+                        <MessageCircle size={18} className="text-slate-400" />
                         Reaccionar
                       </button>
                     </div>
@@ -471,6 +501,7 @@ export default function Home() {
         )}
       </div>
 
+      {/* ✅ Pasamos la lógica del Modal para que el botón "+" de la nueva caja dispare esto */}
       <CreatePostModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} postToEdit={editingPost} />
       <BirthdayModal isOpen={isBirthdayModalOpen} onClose={() => setIsBirthdayModalOpen(false)} users={birthdays} dbUser={dbUser} />
       
