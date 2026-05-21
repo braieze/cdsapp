@@ -294,7 +294,7 @@ export default function TopBar() {
         {/* LOGO O TÍTULO (Igual que SocialYo) */}
         <div className="flex items-center">
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 cursor-pointer" onClick={() => navigate('/')}>
-              SocialYo.
+              CDSApp.
             </h1>
         </div>
         
