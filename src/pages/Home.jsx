@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom'; 
 import { 
-  Cake, MessageCircle, MoreVertical, PlusCircle, Trash2, 
-  Archive, Pin, ChevronDown, Sparkles, BellRing, X
+  MessageCircle, MoreVertical, Trash2, 
+  Archive, Pin, Sparkles, BellRing, X, Plus
 } from 'lucide-react';
-import Topbar from '../components/TopBar';
+import TopBar from '../components/TopBar'; // ✅ Corrección del import
 import CreatePostModal from '../components/CreatePostModal';
 import BirthdayModal from '../components/BirthdayModal';
 import { db, auth } from '../firebase';
@@ -53,10 +53,8 @@ function ReactionsListModal({ isOpen, onClose, reactions = [] }) {
   
   if (!isOpen) return null;
 
-  // Extraer emojis únicos usados en este post
   const usedEmojis = [...new Set(reactions.map(r => r.emoji))];
   
-  // Filtrar lista según la pestaña
   const displayedReactions = activeTab === 'Todas' 
     ? reactions 
     : reactions.filter(r => r.emoji === activeTab);
@@ -65,13 +63,11 @@ function ReactionsListModal({ isOpen, onClose, reactions = [] }) {
     <div className="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 font-sans animate-fade-in">
       <div className="bg-white w-full max-w-sm rounded-t-[32px] sm:rounded-[32px] shadow-2xl animate-slide-up flex flex-col h-[65vh]">
         
-        {/* Header */}
         <div className="flex justify-between items-center p-5 border-b border-slate-100 shrink-0">
           <h3 className="text-lg font-bold text-slate-900 tracking-tight">Reacciones</h3>
           <button onClick={onClose} className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-200"><X size={18}/></button>
         </div>
 
-        {/* Tabs */}
         {usedEmojis.length > 0 && (
           <div className="flex gap-2 overflow-x-auto no-scrollbar px-4 py-3 border-b border-slate-50 shrink-0">
             <button 
@@ -95,7 +91,6 @@ function ReactionsListModal({ isOpen, onClose, reactions = [] }) {
           </div>
         )}
 
-        {/* Lista de Usuarios */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
           {displayedReactions.length === 0 ? (
             <p className="text-center text-sm text-slate-400 mt-10">No hay reacciones aún.</p>
@@ -154,8 +149,8 @@ export default function Home() {
   const [birthdays, setBirthdays] = useState([]);
   const [menuOpenId, setMenuOpenId] = useState(null);
   
-  const [activeReactionPost, setActiveReactionPost] = useState(null); // Popover para dar reacción
-  const [viewReactionsPostId, setViewReactionsPostId] = useState(null); // Modal para ver la lista de reacciones
+  const [activeReactionPost, setActiveReactionPost] = useState(null); 
+  const [viewReactionsPostId, setViewReactionsPostId] = useState(null); 
   
   const [editingPost, setEditingPost] = useState(null);
   const [toast, setToast] = useState({ show: false, message: '' });
@@ -193,7 +188,6 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // ✅ NUEVOS EMOJIS (Se reemplazó 👍 por 🙌)
   const EMOJIS = ['❤️', '🔥', '🙏', '🙌'];
 
   const handleReaction = async (postId, reactions, emoji) => {
@@ -283,55 +277,61 @@ export default function Home() {
     return result;
   }, [filter, posts]);
 
-  const storyDevocionales = useMemo(() => {
-    return posts.filter(p => p.type === 'Devocional' && !p.isArchived).slice(0, 8);
-  }, [posts]);
-
   const displayedPosts = filteredPosts.slice(0, visibleCount);
   const hasMorePosts = visibleCount < filteredPosts.length;
 
-  return (
-    // EL FONDO AHORA ES GRIS CLARO (bg-slate-50)
-    <div className="min-h-screen bg-slate-50 pb-24 font-sans relative">
-    
-	{/* 🚀 EL TOPBAR SE AGREGA AQUÍ EN LA PARTE SUPERIOR */}
-      <Topbar dbUser={dbUser} />	
+  // Foto de perfil para la caja de creación
+  const myProfileImg = currentUser?.photoURL || `https://ui-avatars.com/api/?name=${currentUser?.displayName}&background=0f172a&color=fff`;
 
-	{/* Toast */}
+  return (
+    <div className="min-h-screen bg-slate-50 pb-24 font-sans relative">
+      
+      {/* 🚀 TOPBAR CORREGIDO */}
+      <TopBar />
+
+      {/* Toast */}
       {toast.show && (
-        <div className="fixed top-12 left-1/2 -translate-x-1/2 z-[250] bg-slate-900 text-white px-5 py-2.5 rounded-full text-sm font-bold shadow-xl animate-slide-up">
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[250] bg-slate-900 text-white px-5 py-2.5 rounded-full text-sm font-bold shadow-xl animate-slide-up">
           {toast.message}
         </div>
       )}
 
-      {/* Stories Carousel */}
-      <div className="flex gap-4 px-4 pb-3 pt-3 overflow-x-auto no-scrollbar bg-slate-50">
+      <div className="px-4 mt-4 max-w-md mx-auto space-y-4">
+        
+        {/* 🚀 NUEVA CAJA "QUÉ ESTÁS PENSANDO" (SOLO STAFF) */}
         {canCreatePost && (
-          <div className="flex flex-col items-center gap-1.5 min-w-fit cursor-pointer" onClick={() => { setEditingPost(null); setIsModalOpen(true); }}>
-            <div className="w-16 h-16 rounded-full border-[2.5px] border-dashed border-slate-300 bg-white flex items-center justify-center active:scale-95 transition-transform">
-              <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
+          <div 
+            onClick={() => { setEditingPost(null); setIsModalOpen(true); }}
+            className="bg-white rounded-[24px] p-4 flex items-center gap-3 shadow-[0_2px_10px_rgba(0,0,0,0.02)] border border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors"
+          >
+            <img src={myProfileImg} alt="Mi perfil" className="w-10 h-10 rounded-full object-cover border border-slate-100" />
+            <div className="flex-1 bg-slate-50 rounded-full py-2.5 px-4 border border-slate-100">
+              <p className="text-sm font-medium text-slate-400 truncate">¿Con qué nos quieres bendecir hoy?</p>
             </div>
-            <span className="text-[11px] text-slate-600 font-bold">Crear</span>
+            <div className="w-9 h-9 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center shrink-0">
+              <Plus size={20} />
+            </div>
           </div>
         )}
-        
-        {storyDevocionales.map((post) => {
-          const storyPhoto = post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}&background=0f172a&color=fff`;
-          return (
-            <div key={post.id} className="flex flex-col items-center gap-1.5 min-w-fit cursor-pointer active:scale-95 transition-transform" onClick={() => navigate(`/post/${post.id}`)}>
-              <div className="w-16 h-16 rounded-full p-[2.5px] bg-gradient-to-br from-blue-400 via-indigo-500 to-purple-600">
-                <img src={storyPhoto} alt={post.authorName} className="w-full h-full rounded-full object-cover border-[2.5px] border-white bg-white" />
-              </div>
-              <span className="text-[11px] text-slate-700 font-bold max-w-[64px] truncate">{post.authorName?.split(' ')[0]}</span>
-            </div>
-          );
-        })}
+
+        {/* 🚀 PESTAÑAS PASTILLERO SOCIALYO (Sin scroll horizontal visible) */}
+        <div className="bg-white p-1.5 rounded-full border border-slate-100 flex shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
+          {['Todo', 'Devocional', 'Oración', 'Noticia'].map((cat) => (
+            <button 
+              key={cat} onClick={() => { setFilter(cat); setVisibleCount(5); }} 
+              className={`flex-1 py-2 rounded-full text-[12px] font-bold transition-all duration-300 ${
+                filter === cat ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+
       </div>
 
       {/* Post Feed */}
-      <div className="pb-6">
+      <div className="pb-6 max-w-md mx-auto mt-4">
         {loading ? (
             <><PostSkeleton /><PostSkeleton /></>
         ) : displayedPosts.length === 0 ? (
@@ -348,13 +348,11 @@ export default function Home() {
               const isDevocional = post.type === 'Devocional';
               const postReactions = post.reactions || [];
 
-              // Extraer solo los emojis usados para el resumen derecho
               const usedEmojisDisplay = [...new Set(postReactions.map(r => r.emoji))].slice(0, 3);
 
               return (
               <div key={post.id} className={`bg-white rounded-[32px] p-5 mb-5 mx-4 shadow-[0_4px_20px_rgba(0,0,0,0.02)] border border-slate-100 overflow-hidden relative ${post.isPinned ? 'border-amber-200/50 bg-gradient-to-b from-amber-50/10 to-white' : ''}`}>
                 
-                {/* Etiqueta flotante de fijado */}
                 {post.isPinned && <div className="absolute top-0 right-0 bg-amber-500 text-white px-3 py-1 rounded-bl-xl text-[9px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm"><Pin size={10} fill="currentColor"/> Fijado</div>}
 
                 {/* Post Header */}
@@ -404,22 +402,17 @@ export default function Home() {
                   </p>
                 </div>
 
-                {/* 📸 Post Image (DISEÑO DIFERENCIADO) */}
                 {post.image && (
                   <div className={`mb-4 cursor-pointer overflow-hidden bg-slate-50 border border-slate-100 ${isDevocional ? 'rounded-[24px] aspect-square' : 'rounded-[18px] max-h-72'}`} onClick={() => navigate(`/post/${post.id}`)}>
                     <img src={post.image} alt="Post image" className="w-full h-full object-cover transition-transform duration-500 hover:scale-105" />
                   </div>
                 )}
 
-                {/* LÍNEA SEPARADORA SUTIL */}
                 <div className="h-px w-full bg-slate-100 my-3"></div>
 
-                {/* 🌟 NUEVO ENGAGEMENT BAR (Facebook Style Avanzado) */}
+                {/* Engagement Bar */}
                 <div className="flex items-center justify-between relative pt-1">
-                  
-                  {/* Izquierda: Botones de Acción limpios */}
                   <div className="flex items-center gap-1.5">
-                    {/* Botón Reaccionar con Popover */}
                     <div className="relative">
                       {activeReactionPost === post.id && (
                         <div className="absolute bottom-10 left-0 bg-white rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-slate-100 px-2 py-1.5 flex items-center gap-1 z-50 animate-slide-up">
@@ -444,7 +437,6 @@ export default function Home() {
                       </button>
                     </div>
 
-                    {/* Botón Comentar */}
                     <button onClick={() => navigate(`/post/${post.id}`)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-slate-500 hover:bg-slate-50 active:scale-95 transition-all font-semibold text-xs">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -453,7 +445,6 @@ export default function Home() {
                     </button>
                   </div>
 
-                  {/* Derecha: Acumulado de Reacciones */}
                   {postReactions.length > 0 && (
                     <button onClick={() => setViewReactionsPostId(post.id)} className="flex items-center gap-1 px-2 py-1 rounded-full hover:bg-slate-50 transition-colors">
                       <div className="flex -space-x-1">
@@ -466,7 +457,6 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* Sub-componente de comentarios */}
                 <CommentPreview postId={post.id} count={post.commentsCount || 0} onClick={() => navigate(`/post/${post.id}`)} />
               </div>
             )})
@@ -484,7 +474,6 @@ export default function Home() {
       <CreatePostModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} postToEdit={editingPost} />
       <BirthdayModal isOpen={isBirthdayModalOpen} onClose={() => setIsBirthdayModalOpen(false)} users={birthdays} dbUser={dbUser} />
       
-      {/* EL NUEVO MODAL DE LISTA DE REACCIONES */}
       {viewReactionsPostId && (
         <ReactionsListModal 
           isOpen={true} 
