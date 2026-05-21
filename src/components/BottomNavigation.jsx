@@ -93,9 +93,9 @@ export default function BottomNavigation({ dbUser }) {
   ];
 
   return (
-    // DISEÑO SOCIALYO: Fondo blanco sólido, anclado al fondo, punta a punta.
-    <nav className="fixed bottom-0 left-0 right-0 w-full bg-white border-t border-slate-100 z-50 h-[80px] shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
-      <div className="max-w-md mx-auto flex justify-around items-center h-full px-2 pb-2">
+    // DISEÑO SOCIALYO: Fondo blanco sólido, anclado al fondo, punta a punta, sin texto, activo negro y grueso.
+    <nav className="fixed bottom-0 left-0 right-0 w-full bg-white border-t border-slate-100 z-50 h-[80px]">
+      <div className="max-w-md mx-auto flex justify-around items-center h-full px-4 pb-2">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = path === item.path;
@@ -104,27 +104,22 @@ export default function BottomNavigation({ dbUser }) {
             <Link 
               key={item.path} 
               to={item.path} 
-              className="flex flex-col items-center justify-center w-full h-full active:opacity-60 transition-opacity"
+              className="flex items-center justify-center w-14 h-14 active:scale-90 transition-transform duration-200"
             >
-              <div className="relative p-1">
+              <div className="relative flex items-center justify-center">
                 <Icon 
-                  size={24} 
-                  strokeWidth={isActive ? 2.5 : 2} 
-                  className={`transition-colors duration-300 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} 
+                  size={isActive ? 28 : 24} 
+                  strokeWidth={isActive ? 2.5 : 1.5} 
+                  className={`transition-all duration-300 ${isActive ? 'text-slate-900 fill-slate-900' : 'text-slate-400'}`} 
                 />
                 
                 {/* Badge rediseñado: Limpio, pequeño y sin rebote */}
                 {item.badge > 0 && (
-                  <span className="absolute -top-1 -right-2 bg-red-500 text-white text-[9px] font-bold h-4 min-w-[16px] px-1 flex items-center justify-center rounded-full border-2 border-white shadow-sm">
+                  <span className="absolute -top-1 -right-1.5 bg-red-500 text-white text-[9px] font-bold h-4 min-w-[16px] px-1 flex items-center justify-center rounded-full border-2 border-white shadow-sm">
                     {item.badge}
                   </span>
                 )}
               </div>
-              
-              {/* Etiqueta de texto sutil */}
-              <span className={`text-[10px] font-bold tracking-tight mt-1 transition-colors duration-300 ${isActive ? 'text-blue-600' : 'text-slate-400'}`}>
-                {item.label}
-              </span>
             </Link>
           );
         })}

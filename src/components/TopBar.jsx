@@ -6,14 +6,14 @@ import { getToken } from 'firebase/messaging';
 import { 
   Bell, X, Clock, Loader2, Send, Link as LinkIcon, 
   Activity, HandHeart, Lock, Unlock, Globe, Save,
-  Megaphone, Sparkles, BellRing, AlertTriangle, BookOpen, UserCircle, MessageCircle
+  Megaphone, Sparkles, BellRing, AlertTriangle, BookOpen, UserCircle, MessageCircle, Cake
 } from 'lucide-react';
 import { format, isToday } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { Capacitor } from '@capacitor/core';
 import OneSignal from 'onesignal-cordova-plugin';
-import { ONESIGNAL_CONFIG } from '../oneSignalConfig'; // ✅ IMPORTACIÓN DE CONFIG SEGURA
+import { ONESIGNAL_CONFIG } from '../oneSignalConfig'; 
 
 const VAPID_KEY = "BGMeg-zLHj3i9JZ09bYjrsV5P0eVEll09oaXMgHgs6ImBloOLHRFKKjELGxHrAEfd96ZnmlBf7XyoLKXiyIA3Wk";
 
@@ -34,7 +34,7 @@ export default function TopBar() {
   const [displayLimit, setDisplayLimit] = useState(10);
   
   const [userRole, setUserRole] = useState('miembro');
-  const [userArea, setUserArea] = useState(''); // ✅ Para mostrar el área de la persona
+  const [userArea, setUserArea] = useState(''); 
   const [activeUser, setActiveUser] = useState(null);
 
   const [loadingAction, setLoadingAction] = useState(false);
@@ -288,43 +288,34 @@ export default function TopBar() {
   return (
     <>
       {/* 🌟 CABECERA PREMIUM SOCIALYO STYLE */}
-      <div className="sticky top-0 z-40 bg-slate-50/95 backdrop-blur-md px-4 pt-4 pb-3 flex justify-between items-center font-sans">
+      {/* Añadido bg-white y eliminado el blur para que coincida con la imagen de referencia */}
+      <div className="sticky top-0 z-40 bg-white px-4 pt-4 pb-3 flex justify-between items-center font-sans border-b border-slate-100/50">
         
-        {/* SALUDO PERSONALIZADO Y ROL */}
-        <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/perfil')}>
-            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center border-2 border-white shadow-sm overflow-hidden">
-               <UserCircle className="w-6 h-6 text-blue-500" />
-            </div>
-            <div className="flex flex-col text-left">
-                <span className="text-[15px] font-bold text-slate-900 tracking-tight leading-none">
-                  Hola, {activeUser?.displayName?.split(' ')[0] || 'Familia'}
-                </span>
-                <p className="text-[11px] font-semibold text-blue-600 mt-1 uppercase tracking-wider">
-                  {formattedRole} {userArea && `• ${userArea}`}
-                </p>
-            </div>
+        {/* LOGO O TÍTULO (Igual que SocialYo) */}
+        <div className="flex items-center">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 cursor-pointer" onClick={() => navigate('/')}>
+              SocialYo.
+            </h1>
         </div>
         
-        {/* BOTONERA DE ACCIONES (Notificaciones y Chat) */}
+        {/* BOTONERA DE ACCIONES (Campanita, Megáfono, Chat) */}
         <div className="flex items-center gap-2">
           {userRole === 'pastor' && activeUser && (
-            <button onClick={() => setIsPastorPanelOpen(true)} className="w-10 h-10 rounded-full border border-slate-200 bg-white flex items-center justify-center hover:bg-slate-50 transition-colors shadow-sm">
-              <Megaphone className="w-5 h-5 text-indigo-600" />
+            <button onClick={() => setIsPastorPanelOpen(true)} className="w-10 h-10 rounded-full border border-slate-200 bg-white flex items-center justify-center hover:bg-slate-50 transition-colors shadow-sm text-slate-700">
+              <Megaphone size={18} />
             </button>
           )}
           
-          <button onClick={() => setIsOpen(true)} className="relative w-10 h-10 rounded-full border border-slate-200 bg-white flex items-center justify-center hover:bg-slate-50 transition-colors shadow-sm">
-              <Bell className="w-5 h-5 text-slate-700" />
+          <button onClick={() => setIsOpen(true)} className="relative w-auto px-3 h-10 rounded-full border border-slate-200 bg-white flex items-center justify-center gap-1.5 hover:bg-slate-50 transition-colors shadow-sm text-slate-700 font-semibold text-xs">
+              <Bell size={18} />
+              {unreadCount > 0 ? `+${unreadCount}` : ''}
               {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white border-2 border-white shadow-sm">
-                  {unreadCount}
-                </span>
+                <span className="absolute top-2 left-2.5 w-1.5 h-1.5 rounded-full bg-red-500"></span>
               )}
           </button>
           
-          {/* NUEVO ÍCONO DE CHAT PREPARADO */}
-          <button className="w-10 h-10 rounded-full border border-slate-200 bg-white flex items-center justify-center hover:bg-slate-50 transition-colors shadow-sm">
-              <MessageCircle className="w-5 h-5 text-slate-700" />
+          <button className="w-10 h-10 rounded-full border border-slate-200 bg-white flex items-center justify-center hover:bg-slate-50 transition-colors shadow-sm text-slate-700">
+              <MessageCircle size={18} />
           </button>
         </div>
       </div>
