@@ -5,8 +5,8 @@ import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, arrayUni
 import { getToken } from 'firebase/messaging'; 
 import { 
   Bell, X, Clock, Loader2, Send, Link as LinkIcon, 
-  Activity, HandHeart, Lock, Unlock, Globe, Save,
-  Megaphone, Sparkles, BellRing, AlertTriangle, BookOpen, UserCircle, MessageCircle, Cake
+  HandHeart, Lock, Unlock, Globe, Save,
+  Megaphone, Sparkles, BellRing, MessageCircle, Cake
 } from 'lucide-react';
 import { format, isToday } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -24,7 +24,7 @@ const PUSH_TEMPLATES = [
   { id: 'meet', label: '🎥 Link de Meet', title: '¡Ya estamos en vivo!', body: 'Entrá al link para sumarte a la transmisión.', targetArea: 'todos', targetPath: '/' }
 ];
 
-export default function TopBar({ birthdaysCount, onBirthdayClick }) { // ✅ Agregadas las props
+export default function TopBar({ birthdaysCount, onBirthdayClick }) { 
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [readIds, setReadIds] = useState([]); 
@@ -288,38 +288,44 @@ export default function TopBar({ birthdaysCount, onBirthdayClick }) { // ✅ Agr
   return (
     <>
       {/* 🌟 CABECERA PREMIUM SOCIALYO STYLE */}
-      <div className="sticky top-0 z-40 bg-white px-4 pt-4 pb-3 flex justify-between items-center font-sans">
+      <div className="sticky top-0 z-50 bg-white px-4 pt-4 pb-3 flex justify-between items-center font-sans border-b border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
         
-        {/* LOGO O TÍTULO */}
-        <div className="flex items-center">
-            <h1 className="text-2xl font-black tracking-tighter text-slate-900 cursor-pointer" onClick={() => navigate('/')}>
-              CDSApp.
+        {/* IZQUIERDA: Marca moderna + Detalles de Usuario */}
+        <div className="flex flex-col text-left">
+            <h1 className="text-[26px] font-black tracking-tighter text-slate-900 leading-none cursor-pointer" onClick={() => navigate('/')}>
+              CDS App.
             </h1>
+            {activeUser && (
+              <p className="text-[11px] font-bold text-slate-400 mt-1.5 capitalize leading-none">
+                {activeUser.displayName?.split(' ')[0]} • {formattedRole} {userArea && `(${userArea})`}
+              </p>
+            )}
         </div>
         
-        {/* BOTONERA DE ACCIONES LIMPÍSIMA (Campanita, Megáfono, Chat, Torta) */}
+        {/* DERECHA: Botonera Limpia y Espaciada */}
         <div className="flex items-center gap-2">
           {birthdaysCount > 0 && (
-            <button onClick={onBirthdayClick} className="w-10 h-10 rounded-full border border-slate-200 bg-white flex items-center justify-center text-amber-500 shadow-sm transition-transform active:scale-90">
-              <Cake size={18} />
+            <button onClick={onBirthdayClick} className="w-10 h-10 rounded-full border border-slate-100 bg-slate-50 flex items-center justify-center text-amber-500 shadow-sm transition-transform active:scale-90">
+              <Cake size={18} strokeWidth={2.5} />
             </button>
           )}
 
           {userRole === 'pastor' && activeUser && (
-            <button onClick={() => setIsPastorPanelOpen(true)} className="w-10 h-10 rounded-full border border-slate-200 bg-white flex items-center justify-center hover:bg-slate-50 transition-colors shadow-sm text-slate-700">
-              <Megaphone size={18} />
+            <button onClick={() => setIsPastorPanelOpen(true)} className="w-10 h-10 rounded-full border border-slate-100 bg-slate-50 flex items-center justify-center hover:bg-slate-100 transition-colors shadow-sm text-slate-700">
+              <Megaphone size={18} strokeWidth={2.5} />
             </button>
           )}
           
-          <button onClick={() => setIsOpen(true)} className="relative w-auto px-3 h-10 rounded-full border border-slate-200 bg-white flex items-center justify-center gap-1.5 hover:bg-slate-50 transition-colors shadow-sm text-slate-700 font-semibold text-xs">
-              <Bell size={18} />
+          <button onClick={() => setIsOpen(true)} className="relative w-auto px-3 h-10 rounded-full border border-slate-100 bg-slate-50 flex items-center justify-center gap-1.5 hover:bg-slate-100 transition-colors shadow-sm text-slate-700 font-bold text-xs">
+              <Bell size={18} strokeWidth={2.5} />
+              {unreadCount > 0 ? `+${unreadCount}` : ''}
               {unreadCount > 0 && (
-                <span className="absolute top-2 left-2.5 w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                <span className="absolute top-2 left-2.5 w-2 h-2 rounded-full bg-red-500 border-2 border-white"></span>
               )}
           </button>
           
-          <button className="w-10 h-10 rounded-full border border-slate-200 bg-white flex items-center justify-center hover:bg-slate-50 transition-colors shadow-sm text-slate-700">
-              <MessageCircle size={18} />
+          <button className="w-10 h-10 rounded-full border border-slate-100 bg-slate-50 flex items-center justify-center hover:bg-slate-100 transition-colors shadow-sm text-slate-700">
+              <MessageCircle size={18} strokeWidth={2.5} />
           </button>
         </div>
       </div>
@@ -381,7 +387,6 @@ export default function TopBar({ birthdaysCount, onBirthdayClick }) { // ✅ Agr
         <div className="fixed inset-0 z-[110] bg-slate-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 font-sans animate-fade-in text-left">
           <div className="bg-white w-full max-w-sm rounded-t-[32px] sm:rounded-[32px] p-6 shadow-2xl animate-slide-up flex flex-col gap-5 max-h-[90vh] overflow-y-auto no-scrollbar">
             
-            {/* Indicador de arrastre para mobile */}
             <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-2 sm:hidden shrink-0"></div>
 
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
