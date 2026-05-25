@@ -24,7 +24,7 @@ const PUSH_TEMPLATES = [
   { id: 'meet', label: '🎥 Link de Meet', title: '¡Ya estamos en vivo!', body: 'Entrá al link para sumarte a la transmisión.', targetArea: 'todos', targetPath: '/' }
 ];
 
-export default function TopBar() {
+export default function TopBar({ birthdaysCount, onBirthdayClick }) { // ✅ Agregadas las props
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [readIds, setReadIds] = useState([]); 
@@ -288,18 +288,23 @@ export default function TopBar() {
   return (
     <>
       {/* 🌟 CABECERA PREMIUM SOCIALYO STYLE */}
-      {/* Añadido bg-white y eliminado el blur para que coincida con la imagen de referencia */}
-      <div className="sticky top-0 z-40 bg-white px-4 pt-4 pb-3 flex justify-between items-center font-sans border-b border-slate-100/50">
+      <div className="sticky top-0 z-40 bg-white px-4 pt-4 pb-3 flex justify-between items-center font-sans">
         
-        {/* LOGO O TÍTULO (Igual que SocialYo) */}
+        {/* LOGO O TÍTULO */}
         <div className="flex items-center">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 cursor-pointer" onClick={() => navigate('/')}>
+            <h1 className="text-2xl font-black tracking-tighter text-slate-900 cursor-pointer" onClick={() => navigate('/')}>
               CDSApp.
             </h1>
         </div>
         
-        {/* BOTONERA DE ACCIONES (Campanita, Megáfono, Chat) */}
+        {/* BOTONERA DE ACCIONES LIMPÍSIMA (Campanita, Megáfono, Chat, Torta) */}
         <div className="flex items-center gap-2">
+          {birthdaysCount > 0 && (
+            <button onClick={onBirthdayClick} className="w-10 h-10 rounded-full border border-slate-200 bg-white flex items-center justify-center text-amber-500 shadow-sm transition-transform active:scale-90">
+              <Cake size={18} />
+            </button>
+          )}
+
           {userRole === 'pastor' && activeUser && (
             <button onClick={() => setIsPastorPanelOpen(true)} className="w-10 h-10 rounded-full border border-slate-200 bg-white flex items-center justify-center hover:bg-slate-50 transition-colors shadow-sm text-slate-700">
               <Megaphone size={18} />
@@ -308,7 +313,6 @@ export default function TopBar() {
           
           <button onClick={() => setIsOpen(true)} className="relative w-auto px-3 h-10 rounded-full border border-slate-200 bg-white flex items-center justify-center gap-1.5 hover:bg-slate-50 transition-colors shadow-sm text-slate-700 font-semibold text-xs">
               <Bell size={18} />
-              {unreadCount > 0 ? `+${unreadCount}` : ''}
               {unreadCount > 0 && (
                 <span className="absolute top-2 left-2.5 w-1.5 h-1.5 rounded-full bg-red-500"></span>
               )}
