@@ -1,11 +1,18 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { 
-  Home, CalendarDays, Briefcase, LayoutGrid, UserCircle, 
-  BookOpen, HandHeart 
-} from 'lucide-react';
 import { auth, db } from '../firebase';
 import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
+
+// 🚀 IMPORTAMOS HEROICONS (OUTLINE = Inactivo, SOLID = Activo)
+import { 
+  HomeIcon as HomeOutline, CalendarIcon as CalendarOutline, BriefcaseIcon as BriefcaseOutline, 
+  Squares2X2Icon as GridOutline, UserIcon as UserOutline, BookOpenIcon as BookOutline, HeartIcon as HeartOutline 
+} from '@heroicons/react/24/outline';
+
+import { 
+  HomeIcon as HomeSolid, CalendarIcon as CalendarSolid, BriefcaseIcon as BriefcaseSolid, 
+  Squares2X2Icon as GridSolid, UserIcon as UserSolid, BookOpenIcon as BookSolid, HeartIcon as HeartSolid 
+} from '@heroicons/react/24/solid';
 
 export default function BottomNavigation({ dbUser }) {
   const location = useLocation();
@@ -79,26 +86,26 @@ export default function BottomNavigation({ dbUser }) {
   // 3. 🎯 EL FILTRO MAESTRO DE NAVEGACIÓN
   const navItems = isMiembro ? [
     // 🏠 VISTA MIEMBRO (Solo 4 cosas)
-    { path: '/', icon: Home, label: 'Inicio' },
-    { path: '/ofrendar', icon: HandHeart, label: 'Ofrendar' },
-    { path: '/estudio', icon: BookOpen, label: 'Series' },
-    { path: '/perfil', icon: UserCircle, label: 'Perfil', badge: badges.perfil }
+    { path: '/', outline: HomeOutline, solid: HomeSolid },
+    { path: '/ofrendar', outline: HeartOutline, solid: HeartSolid },
+    { path: '/estudio', outline: BookOutline, solid: BookSolid },
+    { path: '/perfil', outline: UserOutline, solid: UserSolid, badge: badges.perfil }
   ] : [
     // 🛠️ VISTA SERVIDOR / PASTOR (Los 5 originales)
-    { path: '/', icon: Home, label: 'Inicio' },
-    { path: '/calendario', icon: CalendarDays, label: 'Agenda', badge: badges.agenda },
-    { path: '/servicios', icon: Briefcase, label: 'Servicios', badge: badges.servicios },
-    { path: '/apps', icon: LayoutGrid, label: 'Apps', badge: badges.apps },
-    { path: '/perfil', icon: UserCircle, label: 'Perfil', badge: badges.perfil }
+    { path: '/', outline: HomeOutline, solid: HomeSolid },
+    { path: '/calendario', outline: CalendarOutline, solid: CalendarSolid, badge: badges.agenda },
+    { path: '/servicios', outline: BriefcaseOutline, solid: BriefcaseSolid, badge: badges.servicios },
+    { path: '/apps', outline: GridOutline, solid: GridSolid, badge: badges.apps },
+    { path: '/perfil', outline: UserOutline, solid: UserSolid, badge: badges.perfil }
   ];
 
   return (
-    // DISEÑO SOCIALYO: Fondo blanco sólido, anclado al fondo, punta a punta, sin texto, activo negro y grueso.
+    // DISEÑO SOCIALYO: Fondo blanco sólido, anclado al fondo, punta a punta.
     <nav className="fixed bottom-0 left-0 right-0 w-full bg-white border-t border-slate-100 z-50 h-[80px]">
       <div className="max-w-md mx-auto flex justify-around items-center h-full px-4 pb-2">
         {navItems.map((item) => {
-          const Icon = item.icon;
           const isActive = path === item.path;
+          const Icon = isActive ? item.solid : item.outline; // Alterna entre relleno y línea
           
           return (
             <Link 
@@ -108,9 +115,7 @@ export default function BottomNavigation({ dbUser }) {
             >
               <div className="relative flex items-center justify-center">
                 <Icon 
-                  size={isActive ? 28 : 24} 
-                  strokeWidth={isActive ? 2.5 : 1.5} 
-                  className={`transition-all duration-300 ${isActive ? 'text-slate-900 fill-slate-900' : 'text-slate-400'}`} 
+                  className={`transition-all duration-300 ${isActive ? 'w-8 h-8 text-slate-900' : 'w-7 h-7 text-slate-400'}`} 
                 />
                 
                 {/* Badge rediseñado: Limpio, pequeño y sin rebote */}
