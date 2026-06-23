@@ -6,7 +6,7 @@ import {
   Youtube, ArrowUpCircle, ArrowDownCircle,
   PlayCircle, StopCircle, Flame, Sparkles, Lock, 
   ClipboardList, CheckCircle2, ChevronLeft, Loader2,
-  Trash2, Edit3, ArrowLeft, Home, FileText, ListMusic, User, Settings, Check
+  Trash2, Edit3, ArrowLeft, Home, FileText, ListMusic, User, Settings, Check, Plus
 } from 'lucide-react';
 import { db, auth } from '../firebase';
 import { 
@@ -765,8 +765,8 @@ export default function MinisterioMusical() {
                 </>
               )}
 
-              <button type="submit" disabled={isUploading} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold text-sm shadow-xl flex items-center justify-center gap-2 mt-6 active:scale-95 transition-transform disabled:opacity-50 uppercase tracking-widest">
-                {isUploading ? <Loader2 className="animate-spin" size={20}/> : <Save size={20}/>} {editingId ? "Guardar Organización" : "Confirmar Actividad"}
+              <button type="submit" disabled={isSaving} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold text-sm shadow-xl flex items-center justify-center gap-2 mt-6 active:scale-95 transition-transform disabled:opacity-50 uppercase tracking-widest">
+                {isSaving ? <Loader2 className="animate-spin" size={20}/> : <Save size={20}/>} {editingId ? "Guardar Organización" : "Confirmar Actividad"}
               </button>
             </form>
           </div>
