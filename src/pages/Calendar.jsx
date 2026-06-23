@@ -233,62 +233,68 @@ export default function CalendarPage() {
     return (
       <div key={ev.id} 
            onClick={() => canAccess ? navigate(`/calendario/${ev.id}`) : setToast({message: "Acceso Privado", type: "error"})}
-           className={`bg-white p-5 rounded-[24px] border border-slate-100 transition-all active:scale-[0.98] cursor-pointer relative shadow-[0_2px_10px_rgba(0,0,0,0.02)] flex gap-4
-           ${isPast ? 'grayscale-[0.6] opacity-70 bg-slate-50/50 shadow-none border-slate-200' : ''} 
-           ${ev.isCena ? 'border-rose-200 bg-rose-50/10' : ''}
-           ${isMyTask && !isPast ? 'border-blue-200 bg-blue-50/10 shadow-[0_4px_15px_rgba(37,99,235,0.05)]' : ''}`}>
+           className={`flex bg-white rounded-[28px] overflow-hidden transition-all active:scale-[0.98] cursor-pointer mb-5
+           ${isPast ? 'grayscale-[0.6] opacity-70 shadow-sm border border-slate-200' : 'shadow-[0_8px_30px_rgb(0,0,0,0.06)] border-0'} 
+           ${ev.isCena ? 'ring-4 ring-rose-500/20' : ''}`}>
         
-        {isMyTask && !isPast && (
-          <div className="absolute -top-2 right-6 bg-blue-600 text-white px-3 py-0.5 rounded-full text-[9px] font-bold tracking-wider shadow-sm border border-white">MI TURNO</div>
-        )}
-
-        {!ev.published && (
-           <div className="absolute -top-2 left-6 bg-amber-500 text-white px-3 py-0.5 rounded-full text-[9px] font-bold tracking-wider shadow-sm border border-white flex items-center gap-1"><EyeOff size={10}/> BORRADOR</div>
-        )}
-
-        <div className={`flex flex-col items-center justify-center px-4 w-16 rounded-[20px] shrink-0 border border-slate-100/50 ${config.light} ${config.text}`}>
-          <span className="text-[10px] font-bold uppercase">{format(new Date(ev.date + 'T00:00:00'), 'MMM', { locale: es })}</span>
-          <span className="text-xl font-bold leading-none mt-0.5">{format(new Date(ev.date + 'T00:00:00'), 'dd')}</span>
+        {/* BLOQUE DE COLOR FUERTE (ESTILO DISEÑO GRÁFICO) */}
+        <div className={`w-24 ${config.color} text-white flex flex-col items-center justify-center p-4 relative overflow-hidden shrink-0`}>
+            {/* Ícono de fondo sutil para dar textura */}
+            {(() => { const Icon = config.icon; return <Icon className="absolute -bottom-3 -left-3 w-16 h-16 opacity-20" /> })()}
+            <span className="text-[10px] font-black uppercase tracking-widest opacity-90 relative z-10">{format(new Date(ev.date + 'T00:00:00'), 'MMM', { locale: es })}</span>
+            <span className="text-3xl font-black leading-none mt-1 relative z-10">{format(new Date(ev.date + 'T00:00:00'), 'dd')}</span>
         </div>
 
-        <div className="flex-1 min-w-0 text-left py-0.5">
-          <div className="flex justify-between items-start">
-            <div className="flex items-center gap-2">
-                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider ${config.color} text-white`}>{config.label}</span>
-                {config.private && <Lock size={12} className="text-slate-400"/>}
-            </div>
-            {['pastor', 'lider'].includes(userRole) && (
-              <div className="flex gap-1">
-                <button onClick={(e) => { e.stopPropagation(); setEditingId(ev.id); setNewEvent(ev); setIsModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-slate-50 rounded-full transition-colors"><Edit3 size={14}/></button>
-                <button onClick={(e) => { e.stopPropagation(); setActionConfirm({ type: 'delete', id: ev.id, title: '¿Borrar?', message: 'Se borrará permanentemente.' }); }} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"><Trash2 size={14}/></button>
-              </div>
-            )}
+        <div className="flex-1 p-5 relative min-w-0 bg-white">
+          {/* ETIQUETAS ABSOLUTAS */}
+          {isMyTask && !isPast && (
+            <div className="absolute top-4 right-4 bg-slate-900 text-white px-3 py-1 rounded-full text-[9px] font-black tracking-widest shadow-sm">MI TURNO</div>
+          )}
+          {!ev.published && (
+            <div className="absolute top-4 right-4 bg-amber-500 text-white px-3 py-1 rounded-full text-[9px] font-black tracking-widest shadow-sm flex items-center gap-1"><EyeOff size={10}/> BORRADOR</div>
+          )}
+
+          <div className="flex items-center gap-2 mb-2 flex-wrap pr-16">
+              <span className={`text-[9px] font-black px-2.5 py-1 rounded-md uppercase tracking-widest ${config.light} ${config.text}`}>
+                {config.label}
+              </span>
+              {config.private && <Lock size={12} className="text-slate-400"/>}
           </div>
           
-          <h4 className="font-bold text-slate-900 text-[15px] leading-tight mt-1.5 truncate">
-            {ev.type === 'ayuno' ? 'Semana de Ayuno Congregacional' : ev.title}
+          <h4 className="font-black text-slate-900 text-[17px] leading-tight uppercase tracking-tighter truncate mt-1">
+            {ev.type === 'ayuno' ? 'Semana de Ayuno' : ev.title}
           </h4>
 
-          <div className="mt-2 space-y-2">
+          <div className="mt-3 flex items-center justify-between">
             {ev.type === 'ayuno' && fastingInfo ? (
-               <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-amber-600 uppercase">Día {fastingInfo.currentDayNum} de {fastingInfo.totalDays}</span>
+               <div className="flex flex-col gap-1.5 w-full">
+                  <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Día {fastingInfo.currentDayNum} de {fastingInfo.totalDays}</span>
                   <div className="flex -space-x-1.5">
                     {fastingInfo.signups.slice(0, 3).map((s, i) => (
-                      <div key={i} className="w-5 h-5 rounded-full border border-white bg-slate-100 overflow-hidden shadow-sm"><img src={`https://ui-avatars.com/api/?name=${s}&background=random&color=fff`} /></div>
+                      <div key={i} className="w-6 h-6 rounded-full border-2 border-white bg-slate-100 overflow-hidden shadow-sm"><img src={`https://ui-avatars.com/api/?name=${s}&background=random&color=fff`} alt={s}/></div>
                     ))}
                   </div>
                </div>
             ) : (
-              <span className="text-[12px] font-semibold text-slate-500 flex items-center gap-1.5"><Clock size={12} className="text-slate-400"/> {ev.time} hs</span>
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                <Clock size={14} className={config.text}/> {ev.time} HS
+              </span>
             )}
-            
-            {progress !== null && (
-              <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden flex border border-slate-50 shadow-inner mt-1">
-                <div className="bg-emerald-500 h-full transition-all duration-700" style={{ width: `${progress}%` }}></div>
+
+            {/* BOTONES ADMINISTRATIVOS */}
+            {['pastor', 'lider'].includes(userRole) && (
+              <div className="flex gap-2">
+                <button onClick={(e) => { e.stopPropagation(); setEditingId(ev.id); setNewEvent(ev); setIsModalOpen(true); }} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-slate-50 rounded-full transition-colors"><Edit3 size={16}/></button>
+                <button onClick={(e) => { e.stopPropagation(); setActionConfirm({ type: 'delete', id: ev.id, title: '¿Borrar Evento?', message: 'Esta acción no se puede deshacer.' }); }} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"><Trash2 size={16}/></button>
               </div>
             )}
           </div>
+          
+          {progress !== null && (
+            <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden flex mt-3">
+              <div className="bg-emerald-500 h-full transition-all duration-700" style={{ width: `${progress}%` }}></div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -297,9 +303,9 @@ export default function CalendarPage() {
   const renderMonthView = () => {
     const days = eachDayOfInterval({ start: startOfWeek(startOfMonth(currentDate)), end: endOfWeek(endOfMonth(currentDate)) });
     return (
-        <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm p-6 animate-fade-in text-left relative overflow-hidden">
-            <div className="grid grid-cols-7 mb-4 border-b border-slate-100 pb-3">
-                {['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'].map(day => <div key={day} className="text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider">{day}</div>)}
+        <div className="bg-white rounded-[32px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-6 mx-4 mb-20 text-left relative overflow-hidden border-0">
+            <div className="grid grid-cols-7 mb-4 border-b border-slate-100 pb-4">
+                {['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'].map(day => <div key={day} className="text-center text-[9px] font-black text-slate-400 uppercase tracking-widest">{day}</div>)}
             </div>
             <div className="grid grid-cols-7 gap-1">
                 {days.map(day => {
@@ -310,13 +316,13 @@ export default function CalendarPage() {
                     return (
                         <div key={day.toString()} 
                             onClick={() => hasEvents && setSelectedDayEvents({ date: day, events: dayEvents })}
-                            className={`aspect-square rounded-full flex flex-col items-center justify-center relative cursor-pointer transition-all active:scale-95
-                                ${!isCurrentMonthDay ? 'opacity-20' : 'text-slate-700'}
-                                ${isToday ? 'bg-blue-600 text-white shadow-md z-10' : 'hover:bg-slate-50'}`}>
-                            <span className="text-sm font-semibold">{format(day, 'd')}</span>
+                            className={`aspect-square rounded-2xl flex flex-col items-center justify-center relative cursor-pointer transition-all active:scale-90
+                                ${!isCurrentMonthDay ? 'opacity-20' : 'text-slate-800'}
+                                ${isToday ? 'bg-slate-900 text-white shadow-lg scale-105 z-10' : 'hover:bg-slate-50'}`}>
+                            <span className="text-xs font-black">{format(day, 'd')}</span>
                             {hasEvents && !isToday && (
-                              <div className="flex gap-0.5 mt-0.5">
-                                {dayEvents.slice(0, 3).map(e => <div key={e.id} className={`w-1 h-1 rounded-full ${OPERATIVE_EVENT_TYPES[e.type]?.color || 'bg-slate-300'}`}></div>)}
+                              <div className="flex gap-1 mt-1">
+                                {dayEvents.slice(0, 3).map(e => <div key={e.id} className={`w-1.5 h-1.5 rounded-full ${OPERATIVE_EVENT_TYPES[e.type]?.color || 'bg-slate-300'}`}></div>)}
                               </div>
                             )}
                         </div>
@@ -328,84 +334,85 @@ export default function CalendarPage() {
   };
 
   return (
-    <div className="pb-24 pt-4 bg-slate-50 min-h-screen animate-fade-in relative font-sans">
+    <div className="pb-24 pt-4 bg-slate-50 min-h-screen relative font-sans">
       
-      {/* 🚀 HEADER ESTILO SOCIALYO */}
-      <div className="px-4 flex justify-between items-center mb-5 max-w-md mx-auto">
+      {/* 🚀 HEADER PREMIUM Y VIBRANTE */}
+      <div className="px-5 flex justify-between items-center mb-6 max-w-md mx-auto">
         <div className="text-left">
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight leading-none">Agenda</h1>
+            <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter leading-none">Agenda</h1>
+            <div className="h-1.5 w-10 bg-blue-600 rounded-full mt-2"></div>
         </div>
         <div className="flex gap-2">
-           <button onClick={() => setViewMode(viewMode === 'list' ? 'calendar' : 'list')} className="w-10 h-10 bg-white rounded-full border border-slate-200 shadow-sm text-slate-600 flex items-center justify-center active:scale-90 transition-all hover:bg-slate-50">
-             {viewMode === 'list' ? <CalIcon size={18}/> : <List size={18}/>}
+           <button onClick={() => setViewMode(viewMode === 'list' ? 'calendar' : 'list')} className="w-12 h-12 bg-white rounded-[18px] shadow-sm text-slate-600 flex items-center justify-center active:scale-90 transition-all hover:bg-slate-50 border border-slate-100">
+             {viewMode === 'list' ? <CalIcon size={20} strokeWidth={2.5}/> : <List size={20} strokeWidth={2.5}/>}
            </button>
         </div>
       </div>
 
-      {/* 🚀 PESTAÑAS TIPO PASTILLERO SOCIALYO */}
-      <div className="px-4 mb-6 max-w-md mx-auto">
-        <div className="bg-white p-1 rounded-full border border-slate-100 flex shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
+      {/* 🚀 PESTAÑAS TIPO PASTILLERO */}
+      <div className="px-5 mb-8 max-w-md mx-auto">
+        <div className="bg-white p-1.5 rounded-[20px] flex shadow-sm border border-slate-100">
           <button onClick={() => setFilterType('mine')} 
-            className={`flex-1 py-2.5 rounded-full text-xs font-bold transition-all duration-300 flex items-center justify-center gap-2
-            ${filterType === 'mine' ? 'bg-blue-600 text-white shadow-sm scale-[1.02]' : 'text-slate-500 hover:text-slate-700'}`}>
-            <UserCheck size={14}/> Mis Turnos
+            className={`flex-1 py-3 rounded-[14px] text-[11px] font-black uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2
+            ${filterType === 'mine' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-700'}`}>
+            <UserCheck size={16}/> Mis Turnos
           </button>
           <button onClick={() => setFilterType('all')} 
-            className={`flex-1 py-2.5 rounded-full text-xs font-bold transition-all duration-300 flex items-center justify-center gap-2
-            ${filterType === 'all' ? 'bg-slate-900 text-white shadow-sm scale-[1.02]' : 'text-slate-500 hover:text-slate-700'}`}>
-            <Globe size={14}/> Toda la agenda
+            className={`flex-1 py-3 rounded-[14px] text-[11px] font-black uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2
+            ${filterType === 'all' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:text-slate-700'}`}>
+            <Globe size={16}/> Global
           </button>
         </div>
       </div>
 
-      {/* 🚀 AVISO BORRADORES SUAVIZADO */}
+      {/* 🚀 AVISO BORRADORES */}
       {['pastor', 'lider'].includes(userRole) && events.some(e => !e.published && isSameMonth(new Date(e.date + 'T00:00:00'), currentDate)) && (
-          <div className="mx-4 max-w-md md:mx-auto bg-amber-50 p-5 rounded-[24px] mb-6 flex items-center justify-between border border-amber-200">
-            <div className="flex items-center gap-3 text-amber-700 text-left">
-              <Megaphone size={20}/>
-              <div><p className="text-[13px] font-bold tracking-tight">Borradores</p><p className="text-[10px] font-semibold opacity-80">Listos para lanzar</p></div>
+          <div className="mx-5 max-w-md md:mx-auto bg-amber-500 p-5 rounded-[24px] mb-8 flex items-center justify-between shadow-lg shadow-amber-500/30">
+            <div className="flex items-center gap-3 text-white text-left">
+              <Megaphone size={24}/>
+              <div><p className="text-[11px] font-black uppercase tracking-widest">Borradores</p><p className="text-[9px] font-bold opacity-90 uppercase">Listos para lanzar</p></div>
             </div>
-            <button onClick={() => setActionConfirm({ type: 'publish', title: '¿Publicar Agenda?', message: 'Se notificará a toda la iglesia.' })} disabled={isPublishing} className="bg-amber-500 text-white px-5 py-2 rounded-xl text-xs font-bold shadow-sm active:scale-95 transition-all">
+            <button onClick={() => setActionConfirm({ type: 'publish', title: '¿Publicar Agenda?', message: 'Se notificará a toda la iglesia.' })} disabled={isPublishing} className="bg-white text-amber-600 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm active:scale-95 transition-all">
               {isPublishing ? <Loader2 size={14} className="animate-spin"/> : 'Publicar'}
             </button>
           </div>
       )}
 
-      {/* 🚀 SELECTOR DE MES LIMPIO */}
-      <div className="px-4 flex items-center justify-between mb-6 max-w-md mx-auto">
-        <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="w-10 h-10 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-50 shadow-sm active:scale-90 transition-transform"><ChevronLeft size={20} /></button>
-        <h2 className="text-lg font-bold text-slate-900 capitalize tracking-tight">{format(currentDate, 'MMMM yyyy', { locale: es })}</h2>
-        <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="w-10 h-10 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-50 shadow-sm active:scale-90 transition-transform"><ChevronRight size={20} /></button>
+      {/* 🚀 SELECTOR DE MES */}
+      <div className="px-5 flex items-center justify-between mb-8 max-w-md mx-auto">
+        <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="w-12 h-12 bg-white rounded-[18px] flex items-center justify-center text-slate-500 hover:bg-slate-50 shadow-sm active:scale-90 transition-transform border border-slate-100"><ChevronLeft size={24} /></button>
+        <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">{format(currentDate, 'MMMM yyyy', { locale: es })}</h2>
+        <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="w-12 h-12 bg-white rounded-[18px] flex items-center justify-center text-slate-500 hover:bg-slate-50 shadow-sm active:scale-90 transition-transform border border-slate-100"><ChevronRight size={24} /></button>
       </div>
 
-      <div className="flex-1 max-w-md mx-auto w-full px-4">
-        {loading ? <div className="py-24 text-center opacity-40"><Loader2 className="animate-spin mx-auto text-slate-400" size={32}/></div> : (viewMode === 'calendar' ? renderMonthView() : (
-          <div className="space-y-6 pb-8">
+      <div className="flex-1 max-w-md mx-auto w-full px-5">
+        {loading ? <div className="py-24 text-center"><Loader2 className="animate-spin mx-auto text-blue-600" size={40}/></div> : (viewMode === 'calendar' ? renderMonthView() : (
+          <div className="space-y-10 pb-8">
             {processedEvents.upcoming.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-3 px-2">
-                  <span className="text-[11px] font-bold text-blue-600 uppercase tracking-wider">Próximamente</span>
-                  <div className="h-[1px] flex-1 bg-blue-100"></div>
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 px-1 mb-2">
+                  <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Lo que viene</span>
+                  <div className="h-[2px] flex-1 bg-blue-100 rounded-full"></div>
                 </div>
                 {processedEvents.upcoming.map(ev => renderEventCard(ev, false))}
               </div>
             )}
             {processedEvents.past.length > 0 && (
-              <div className="space-y-3 mt-6">
-                <div className="flex items-center gap-3 px-2">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Anteriores</span>
-                  <div className="h-[1px] flex-1 bg-slate-200"></div>
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 px-1 mb-2">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Anteriormente</span>
+                  <div className="h-[2px] flex-1 bg-slate-200 rounded-full"></div>
                 </div>
                 {processedEvents.past.map(ev => renderEventCard(ev, true))}
               </div>
             )}
             
             {processedEvents.upcoming.length === 0 && processedEvents.past.length === 0 && (
-              <div className="text-center py-12 px-4 bg-white rounded-[32px] border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.02)] mx-4">
-                <div className="w-16 h-16 bg-slate-50 border border-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm">
-                   <CalIcon size={24} className="text-slate-300" />
+              <div className="text-center py-16 px-6 bg-white rounded-[32px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] mx-2">
+                <div className="w-20 h-20 bg-slate-50 rounded-[24px] flex items-center justify-center mx-auto mb-4">
+                   <CalIcon size={32} className="text-slate-300" strokeWidth={2.5} />
                 </div>
-                <p className="text-sm font-semibold text-slate-500">No hay actividades para mostrar.</p>
+                <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">No hay actividades</p>
               </div>
             )}
           </div>
@@ -414,31 +421,31 @@ export default function CalendarPage() {
 
       {/* 🚀 BOTÓN FLOTANTE CREAR */}
       {['pastor', 'lider'].includes(userRole) && (
-        <button onClick={() => { setEditingId(null); setNewEvent({ title: '', type: 'culto', date: '', endDate: '', time: '19:30', published: false }); setIsModalOpen(true); }} className="fixed bottom-24 right-4 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg shadow-blue-600/30 flex items-center justify-center z-40 active:scale-90 transition-all"><Plus size={28} strokeWidth={2.5}/></button>
+        <button onClick={() => { setEditingId(null); setNewEvent({ title: '', type: 'culto', date: '', endDate: '', time: '19:30', published: false }); setIsModalOpen(true); }} className="fixed bottom-24 right-5 w-16 h-16 bg-slate-900 text-white rounded-[22px] shadow-[0_10px_25px_rgba(0,0,0,0.3)] flex items-center justify-center z-40 active:scale-90 transition-transform"><Plus size={32} strokeWidth={2.5}/></button>
       )}
 
       {/* 🚀 MODAL EVENTOS DEL DÍA (CALENDARIO) */}
       {selectedDayEvents && (
-        <div className="fixed inset-0 z-[600] bg-slate-900/40 backdrop-blur-sm flex items-end justify-center animate-fade-in" onClick={() => setSelectedDayEvents(null)}>
-          <div className="bg-white w-full max-w-md rounded-t-[32px] p-6 sm:p-8 shadow-2xl animate-slide-up border border-slate-100" onClick={e => e.stopPropagation()}>
-            <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-4 shrink-0"></div>
-            <div className="flex justify-between items-center mb-6 text-left">
+        <div className="fixed inset-0 z-[600] bg-slate-900/40 backdrop-blur-sm flex items-end justify-center" onClick={() => setSelectedDayEvents(null)}>
+          <div className="bg-white w-full max-w-md rounded-t-[40px] p-8 shadow-2xl border border-slate-100" onClick={e => e.stopPropagation()}>
+            <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-6 shrink-0"></div>
+            <div className="flex justify-between items-center mb-8 text-left">
               <div>
-                <h3 className="text-xl font-bold text-slate-900 tracking-tight capitalize">{format(selectedDayEvents.date, "EEEE d", { locale: es })}</h3>
-                <p className="text-xs font-semibold text-blue-600 capitalize mt-0.5">{format(selectedDayEvents.date, "MMMM", { locale: es })}</p>
+                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{format(selectedDayEvents.date, "EEEE d", { locale: es })}</h3>
+                <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-1">{format(selectedDayEvents.date, "MMMM", { locale: es })}</p>
               </div>
-              <button onClick={() => setSelectedDayEvents(null)} className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-200"><X size={18}/></button>
+              <button onClick={() => setSelectedDayEvents(null)} className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100"><X size={20}/></button>
             </div>
-            <div className="space-y-3 max-h-[50vh] overflow-y-auto no-scrollbar pb-6 text-left">
+            <div className="space-y-4 max-h-[50vh] overflow-y-auto no-scrollbar pb-6 text-left">
               {selectedDayEvents.events.map(ev => (
-                <button key={ev.id} onClick={() => { setSelectedDayEvents(null); navigate(`/calendario/${ev.id}`); }} className="w-full flex items-center justify-between p-4 bg-white rounded-[20px] border border-slate-100 shadow-sm active:scale-95 transition-all hover:border-blue-200">
-                  <div className="flex items-center gap-4">
-                    <div className={`p-3 rounded-xl ${OPERATIVE_EVENT_TYPES[ev.type]?.color || 'bg-slate-200'} text-white shadow-sm`}>
-                      {(() => { const Icon = OPERATIVE_EVENT_TYPES[ev.type]?.icon || Church; return <Icon size={20}/> })()}
+                <button key={ev.id} onClick={() => { setSelectedDayEvents(null); navigate(`/calendario/${ev.id}`); }} className="w-full flex items-center justify-between p-5 bg-white rounded-[24px] shadow-[0_4px_20px_rgb(0,0,0,0.04)] active:scale-95 transition-all border border-slate-50">
+                  <div className="flex items-center gap-5">
+                    <div className={`p-4 rounded-[18px] ${OPERATIVE_EVENT_TYPES[ev.type]?.color || 'bg-slate-200'} text-white shadow-md`}>
+                      {(() => { const Icon = OPERATIVE_EVENT_TYPES[ev.type]?.icon || Church; return <Icon size={24}/> })()}
                     </div>
-                    <div><p className="font-bold text-slate-900 text-sm tracking-tight truncate">{ev.title}</p><p className="text-[11px] font-semibold text-slate-500 mt-0.5">{ev.time} hs</p></div>
+                    <div><p className="font-black text-slate-900 text-[15px] uppercase tracking-tighter truncate">{ev.title}</p><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{ev.time} hs</p></div>
                   </div>
-                  <ArrowRight size={18} className="text-slate-300" />
+                  <ArrowRight size={20} className="text-slate-300" strokeWidth={3} />
                 </button>
               ))}
             </div>
@@ -448,98 +455,98 @@ export default function CalendarPage() {
 
       {/* 🚀 MODAL CREAR/EDITAR (BOTTOM SHEET PREMIUM) */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[500] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
-            <div className="bg-white w-full max-w-md rounded-t-[32px] sm:rounded-[32px] p-6 sm:p-8 shadow-2xl max-h-[90vh] overflow-y-auto no-scrollbar relative animate-slide-up text-left border border-slate-100">
-                <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-4 sm:hidden shrink-0"></div>
+        <div className="fixed inset-0 z-[500] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm">
+            <div className="bg-white w-full max-w-md rounded-t-[40px] sm:rounded-[40px] p-8 shadow-2xl max-h-[90vh] overflow-y-auto no-scrollbar relative text-left">
+                <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-6 sm:hidden shrink-0"></div>
                 
-                <div className="flex justify-between items-center mb-6 border-b pb-4 border-slate-100">
+                <div className="flex justify-between items-center mb-8">
                     <div>
-                      <h2 className="text-lg font-bold text-slate-900 tracking-tight leading-none">{editingId ? 'Editar Actividad' : 'Nueva Actividad'}</h2>
-                      <p className="text-xs font-semibold text-blue-600 mt-1">Agenda Ministerial</p>
+                      <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none">{editingId ? 'Editar' : 'Planificar'}</h2>
+                      <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-2">Actividad Ministerial</p>
                     </div>
-                    <button onClick={() => setIsModalOpen(false)} className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-200"><X size={18}/></button>
+                    <button onClick={() => setIsModalOpen(false)} className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100"><X size={20}/></button>
                 </div>
 
-                <div className="space-y-5">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-slate-500 ml-1">Título del Evento</label>
-                      <input placeholder="Ej. Culto General..." className="w-full p-3.5 bg-white border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 text-sm shadow-sm transition-all" value={newEvent.title} onChange={e => setNewEvent({...newEvent, title: e.target.value})} />
+                <div className="space-y-6">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Título del Evento</label>
+                      <input placeholder="Ej. Culto General..." className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[24px] font-black text-slate-900 outline-none focus:border-blue-500 text-[15px] uppercase transition-all" value={newEvent.title} onChange={e => setNewEvent({...newEvent, title: e.target.value})} />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                          <label className="text-xs font-bold text-slate-500 ml-1">Fecha de Inicio</label>
-                          <input type="date" className="w-full p-3.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-blue-500 shadow-sm" value={newEvent.date} onChange={e => setNewEvent({...newEvent, date: e.target.value})} />
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2 col-span-2 sm:col-span-1">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Inicio</label>
+                          <input type="date" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-[20px] text-xs font-black uppercase outline-none focus:border-blue-500" value={newEvent.date} onChange={e => setNewEvent({...newEvent, date: e.target.value})} />
                         </div>
                         {newEvent.type === 'ayuno' && (
-                          <div className="space-y-1.5 col-span-2 sm:col-span-1 animate-fade-in">
-                            <label className="text-xs font-bold text-slate-500 ml-1">Fecha de Fin</label>
-                            <input type="date" className="w-full p-3.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-blue-500 shadow-sm" value={newEvent.endDate} onChange={e => setNewEvent({...newEvent, endDate: e.target.value})} />
+                          <div className="space-y-2 col-span-2 sm:col-span-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Fin</label>
+                            <input type="date" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-[20px] text-xs font-black uppercase outline-none focus:border-blue-500" value={newEvent.endDate} onChange={e => setNewEvent({...newEvent, endDate: e.target.value})} />
                           </div>
                         )}
-                        <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                          <label className="text-xs font-bold text-slate-500 ml-1">Horario</label>
-                          <input type="time" className="w-full p-3.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-blue-500 shadow-sm" value={newEvent.time} onChange={e => setNewEvent({...newEvent, time: e.target.value})} />
+                        <div className="space-y-2 col-span-2 sm:col-span-1">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Horario</label>
+                          <input type="time" className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-[20px] text-xs font-black uppercase outline-none focus:border-blue-500" value={newEvent.time} onChange={e => setNewEvent({...newEvent, time: e.target.value})} />
                         </div>
                     </div>
 
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-slate-500 ml-1">Categoría</label>
-                      <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Categoría</label>
+                      <div className="grid grid-cols-2 gap-3">
                           {Object.entries(OPERATIVE_EVENT_TYPES).map(([key, config]) => (
-                              <button key={key} onClick={() => setNewEvent({...newEvent, type: key})} className={`flex items-center gap-2 p-3 rounded-xl border text-[11px] font-bold transition-all ${newEvent.type === key ? config.color + ' border-transparent text-white shadow-sm' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
-                                <config.icon size={14}/> {config.label}
+                              <button key={key} onClick={() => setNewEvent({...newEvent, type: key})} className={`flex items-center gap-3 p-4 rounded-[20px] border-2 text-[10px] font-black uppercase tracking-wider transition-all ${newEvent.type === key ? config.color + ' border-transparent text-white shadow-md' : 'bg-white border-slate-100 text-slate-400 hover:bg-slate-50'}`}>
+                                <config.icon size={18}/> {config.label}
                               </button>
                           ))}
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between p-4 rounded-2xl bg-white border border-slate-200 shadow-sm cursor-pointer mt-2" onClick={() => setNewEvent({...newEvent, published: !newEvent.published})}>
-                        <div className="flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${newEvent.published ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
-                              {newEvent.published ? <CheckCircle size={16} /> : <EyeOff size={16} />}
+                    <div className="flex items-center justify-between p-5 rounded-[24px] border-2 cursor-pointer mt-4 transition-all duration-300 ${newEvent.published ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-100'}" onClick={() => setNewEvent({...newEvent, published: !newEvent.published})}>
+                        <div className="flex items-center gap-4">
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${newEvent.published ? 'bg-emerald-500 text-white shadow-md' : 'bg-slate-100 text-slate-400'}`}>
+                              {newEvent.published ? <CheckCircle size={20} /> : <EyeOff size={20} />}
                             </div>
                             <div className="flex flex-col">
-                              <span className="text-sm font-bold text-slate-800">Publicar al guardar</span>
-                              <span className="text-[10px] text-slate-500">Visible para toda la iglesia</span>
+                              <span className={`text-[13px] font-black uppercase tracking-tight ${newEvent.published ? 'text-emerald-700' : 'text-slate-700'}`}>Publicar al guardar</span>
+                              <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mt-1">Visible para todos</span>
                             </div>
                         </div>
-                        <div className={`w-12 h-6 rounded-full relative transition-all duration-300 ${newEvent.published ? 'bg-emerald-500' : 'bg-slate-200'}`}>
-                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all duration-300 ${newEvent.published ? 'right-1' : 'left-1'}`}></div>
+                        <div className={`w-14 h-7 rounded-full relative transition-all duration-300 ${newEvent.published ? 'bg-emerald-500' : 'bg-slate-200'}`}>
+                            <div className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow-sm transition-all duration-300 ${newEvent.published ? 'right-1' : 'left-1'}`}></div>
                         </div>
                     </div>
 
-                    <button onClick={handleSaveEvent} disabled={isUploading} className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow-sm shadow-blue-600/30 mt-4 active:scale-95 transition-all disabled:opacity-50 text-sm flex items-center justify-center gap-2">
-                        {isUploading ? <Loader2 className="animate-spin" size={18}/> : (editingId ? "Guardar Cambios" : "Confirmar Actividad")}
+                    <button onClick={handleSaveEvent} disabled={isUploading} className="w-full bg-slate-900 text-white font-black py-5 rounded-[24px] shadow-xl mt-6 active:scale-95 transition-all disabled:opacity-50 text-[11px] uppercase tracking-widest flex items-center justify-center gap-3">
+                        {isUploading ? <Loader2 className="animate-spin" size={20}/> : (editingId ? "Guardar Cambios" : "Confirmar Actividad")}
                     </button>
                 </div>
             </div>
         </div>
       )}
 
-      {/* 🚀 MODAL CONFIRMACIÓN REDISEÑADO */}
+      {/* 🚀 MODAL CONFIRMAR */}
       {actionConfirm && (
-        <div className="fixed inset-0 z-[1000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white w-full max-w-xs rounded-[32px] p-8 shadow-2xl text-center border border-slate-100 animate-scale-in">
-            <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
-              <AlertCircle size={32} className="text-red-500" strokeWidth={2.5}/>
+        <div className="fixed inset-0 z-[1000] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-white w-full max-w-xs rounded-[40px] p-8 shadow-2xl text-center">
+            <div className="w-20 h-20 rounded-full bg-rose-50 flex items-center justify-center mx-auto mb-5">
+              <AlertCircle size={40} className="text-rose-500" strokeWidth={2.5}/>
             </div>
-            <h4 className="font-bold text-slate-900 text-lg mb-2 leading-tight">{actionConfirm.title}</h4>
-            <p className="text-xs text-slate-500 font-medium mb-8 leading-relaxed">{actionConfirm.message}</p>
-            <div className="flex flex-col gap-2">
-              <button onClick={executeConfirmedAction} className="w-full py-3.5 rounded-xl font-bold text-sm bg-red-600 text-white shadow-sm active:scale-95 transition-all">Confirmar</button>
-              <button onClick={() => setActionConfirm(null)} className="w-full py-3.5 rounded-xl font-bold text-sm text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all">Cancelar</button>
+            <h4 className="font-black text-slate-900 text-xl mb-3 uppercase tracking-tighter">{actionConfirm.title}</h4>
+            <p className="text-[11px] text-slate-400 font-bold uppercase tracking-widest mb-8 leading-relaxed">{actionConfirm.message}</p>
+            <div className="flex flex-col gap-3">
+              <button onClick={executeConfirmedAction} className="w-full py-4 rounded-[20px] font-black text-[11px] uppercase tracking-widest bg-rose-600 text-white shadow-xl active:scale-95 transition-transform">Confirmar</button>
+              <button onClick={() => setActionConfirm(null)} className="w-full py-4 rounded-[20px] font-black text-[11px] uppercase tracking-widest text-slate-400 bg-slate-50 active:scale-95 transition-transform">Cancelar</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 🚀 TOAST SUAVE */}
+      {/* 🚀 TOAST */}
       {toast && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[600] animate-slide-up w-max max-w-[90vw]">
-          <div className={`flex items-center gap-3 px-5 py-3.5 rounded-full shadow-lg border ${toast.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-900 text-white border-slate-700'}`}>
-            {toast.type === 'success' ? <CheckCircle size={18}/> : <AlertCircle size={18}/>}
-            <span className="text-xs font-bold tracking-wide">{toast.message}</span>
+        <div className="fixed bottom-28 left-6 right-6 z-[600]">
+          <div className={`flex items-center gap-4 px-6 py-4 rounded-[24px] shadow-2xl border-2 ${toast.type === 'success' ? 'bg-emerald-600 border-emerald-400' : 'bg-slate-900 border-slate-700'} text-white`}>
+            {toast.type === 'success' ? <CheckCircle size={20}/> : <AlertCircle size={20}/>}
+            <span className="text-[11px] font-black uppercase tracking-widest">{toast.message}</span>
           </div>
         </div>
       )}
