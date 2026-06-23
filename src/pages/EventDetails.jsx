@@ -21,15 +21,15 @@ import { toast } from 'sonner';
 import { OPERATIVE_EVENT_TYPES } from './Calendar';
 import { ONESIGNAL_CONFIG } from '../oneSignalConfig';
 
-// ✅ DICCIONARIO DE ROLES CON SUS DESCRIPCIONES (NUEVO)
-const ROLE_INFO = {
-  bienvenida: { title: 'Bienvenida', desc: 'Son quienes dan el primer contacto con la gente con sonrisas, abrazos y palabras lindas.' },
-  porteria: { title: 'Portero', desc: 'Es quien cierra la iglesia al final del culto, apaga las luces, controla arriba que estén cerradas las ventanas, el gas, todas las puertas, el portón y etc.' },
-  oracion_inicio: { title: 'Oración de inicio', desc: 'Es quien ora con el micrófono a las 19:30hs antes de cada culto.' },
-  pasillos: { title: 'Pasillos', desc: 'Son quienes acomodan a las personas mientras van llegando, es decir, saber qué sillas hay disponibles y acomodar según la cantidad de personas que sea y etc.' },
-  seguridad_autos: { title: 'Seguridad de autos', desc: 'Es quien controla en el afuera de la iglesia todos los autos de la cuadra.' },
-  control_banos: { title: 'Control de baños', desc: 'Son quienes limpian los baños antes, durante y después del culto, reponen papel y controlan quiénes entran.' },
-  servicio_altar: { title: 'Servicio altar', desc: 'Es quien repone el agua al predicador, equipo de alabanza, está atento a cualquier indicación, es quien apaga y prende las luces a gusto de la persona que coordina.' }
+// ✅ DICCIONARIO DE DESCRIPCIONES DE ROLES
+const ROLE_DESCRIPTIONS = {
+  bienvenida: "Son quienes dan el primer contacto con la gente con sonrisas, abrazos y palabras lindas.",
+  porteria: "Es quien cierra la iglesia al final del culto, apaga las luces, controla arriba que estén cerradas las ventanas, el gas, todas las puertas, el portón y etc.",
+  oracion_inicio: "Es quien ora con el micrófono a las 19:30hs antes de cada culto.",
+  pasillos: "Son quienes acomodan a las personas mientras van llegando, es decir saber qué sillas hay disponibles y acomodar según la cantidad de personas que sea y etc.",
+  seguridad_autos: "Es quien controla en el afuera de la iglesia todos los autos de la cuadra.",
+  control_banos: "Son quienes limpian los baños antes durante y después del culto, reponen papel y controlan quiénes entran.",
+  servicio_altar: "Es quien repone el agua al predicador, equipo de alabanza, está atento a cualquier indicación es quien apaga y prende las luces a gusto de la persona que coordina."
 };
 
 export default function EventDetails() {
@@ -50,7 +50,7 @@ export default function EventDetails() {
   const [personSearchTerm, setPersonSearchTerm] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [infoModal, setInfoModal] = useState(null); // Estado para el modal de Información
+  const [infoModal, setInfoModal] = useState(null); // ✅ ESTADO DEL MODAL DE INFO
 
   const currentUser = auth.currentUser;
 
@@ -88,7 +88,7 @@ export default function EventDetails() {
     fetchData();
   }, [id, currentUser, navigate]);
 
-  // --- 2. LÓGICA DE NORMALIZACIÓN ---
+  // ✅ 2. LÓGICA DE NORMALIZACIÓN
   const getAssignedForRole = (roleKey) => {
     if (!assignments) return [];
     const foundKey = Object.keys(assignments).find(k => 
@@ -120,7 +120,7 @@ export default function EventDetails() {
     setAssignments(newAssignments);
   };
 
-  // --- 3. NOTIFICACIONES ONESIGNAL ---
+  // ✅ FIX APK: Función de notificación usando Configuración Centralizada
   const sendPush = async (userNames, eventTitle) => {
     const KEY = ONESIGNAL_CONFIG.REST_API_KEY;
     const APP_ID = ONESIGNAL_CONFIG.APP_ID;
@@ -210,13 +210,29 @@ export default function EventDetails() {
     } catch (e) { toast.error("Error"); }
   };
 
-  if (loading || !event) return <div className="fixed inset-0 flex items-center justify-center bg-white z-[200]"><Loader2 className="animate-spin text-blue-600" size={40}/></div>;
+  const toggleCheck = async (sector) => {
+    const currentChecklist = event.checklist || {};
+    const newState = !currentChecklist[sector]?.done;
+    const updated = { ...currentChecklist, [sector]: { ...currentChecklist[sector], done: newState } };
+    setEvent({ ...event, checklist: updated });
+    await updateDoc(doc(db, 'events', id), { checklist: updated });
+  };
+
+  const saveComment = async (sector, text) => {
+    const currentChecklist = event.checklist || {};
+    const updated = { ...currentChecklist, [sector]: { ...currentChecklist[sector], comment: text } };
+    setEvent({ ...event, checklist: updated });
+    await updateDoc(doc(db, 'events', id), { checklist: updated });
+    toast.success("Comentario guardado");
+  };
+
+  if (loading || !event) return <div className="fixed inset-0 flex items-center justify-center bg-white z-[200]"><Loader2 className="animate-spin text-brand-600" size={40}/></div>;
 
   if (event.restricted) return (
-    <div className="fixed inset-0 bg-white z-[200] flex flex-col items-center justify-center p-10 text-center font-sans">
-      <Lock size={60} className="text-slate-200 mb-6"/><h2 className="text-2xl font-bold text-slate-900">Ensayo Privado</h2>
-      <p className="text-slate-500 font-medium text-sm mt-4 leading-relaxed">Solo el ministerio de Alabanza puede ver el detalle.</p>
-      <button onClick={() => navigate('/calendario')} className="mt-10 py-3.5 px-8 bg-blue-600 text-white rounded-full font-bold text-sm shadow-sm active:scale-95 transition-all">Volver</button>
+    <div className="fixed inset-0 bg-white z-[200] flex flex-col items-center justify-center p-10 text-center font-outfit">
+      <Lock size={60} className="text-slate-200 mb-6"/><h2 className="text-2xl font-black text-slate-900 uppercase">Ensayo Privado</h2>
+      <p className="text-slate-500 font-bold text-xs uppercase mt-4 leading-loose">Solo el ministerio de Alabanza puede ver el detalle.</p>
+      <button onClick={() => navigate('/calendario')} className="mt-12 py-4 px-10 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase shadow-2xl active:scale-95 transition-all">Volver</button>
     </div>
   );
 
@@ -225,7 +241,7 @@ export default function EventDetails() {
   const amIAssigned = Object.values(event.assignments || {}).flat().includes(dbUser?.displayName);
   const shouldPulse = amIAssigned && myStatus === 'pending';
 
-  // --- ESTRUCTURA ACTUALIZADA CON LOS NUEVOS LABELS ---
+  // ✅ LABELS CORREGIDOS SEGÚN LO SOLICITADO
   const getStructure = () => {
     if (event.type === 'limpieza' || event.type === 'mantenimiento') {
       return [{ section: 'SECTORES Y TRABAJO', roles: [
@@ -238,7 +254,7 @@ export default function EventDetails() {
     return [
       { section: 'LIDERAZGO', roles: [
         { key: 'predicador', label: 'Predicador', icon: MessageSquare, type: 'single' },
-        { key: 'oracion_inicio', label: 'Oración de inicio', icon: Heart, type: 'single' },
+        { key: 'oracion_inicio', label: 'Oración de Inicio', icon: Heart, type: 'single' },
         { key: 'palabra_ofrenda', label: 'Palabra de Ofrenda', icon: Globe, type: 'single' }
       ]},
       { section: 'MINISTERIO DE ALABANZA', roles: [
@@ -251,7 +267,7 @@ export default function EventDetails() {
       ]},
       { section: 'OPERATIVO / UJIERES', roles: [
         { key: 'bienvenida', label: 'Bienvenida', icon: Users, type: 'multi' },
-        { key: 'porteria', label: 'Portero', icon: Lock, type: 'single' },
+        { key: 'porteria', label: 'Portería', icon: Lock, type: 'single' },
         { key: 'pasillos', label: 'Pasillos', icon: ArrowRight, type: 'multi' },
         { key: 'seguridad_autos', label: 'Seguridad de autos', icon: Car, type: 'multi' },
         { key: 'control_banos', label: 'Control de baños', icon: Eraser, type: 'multi' },
@@ -270,120 +286,129 @@ export default function EventDetails() {
   const confirmedCount = allAssigned.filter(name => event.confirmations?.[name] === 'confirmed').length;
 
   return (
-    <div className="fixed inset-0 z-[100] bg-slate-50 flex flex-col animate-fade-in font-sans">
+    <div className={`fixed inset-0 z-[100] bg-slate-50 flex flex-col animate-fade-in overflow-hidden font-outfit ${event.isCena ? 'border-t-[12px] border-rose-600' : ''}`}>
       
-      {/* --- HEADER ESTILO SOCIALYO --- */}
-      <header className="bg-white px-5 pt-12 pb-6 flex items-center justify-between shadow-sm z-10 shrink-0">
-        <button onClick={() => navigate('/calendario')} className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center text-slate-600 hover:bg-slate-100 transition-colors">
-            <X size={20} />
-        </button>
-        <div className="flex-1 text-center truncate px-4">
+      {/* HEADER DE ALTO IMPACTO MANTENIENDO TU ESTRUCTURA */}
+      <header className={`relative pt-12 pb-24 px-6 ${event.isCena ? 'bg-rose-600' : Config.color} transition-all`}>
+        <div className="absolute top-4 left-4 right-4 flex justify-between items-center">
+            <button onClick={() => navigate('/calendario')} className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white active:scale-90 transition-transform"><X size={24} /></button>
+            <div className="flex gap-2">
+                {['pastor', 'lider'].includes(dbUser?.role) && (
+                    <>
+                      <button onClick={() => setIsEditingMeta(!isEditingMeta)} className={`p-2 rounded-[14px] shadow-sm ${isEditingMeta ? 'bg-white text-slate-900' : 'bg-white/20 text-white'}`}><Edit3 size={20}/></button>
+                      <button onClick={saveAll} className="px-6 py-2 bg-emerald-500 text-white rounded-[14px] font-black text-[10px] uppercase shadow-lg shadow-emerald-900/20 flex items-center gap-2 active:scale-95 transition-transform">
+                        {isSaving ? <Loader2 className="animate-spin" size={14}/> : <Save size={14}/>}
+                        {isSaving ? '...' : 'Guardar'}
+                      </button>
+                      <button onClick={() => setIsAssigning(!isAssigning)} className={`px-5 py-2 rounded-[14px] font-black text-[10px] uppercase shadow-sm active:scale-95 transition-transform ${isAssigning ? 'bg-white text-slate-900' : 'bg-white/20 text-white'}`}>{isAssigning ? 'Salir' : 'Asignar'}</button>
+                    </>
+                )}
+            </div>
+        </div>
+
+        <div className="flex flex-col items-center text-center mt-6">
+            <div className="w-24 h-24 bg-white rounded-[35px] shadow-2xl flex items-center justify-center mb-6 border-4 border-white/20 relative">
+                <Config.icon size={48} className={event.isCena ? 'text-rose-600' : Config.text} strokeWidth={2.5} />
+            </div>
             {isEditingMeta ? (
-              <input className="bg-slate-50 border border-slate-200 text-slate-900 text-sm font-bold text-center w-full outline-none focus:border-blue-500 rounded-lg px-3 py-1.5" value={event.title} onChange={e => setEvent({...event, title: e.target.value})} />
+              <input className="bg-white/20 text-white text-3xl font-black text-center w-full outline-none uppercase tracking-tighter rounded-[20px] py-2 px-4 shadow-inner" value={event.title} onChange={e => setEvent({...event, title: e.target.value})} />
             ) : (
-              <h1 className="text-lg font-bold text-slate-900 truncate">{event.title}</h1>
+              <h1 className="text-3xl font-black text-white uppercase tracking-tighter px-4 leading-none">{event.title}</h1>
             )}
-            <p className="text-[11px] font-semibold text-slate-400 capitalize">{format(parseISO(event.date), "EEEE d 'de' MMMM", { locale: es })} • {event.time} hs</p>
+            {event.isCena && <div className="mt-4 bg-white/20 backdrop-blur-md px-5 py-1.5 rounded-full text-[10px] font-black text-white uppercase tracking-widest shadow-sm border border-white/30">Cena del Señor</div>}
         </div>
-        <div className="flex gap-2">
-            {['pastor', 'lider'].includes(dbUser?.role) && (
-                <>
-                  {isAssigning || isEditingMeta ? (
-                    <button onClick={saveAll} className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-all">
-                      {isSaving ? <Loader2 className="animate-spin" size={18}/> : <Save size={18}/>}
-                    </button>
-                  ) : (
-                    <div className="flex gap-1.5">
-                      <button onClick={() => setIsEditingMeta(!isEditingMeta)} className="w-9 h-9 bg-slate-50 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors"><Edit3 size={16}/></button>
-                      <button onClick={() => setIsAssigning(!isAssigning)} className="w-9 h-9 bg-blue-50 rounded-full flex items-center justify-center text-blue-600 hover:bg-blue-100 transition-colors"><UserPlus size={16}/></button>
-                    </div>
-                  )}
-                </>
-            )}
-        </div>
+        <div className="absolute -bottom-1 left-0 right-0 h-16 bg-slate-50 rounded-t-[50px]"></div>
       </header>
 
-      {/* --- CONTENIDO --- */}
-      <div className="flex-1 overflow-y-auto px-4 pb-32 no-scrollbar">
-        <div className="max-w-md mx-auto space-y-6 pt-6">
-            
-            {/* ESTADO CONFIRMACIÓN */}
+      <div className="flex-1 overflow-y-auto bg-slate-50 px-6 pb-60 no-scrollbar">
+        <div className="max-w-xl mx-auto space-y-8">
             {shouldPulse && !isAssigning && (
-                <div className="bg-blue-600 border border-blue-500 p-5 rounded-[24px] flex flex-col items-center animate-pulse-soft shadow-lg shadow-blue-600/20">
-                    <p className="text-[11px] font-bold text-white uppercase tracking-wider mb-4">¿Confirmas tu servicio hoy?</p>
-                    <div className="flex gap-3 w-full">
-                        <button onClick={() => handleConfirm('confirmed')} className="flex-1 bg-white text-blue-600 py-3 rounded-xl font-bold text-xs shadow-sm active:scale-95 transition-all">Sí, Asistiré</button>
-                        <button onClick={() => handleConfirm('declined')} className="px-5 py-3 bg-blue-700 text-white rounded-xl font-bold text-xs hover:bg-blue-800 transition-all">No puedo</button>
+                <div className="bg-brand-600 border-4 border-brand-200/30 p-8 rounded-[40px] flex flex-col items-center animate-pulse shadow-2xl shadow-brand-600/30 mt-2">
+                    <p className="text-[11px] font-black text-white uppercase tracking-widest mb-5">¿Confirmas tu servicio hoy?</p>
+                    <div className="flex gap-4 w-full">
+                        <button onClick={() => handleConfirm('confirmed')} className="flex-1 bg-white text-brand-600 py-4 rounded-2xl font-black text-[11px] uppercase shadow-xl active:scale-95 transition-transform">Sí, Asistiré</button>
+                        <button onClick={() => handleConfirm('declined')} className="px-6 py-4 bg-brand-700 text-white rounded-2xl font-black text-[11px] uppercase border border-brand-500 shadow-inner active:scale-95 transition-transform">No puedo</button>
                     </div>
                 </div>
             )}
 
+            <div className="flex flex-wrap gap-4 justify-center mt-2">
+                <div className="flex items-center gap-3 bg-white px-6 py-4 rounded-[20px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100">
+                   <div className={`p-2 rounded-xl ${Config.light} ${Config.text}`}><Calendar size={16}/></div>
+                   <span className="text-[12px] font-black text-slate-800 uppercase tracking-tight">{format(parseISO(event.date), "d 'de' MMMM yyyy", { locale: es })}</span>
+                </div>
+                <div className="flex items-center gap-3 bg-white px-6 py-4 rounded-[20px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100">
+                   <div className={`p-2 rounded-xl ${Config.light} ${Config.text}`}><Clock size={16}/></div>
+                   <span className="text-[12px] font-black text-slate-800 uppercase tracking-tight">{event.time} hs</span>
+                </div>
+            </div>
+
             {event.type === 'ayuno' ? (
-              <div className="space-y-4">
-                {fastingDays.map((day) => {
-                  const dStr = format(day, 'yyyy-MM-dd');
-                  const signups = event.fastingSignups?.[dStr] || [];
-                  const isMe = signups.includes(dbUser?.displayName);
-                  return (
-                    <div key={dStr} className={`p-5 rounded-[24px] border transition-all flex flex-col gap-3 ${isMe ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-100 shadow-sm'}`}>
-                      <div className="flex justify-between items-center text-left">
-                        <div>
-                          <p className="text-[11px] font-semibold text-slate-500 capitalize">{format(day, "EEEE", { locale: es })}</p>
-                          <p className="text-lg font-bold text-slate-900">{format(day, "d 'de' MMMM", { locale: es })}</p>
+              <div className="space-y-6 mt-8">
+                <div className="grid gap-5">
+                  {fastingDays.map((day) => {
+                    const dStr = format(day, 'yyyy-MM-dd');
+                    const signups = event.fastingSignups?.[dStr] || [];
+                    const isMe = signups.includes(dbUser?.displayName);
+                    return (
+                      <div key={dStr} className={`p-6 rounded-[35px] border-2 transition-all flex flex-col gap-4 ${isMe ? 'bg-white border-amber-500 shadow-2xl shadow-amber-500/10' : 'bg-white border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)]'}`}>
+                        <div className="flex justify-between items-center text-left">
+                          <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{format(day, "EEEE", { locale: es })}</p>
+                            <p className="text-2xl font-black text-slate-900 uppercase tracking-tighter mt-1">{format(day, "d 'de' MMMM", { locale: es })}</p>
+                          </div>
+                          <button onClick={() => toggleFast(dStr)} className={`p-5 rounded-[20px] shadow-lg active:scale-90 transition-transform ${isMe ? 'bg-amber-500 text-white shadow-amber-500/30' : 'bg-slate-50 text-slate-400 border border-slate-100'}`}>{isMe ? <UserMinus size={24} strokeWidth={2.5}/> : <UserPlus size={24} strokeWidth={2.5}/>}</button>
                         </div>
-                        <button onClick={() => toggleFast(dStr)} className={`w-12 h-12 rounded-full flex items-center justify-center shadow-sm active:scale-90 transition-all ${isMe ? 'bg-amber-500 text-white' : 'bg-slate-50 text-slate-400 border border-slate-100'}`}>{isMe ? <UserMinus size={20}/> : <UserPlus size={20}/>}</button>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             ) : (
-              <div className="space-y-8">
+              <div className="space-y-12 mt-10">
                 {getStructure().map((sec, sIdx) => (
                   <div key={sIdx} className="text-left">
-                    <div className="flex items-center gap-2 mb-4 px-1">
-                        <div className="h-1.5 w-1.5 rounded-full bg-slate-300"></div>
-                        <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{sec.section}</h3>
-                    </div>
-                    
-                    <div className="grid gap-3">
+                    <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] mb-6 border-l-4 border-brand-500 pl-4 ml-1">{sec.section}</h3>
+                    <div className="grid gap-5">
                       {sec.roles.map(role => {
                         const assigned = getAssignedForRole(role.key);
                         return (
-                          <div key={role.key} className="bg-white p-5 rounded-[24px] border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
-                            <div className="flex justify-between items-center mb-4">
+                          <div key={role.key} className="bg-white p-7 rounded-[40px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 relative">
+                            <div className="flex justify-between items-center mb-6">
                               <div className="flex items-center gap-3">
-                                <div className={`p-2.5 rounded-[14px] ${Config.light} ${Config.text}`}><role.icon size={16}/></div>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm font-bold text-slate-900">{role.label}</span>
-                                  {/* ✅ ÍCONO DE INFORMACIÓN AL LADO DEL ROL */}
-                                  {ROLE_INFO[role.key] && (
-                                    <button onClick={(e) => { e.stopPropagation(); setInfoModal(ROLE_INFO[role.key]); }} className="text-blue-500 p-1 rounded-full hover:bg-blue-50 transition-colors">
-                                      <Info size={16} strokeWidth={2.5}/>
+                                <div className="p-3 bg-slate-50 rounded-[14px] text-slate-500 border border-slate-100 shadow-sm"><role.icon size={20} strokeWidth={2.5}/></div>
+                                <div className="flex items-center">
+                                  <span className="text-[13px] font-black text-slate-900 uppercase tracking-tight">{role.label}</span>
+                                  {/* ✅ NUEVO: BOTÓN DE INFORMACIÓN */}
+                                  {ROLE_DESCRIPTIONS[role.key] && (
+                                    <button 
+                                      onClick={(e) => { e.stopPropagation(); setInfoModal({ title: role.label, desc: ROLE_DESCRIPTIONS[role.key] }); }} 
+                                      className="ml-2 text-brand-500 hover:bg-brand-50 p-2 rounded-full transition-colors active:scale-90"
+                                    >
+                                      <Info size={16} strokeWidth={3} />
                                     </button>
                                   )}
                                 </div>
                               </div>
                               {isAssigning && (
-                                <button onClick={() => { setActiveRoleKey(role.key); setActiveRoleConfig(role); setIsSelectorOpen(true); }} className="w-8 h-8 flex items-center justify-center bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-full transition-colors"><Plus size={16}/></button>
+                                <button onClick={() => { setActiveRoleKey(role.key); setActiveRoleConfig(role); setIsSelectorOpen(true); }} className="p-3 bg-brand-50 text-brand-600 rounded-[14px] shadow-sm active:scale-90 transition-transform"><Plus size={20} strokeWidth={3}/></button>
                               )}
                             </div>
-                            
-                            <div className="space-y-2">
-                              {assigned.length === 0 ? <p className="text-[11px] font-medium text-slate-400 italic px-1">Sin personal asignado</p> : 
+                            <div className="space-y-3">
+                              {assigned.length === 0 ? <p className="text-[10px] font-black text-slate-300 uppercase italic px-2 py-2">Sin personal</p> : 
                                assigned.map((p, pIdx) => {
                                  const userObj = users.find(u => u.displayName === p);
                                  return (
-                                  <div key={pIdx} className="flex items-center gap-3 bg-slate-50/50 p-3 rounded-2xl border border-slate-100">
-                                    <div className="w-10 h-10 rounded-[12px] overflow-hidden bg-slate-200 shrink-0">
+                                  <div key={pIdx} className="flex items-center gap-4 bg-slate-50 p-4 rounded-[24px] border border-slate-100 shadow-sm">
+                                    <div className="w-14 h-14 rounded-[18px] overflow-hidden border-2 border-white shadow-md bg-slate-200 shrink-0">
                                       <img src={userObj?.photoURL || `https://ui-avatars.com/api/?name=${p}&background=random`} className="w-full h-full object-cover" />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                      <h4 className="font-bold text-slate-800 text-xs truncate">{p}</h4>
-                                      <p className="text-[10px] font-semibold text-slate-500 uppercase">{userObj?.area || 'Miembro'}</p>
+                                      <h4 className="font-black text-slate-900 text-[13px] truncate uppercase tracking-tight">{p}</h4>
+                                      <p className="text-[9px] font-black text-brand-600 uppercase tracking-widest mt-1">{userObj?.area || 'Miembro'}</p>
                                     </div>
-                                    {event.confirmations?.[p] === 'confirmed' && <CheckCircle size={16} className="text-emerald-500 shrink-0"/>}
-                                    {isAssigning && <button onClick={() => { setActiveRoleKey(role.key); handleTogglePerson(p); }} className="w-8 h-8 flex items-center justify-center text-red-500 hover:bg-red-50 rounded-full ml-1"><X size={16}/></button>}
+                                    {event.confirmations?.[p] === 'confirmed' && <CheckCircle size={22} className="text-emerald-500 shrink-0"/>}
+                                    {isAssigning && <button onClick={() => { setActiveRoleKey(role.key); handleTogglePerson(p); }} className="text-rose-500 ml-2 p-2 bg-white rounded-full shadow-sm active:scale-90 transition-transform"><X size={18} strokeWidth={3}/></button>}
                                   </div>
                                 )})}
                             </div>
@@ -394,31 +419,28 @@ export default function EventDetails() {
                   </div>
                 ))}
 
-                {/* ROLES EXTRA CREADOS DINÁMICAMENTE */}
+                {/* ROLES EXTRA */}
                 {Object.keys(assignments).filter(k => {
                   const fixedKeys = getStructure().flatMap(s => s.roles.map(r => r.key.toLowerCase().replace(/[\s_]/g, '')));
                   const normalizedK = k.toLowerCase().replace(/[\s_]/g, '');
                   return !fixedKeys.includes(normalizedK) && assignments[k]?.length > 0;
                 }).length > 0 && (
-                  <div className="text-left mt-8 pb-4">
-                    <div className="flex items-center gap-2 mb-4 px-1">
-                        <div className="h-1.5 w-1.5 rounded-full bg-amber-400"></div>
-                        <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Asignaciones Extra</h3>
-                    </div>
-                    <div className="grid gap-3">
+                  <div className="text-left mt-10 pb-10">
+                    <h3 className="text-[11px] font-black text-amber-500 uppercase tracking-[0.3em] mb-6 border-l-4 border-amber-500 pl-4 ml-1 italic">Asignaciones Extra</h3>
+                    <div className="grid gap-5">
                       {Object.keys(assignments).filter(k => {
                         const fixedKeys = getStructure().flatMap(s => s.roles.map(r => r.key.toLowerCase().replace(/[\s_]/g, '')));
                         const normalizedK = k.toLowerCase().replace(/[\s_]/g, '');
                         return !fixedKeys.includes(normalizedK);
                       }).map(extraKey => (
-                        <div key={extraKey} className="bg-white p-5 rounded-[24px] border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
-                           <div className="flex items-center gap-3 mb-4">
-                              <div className="p-2.5 bg-amber-50 text-amber-600 rounded-[14px]"><Users size={16}/></div>
-                              <span className="text-sm font-bold text-slate-900 capitalize">{extraKey.replace(/_/g, ' ')}</span>
+                        <div key={extraKey} className="bg-white p-7 rounded-[40px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100">
+                           <div className="flex items-center gap-4 mb-6">
+                              <div className="p-3 bg-amber-50 text-amber-600 rounded-[14px] shadow-sm"><Users size={20} strokeWidth={2.5}/></div>
+                              <span className="text-[13px] font-black text-slate-900 uppercase tracking-tight">{extraKey.replace(/_/g, ' ')}</span>
                            </div>
-                           <div className="space-y-2">
+                           <div className="space-y-3">
                              {getAssignedForRole(extraKey).map((p, pIdx) => (
-                               <div key={pIdx} className="font-bold text-slate-700 text-xs bg-slate-50 p-3.5 rounded-xl border border-slate-100">{p}</div>
+                               <div key={pIdx} className="font-black text-slate-800 text-[11px] uppercase tracking-wider bg-slate-50 p-5 rounded-[20px] border border-slate-100 shadow-sm">{p}</div>
                              ))}
                            </div>
                         </div>
@@ -431,67 +453,62 @@ export default function EventDetails() {
         </div>
       </div>
 
-      {/* --- BARRA FLOTANTE DE ESTADO (ESTILO SOCIALYO) --- */}
-      {!isAssigning && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-md bg-white p-2 rounded-[24px] shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-slate-100 z-50 flex items-center justify-between animate-slide-up">
-            <div className="pl-4">
-              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Servidores</p>
-              <h4 className="text-lg font-bold text-slate-900 leading-none mt-1">{confirmedCount} <span className="text-slate-300 mx-0.5">/</span> {allAssigned.length}</h4>
-            </div>
-            <button onClick={() => navigate(-1)} className="bg-blue-600 text-white px-6 py-3.5 rounded-[18px] font-bold text-sm active:scale-95 transition-all shadow-sm">Volver</button>
-        </div>
-      )}
+      {/* BARRA DE ESTADO */}
+      <div className="fixed bottom-0 left-0 right-0 p-8 bg-slate-900 rounded-t-[50px] shadow-[0_-10px_40px_rgba(0,0,0,0.2)] z-50 flex items-center justify-between animate-slide-up border-t border-slate-800">
+          <div className="text-left">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Estado General</p>
+            <h4 className="text-3xl font-black text-white tracking-tighter leading-none">{confirmedCount} <span className="text-slate-600 mx-1">/</span> {allAssigned.length}</h4>
+          </div>
+          <button onClick={() => navigate(-1)} className="bg-slate-800 text-white px-10 py-5 rounded-[22px] font-black text-[11px] uppercase active:scale-95 transition-transform shadow-lg border border-slate-700">Entendido</button>
+      </div>
 
-      {/* --- MODAL DE INFORMACIÓN (BOTTOM SHEET) --- */}
+      {/* ✅ MODAL DE INFORMACIÓN (LA "i") */}
       {infoModal && (
-        <div className="fixed inset-0 z-[600] bg-slate-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in" onClick={() => setInfoModal(null)}>
-            <div className="bg-white w-full max-w-md rounded-t-[32px] sm:rounded-[32px] p-6 sm:p-8 shadow-2xl animate-slide-up relative text-left" onClick={e => e.stopPropagation()}>
-                <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-6 sm:hidden shrink-0"></div>
-                <div className="flex items-center gap-4 mb-4">
-                    <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                      <Info size={24} strokeWidth={2.5}/>
-                    </div>
-                    <h3 className="text-lg font-bold text-slate-900 leading-tight">{infoModal.title}</h3>
-                </div>
-                <p className="text-sm text-slate-600 leading-relaxed font-medium mb-8 px-1">{infoModal.desc}</p>
-                <button onClick={() => setInfoModal(null)} className="w-full bg-slate-100 text-slate-700 hover:bg-slate-200 font-bold py-4 rounded-2xl active:scale-95 transition-all text-sm">Entendido</button>
+        <div className="fixed inset-0 z-[1000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6 animate-fade-in" onClick={() => setInfoModal(null)}>
+          <div className="bg-white w-full max-w-sm rounded-[40px] p-8 shadow-2xl relative animate-scale-in border border-slate-100" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setInfoModal(null)} className="absolute top-5 right-5 p-2 bg-slate-50 rounded-full text-slate-400 active:scale-90 transition-transform">
+              <X size={20} strokeWidth={3} />
+            </button>
+            <div className="w-16 h-16 bg-brand-50 text-brand-500 rounded-[20px] flex items-center justify-center mb-6 shadow-sm border border-brand-100">
+              <Info size={32} strokeWidth={2.5}/>
             </div>
+            <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter mb-4 leading-none">{infoModal.title}</h3>
+            <div className="w-12 h-1.5 bg-brand-500 rounded-full mb-6 shadow-sm"></div>
+            <p className="text-[13px] font-bold text-slate-600 leading-relaxed">{infoModal.desc}</p>
+            <button onClick={() => setInfoModal(null)} className="w-full mt-8 py-5 bg-slate-900 text-white rounded-[20px] font-black text-[11px] uppercase tracking-widest active:scale-95 transition-transform shadow-xl">
+              Entendido
+            </button>
+          </div>
         </div>
       )}
 
-      {/* --- SELECTOR DE PERSONAL --- */}
+      {/* SELECTOR DE PERSONAL */}
       {isSelectorOpen && (
-        <div className="fixed inset-0 z-[300] bg-slate-900/60 backdrop-blur-sm flex items-end justify-center" onClick={() => setIsSelectorOpen(false)}>
-          <div className="bg-white w-full max-w-md rounded-t-[32px] h-[88vh] flex flex-col animate-slide-up shadow-2xl relative overflow-hidden border border-slate-100" onClick={e => e.stopPropagation()}>
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center text-left bg-white shrink-0">
-               <div>
-                 <h3 className="font-bold text-slate-900 text-lg">Asignar Personal</h3>
-                 <p className="text-[11px] font-semibold text-blue-600 mt-0.5">Gestión de áreas</p>
-               </div>
-               <button onClick={() => setIsSelectorOpen(false)} className="w-8 h-8 bg-slate-50 flex items-center justify-center rounded-full active:scale-90 text-slate-500"><X size={18}/></button>
+        <div className="fixed inset-0 z-[300] bg-slate-900/90 backdrop-blur-md flex items-end justify-center" onClick={() => setIsSelectorOpen(false)}>
+          <div className="bg-white w-full max-w-md rounded-t-[50px] h-[88vh] flex flex-col animate-slide-up shadow-2xl relative overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="p-8 border-b border-slate-100 flex justify-between items-center text-left bg-white shrink-0">
+               <div><h3 className="font-black text-slate-900 text-lg uppercase tracking-tight leading-none">Asignar Personal</h3><p className="text-[10px] font-black text-brand-600 uppercase tracking-widest mt-1.5">CDS Plátanos</p></div>
+               <button onClick={() => setIsSelectorOpen(false)} className="p-3 bg-slate-50 rounded-full active:scale-90 transition-transform"><X size={20} strokeWidth={3}/></button>
             </div>
-            <div className="p-4 flex gap-2 overflow-x-auto no-scrollbar border-b border-slate-50 bg-slate-50/50 shrink-0">
+            <div className="p-5 flex gap-3 overflow-x-auto no-scrollbar border-b border-slate-100 bg-slate-50/50 shrink-0">
                {['Alabanza', 'Ujieres', 'Multimedia', 'Niños', 'Limpieza'].map(area => (
-                 <button key={area} onClick={() => assignGroup(area)} className="px-4 py-2 bg-white text-slate-700 rounded-full text-xs font-bold border border-slate-200 shadow-sm active:scale-95 whitespace-nowrap">+ Grupo {area}</button>
+                 <button key={area} onClick={() => assignGroup(area)} className="px-6 py-3 bg-white text-brand-600 rounded-[14px] text-[10px] font-black uppercase border-2 border-brand-100 shadow-sm active:scale-95 transition-transform whitespace-nowrap">+ Grupo {area}</button>
                ))}
             </div>
-            <div className="p-4 bg-white shrink-0">
-              <div className="bg-slate-50 rounded-[16px] px-4 py-3.5 flex items-center gap-3 border border-slate-100">
-                <Search size={18} className="text-slate-400"/>
-                <input autoFocus type="text" placeholder="Buscar por nombre..." className="w-full text-sm font-semibold outline-none bg-transparent text-slate-800 placeholder-slate-400" value={personSearchTerm} onChange={e => setPersonSearchTerm(e.target.value)}/>
+            <div className="p-5 bg-white shrink-0">
+              <div className="bg-slate-50 rounded-[20px] px-6 py-5 flex items-center gap-3 shadow-inner border border-slate-100">
+                <Search size={20} className="text-slate-400" strokeWidth={2.5}/>
+                <input autoFocus type="text" placeholder="Buscar por nombre..." className="w-full text-[13px] font-black outline-none bg-transparent placeholder-slate-400 uppercase tracking-wide" value={personSearchTerm} onChange={e => setPersonSearchTerm(e.target.value)}/>
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-2 no-scrollbar pb-10">
+            <div className="flex-1 overflow-y-auto p-5 space-y-3 no-scrollbar pb-32">
               {users.filter(u => u.displayName?.toLowerCase().includes(personSearchTerm.toLowerCase())).map(u => {
                 const isAlready = getAssignedForRole(activeRoleKey).includes(u.displayName);
                 return (
-                  <button key={u.id} onClick={() => handleTogglePerson(u.displayName)} className={`w-full flex items-center gap-4 p-3.5 rounded-[20px] border transition-all text-left ${isAlready ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-white border-slate-100 hover:border-blue-200'}`}>
-                    <div className="w-10 h-10 rounded-[12px] bg-slate-100 overflow-hidden shrink-0"><img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}&background=random`} className="w-full h-full object-cover" /></div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`font-bold text-sm truncate ${isAlready ? 'text-white' : 'text-slate-800'}`}>{u.displayName}</p>
-                      <p className={`text-[10px] font-semibold uppercase mt-0.5 ${isAlready ? 'text-blue-200' : 'text-slate-400'}`}>{u.area || 'Miembro'}</p>
-                    </div>
-                    {isAlready ? <CheckCircle size={18} className="text-white"/> : <Plus size={18} className="text-slate-300"/>}
+                  <button key={u.id} onClick={() => handleTogglePerson(u.displayName)} className={`w-full flex items-center gap-5 p-5 rounded-[24px] border-2 transition-all text-left ${isAlready ? 'bg-brand-600 border-brand-600 text-white shadow-xl' : 'bg-white border-slate-100 hover:border-slate-200'}`}>
+                    <div className="w-14 h-14 rounded-[18px] border-2 border-white overflow-hidden shadow-sm shrink-0 bg-slate-200"><img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}&background=random`} className="w-full h-full object-cover" /></div>
+                    <div className="flex-1 min-w-0"><p className={`font-black text-[13px] uppercase truncate ${isAlready ? 'text-white' : 'text-slate-800'}`}>{u.displayName}</p><p className={`text-[9px] font-black uppercase mt-1 tracking-widest ${isAlready ? 'text-white/70' : 'text-slate-400'}`}>{u.area || 'Miembro'}</p></div>
+                    {isAlready ? <CheckCircle size={24} className="text-white"/> : <Plus size={24} className="text-slate-300"/>}
                   </button>
                 );
               })}
