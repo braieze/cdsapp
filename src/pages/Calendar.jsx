@@ -233,22 +233,22 @@ export default function CalendarPage() {
     return (
       <div key={ev.id} 
            onClick={() => canAccess ? navigate(`/calendario/${ev.id}`) : setToast({message: "Acceso Privado", type: "error"})}
-           className={`bg-white p-5 rounded-[24px] border border-slate-100 transition-all active:scale-[0.98] cursor-pointer relative shadow-sm flex gap-4 mx-4
-           ${isPast ? 'grayscale-[0.6] opacity-60 bg-slate-50/50 shadow-none' : ''} 
+           className={`bg-white p-5 rounded-[24px] border border-slate-100 transition-all active:scale-[0.98] cursor-pointer relative shadow-[0_2px_10px_rgba(0,0,0,0.02)] flex gap-4
+           ${isPast ? 'grayscale-[0.6] opacity-70 bg-slate-50/50 shadow-none border-slate-200' : ''} 
            ${ev.isCena ? 'border-rose-200 bg-rose-50/10' : ''}
-           ${isMyTask && !isPast ? 'border-blue-200 bg-blue-50/10' : ''}`}>
+           ${isMyTask && !isPast ? 'border-blue-200 bg-blue-50/10 shadow-[0_4px_15px_rgba(37,99,235,0.05)]' : ''}`}>
         
         {isMyTask && !isPast && (
-          <div className="absolute -top-3 right-6 bg-blue-600 text-white px-3 py-0.5 rounded-full text-[9px] font-bold tracking-wider shadow-sm border-2 border-white">MI TURNO</div>
+          <div className="absolute -top-2 right-6 bg-blue-600 text-white px-3 py-0.5 rounded-full text-[9px] font-bold tracking-wider shadow-sm border border-white">MI TURNO</div>
         )}
 
         {!ev.published && (
-           <div className="absolute -top-3 left-6 bg-amber-500 text-white px-3 py-0.5 rounded-full text-[9px] font-bold tracking-wider shadow-sm border-2 border-white flex items-center gap-1"><EyeOff size={10}/> BORRADOR</div>
+           <div className="absolute -top-2 left-6 bg-amber-500 text-white px-3 py-0.5 rounded-full text-[9px] font-bold tracking-wider shadow-sm border border-white flex items-center gap-1"><EyeOff size={10}/> BORRADOR</div>
         )}
 
-        <div className={`flex flex-col items-center justify-center w-14 h-16 rounded-[18px] shrink-0 ${config.light} ${config.text}`}>
+        <div className={`flex flex-col items-center justify-center px-4 w-16 rounded-[20px] shrink-0 border border-slate-100/50 ${config.light} ${config.text}`}>
           <span className="text-[10px] font-bold uppercase">{format(new Date(ev.date + 'T00:00:00'), 'MMM', { locale: es })}</span>
-          <span className="text-xl font-bold leading-none">{format(new Date(ev.date + 'T00:00:00'), 'dd')}</span>
+          <span className="text-xl font-bold leading-none mt-0.5">{format(new Date(ev.date + 'T00:00:00'), 'dd')}</span>
         </div>
 
         <div className="flex-1 min-w-0 text-left py-0.5">
@@ -259,7 +259,7 @@ export default function CalendarPage() {
             </div>
             {['pastor', 'lider'].includes(userRole) && (
               <div className="flex gap-1">
-                <button onClick={(e) => { e.stopPropagation(); setEditingId(ev.id); setNewEvent(ev); setIsModalOpen(true); }} className="p-1.5 text-slate-400 hover:bg-slate-50 rounded-full transition-colors"><Edit3 size={14}/></button>
+                <button onClick={(e) => { e.stopPropagation(); setEditingId(ev.id); setNewEvent(ev); setIsModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-slate-50 rounded-full transition-colors"><Edit3 size={14}/></button>
                 <button onClick={(e) => { e.stopPropagation(); setActionConfirm({ type: 'delete', id: ev.id, title: '¿Borrar?', message: 'Se borrará permanentemente.' }); }} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"><Trash2 size={14}/></button>
               </div>
             )}
@@ -280,7 +280,7 @@ export default function CalendarPage() {
                   </div>
                </div>
             ) : (
-              <span className="text-[11px] font-semibold text-slate-500 flex items-center gap-1.5"><Clock size={12} className="text-slate-400"/> {ev.time} hs</span>
+              <span className="text-[12px] font-semibold text-slate-500 flex items-center gap-1.5"><Clock size={12} className="text-slate-400"/> {ev.time} hs</span>
             )}
             
             {progress !== null && (
@@ -297,7 +297,7 @@ export default function CalendarPage() {
   const renderMonthView = () => {
     const days = eachDayOfInterval({ start: startOfWeek(startOfMonth(currentDate)), end: endOfWeek(endOfMonth(currentDate)) });
     return (
-        <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm p-6 animate-fade-in mx-4 mb-20 text-left relative overflow-hidden">
+        <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm p-6 animate-fade-in text-left relative overflow-hidden">
             <div className="grid grid-cols-7 mb-4 border-b border-slate-100 pb-3">
                 {['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'].map(day => <div key={day} className="text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider">{day}</div>)}
             </div>
@@ -331,20 +331,20 @@ export default function CalendarPage() {
     <div className="pb-24 pt-4 bg-slate-50 min-h-screen animate-fade-in relative font-sans">
       
       {/* 🚀 HEADER ESTILO SOCIALYO */}
-      <div className="px-4 flex justify-between items-center mb-5">
+      <div className="px-4 flex justify-between items-center mb-5 max-w-md mx-auto">
         <div className="text-left">
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight leading-none">Agenda</h1>
         </div>
         <div className="flex gap-2">
-           <button onClick={() => setViewMode(viewMode === 'list' ? 'calendar' : 'list')} className="w-10 h-10 bg-white rounded-full border border-slate-200 shadow-sm text-slate-600 flex items-center justify-center active:scale-90 transition-all">
+           <button onClick={() => setViewMode(viewMode === 'list' ? 'calendar' : 'list')} className="w-10 h-10 bg-white rounded-full border border-slate-200 shadow-sm text-slate-600 flex items-center justify-center active:scale-90 transition-all hover:bg-slate-50">
              {viewMode === 'list' ? <CalIcon size={18}/> : <List size={18}/>}
            </button>
         </div>
       </div>
 
       {/* 🚀 PESTAÑAS TIPO PASTILLERO SOCIALYO */}
-      <div className="px-4 mb-6">
-        <div className="bg-white p-1 rounded-full border border-slate-100 flex shadow-sm">
+      <div className="px-4 mb-6 max-w-md mx-auto">
+        <div className="bg-white p-1 rounded-full border border-slate-100 flex shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
           <button onClick={() => setFilterType('mine')} 
             className={`flex-1 py-2.5 rounded-full text-xs font-bold transition-all duration-300 flex items-center justify-center gap-2
             ${filterType === 'mine' ? 'bg-blue-600 text-white shadow-sm scale-[1.02]' : 'text-slate-500 hover:text-slate-700'}`}>
@@ -360,7 +360,7 @@ export default function CalendarPage() {
 
       {/* 🚀 AVISO BORRADORES SUAVIZADO */}
       {['pastor', 'lider'].includes(userRole) && events.some(e => !e.published && isSameMonth(new Date(e.date + 'T00:00:00'), currentDate)) && (
-          <div className="mx-4 bg-amber-50 p-5 rounded-[24px] mb-6 flex items-center justify-between border border-amber-200">
+          <div className="mx-4 max-w-md md:mx-auto bg-amber-50 p-5 rounded-[24px] mb-6 flex items-center justify-between border border-amber-200">
             <div className="flex items-center gap-3 text-amber-700 text-left">
               <Megaphone size={20}/>
               <div><p className="text-[13px] font-bold tracking-tight">Borradores</p><p className="text-[10px] font-semibold opacity-80">Listos para lanzar</p></div>
@@ -372,18 +372,18 @@ export default function CalendarPage() {
       )}
 
       {/* 🚀 SELECTOR DE MES LIMPIO */}
-      <div className="px-4 flex items-center justify-between mb-6">
+      <div className="px-4 flex items-center justify-between mb-6 max-w-md mx-auto">
         <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="w-10 h-10 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-50 shadow-sm active:scale-90 transition-transform"><ChevronLeft size={20} /></button>
         <h2 className="text-lg font-bold text-slate-900 capitalize tracking-tight">{format(currentDate, 'MMMM yyyy', { locale: es })}</h2>
         <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="w-10 h-10 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-50 shadow-sm active:scale-90 transition-transform"><ChevronRight size={20} /></button>
       </div>
 
-      <div className="flex-1 max-w-md mx-auto">
+      <div className="flex-1 max-w-md mx-auto w-full px-4">
         {loading ? <div className="py-24 text-center opacity-40"><Loader2 className="animate-spin mx-auto text-slate-400" size={32}/></div> : (viewMode === 'calendar' ? renderMonthView() : (
-          <div className="space-y-8 pb-8">
+          <div className="space-y-6 pb-8">
             {processedEvents.upcoming.length > 0 && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 px-4">
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 px-2">
                   <span className="text-[11px] font-bold text-blue-600 uppercase tracking-wider">Próximamente</span>
                   <div className="h-[1px] flex-1 bg-blue-100"></div>
                 </div>
@@ -391,8 +391,8 @@ export default function CalendarPage() {
               </div>
             )}
             {processedEvents.past.length > 0 && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 px-4">
+              <div className="space-y-3 mt-6">
+                <div className="flex items-center gap-3 px-2">
                   <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Anteriores</span>
                   <div className="h-[1px] flex-1 bg-slate-200"></div>
                 </div>
@@ -401,11 +401,11 @@ export default function CalendarPage() {
             )}
             
             {processedEvents.upcoming.length === 0 && processedEvents.past.length === 0 && (
-              <div className="text-center py-10 px-4">
-                <div className="w-16 h-16 bg-white border border-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm">
-                   <CalendarDays size={24} className="text-slate-300" />
+              <div className="text-center py-12 px-4 bg-white rounded-[32px] border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.02)] mx-4">
+                <div className="w-16 h-16 bg-slate-50 border border-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm">
+                   <CalIcon size={24} className="text-slate-300" />
                 </div>
-                <p className="text-sm font-semibold text-slate-500">No hay actividades para mostrar este mes.</p>
+                <p className="text-sm font-semibold text-slate-500">No hay actividades para mostrar.</p>
               </div>
             )}
           </div>
@@ -431,7 +431,7 @@ export default function CalendarPage() {
             </div>
             <div className="space-y-3 max-h-[50vh] overflow-y-auto no-scrollbar pb-6 text-left">
               {selectedDayEvents.events.map(ev => (
-                <button key={ev.id} onClick={() => { setSelectedDayEvents(null); navigate(`/calendario/${ev.id}`); }} className="w-full flex items-center justify-between p-4 bg-white rounded-[20px] border border-slate-200 shadow-sm active:scale-95 transition-all hover:border-blue-200">
+                <button key={ev.id} onClick={() => { setSelectedDayEvents(null); navigate(`/calendario/${ev.id}`); }} className="w-full flex items-center justify-between p-4 bg-white rounded-[20px] border border-slate-100 shadow-sm active:scale-95 transition-all hover:border-blue-200">
                   <div className="flex items-center gap-4">
                     <div className={`p-3 rounded-xl ${OPERATIVE_EVENT_TYPES[ev.type]?.color || 'bg-slate-200'} text-white shadow-sm`}>
                       {(() => { const Icon = OPERATIVE_EVENT_TYPES[ev.type]?.icon || Church; return <Icon size={20}/> })()}
