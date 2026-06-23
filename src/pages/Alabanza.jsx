@@ -6,18 +6,18 @@ import {
   Youtube, ArrowUpCircle, ArrowDownCircle,
   PlayCircle, StopCircle, Flame, Sparkles, Lock, 
   ClipboardList, CheckCircle2, ChevronLeft, Loader2,
-  Trash2, Edit3, ArrowLeft, Home, FileText, ListMusic, User, Settings
+  Trash2, Edit3, ArrowLeft, Home, FileText, ListMusic, User, Settings, Check
 } from 'lucide-react';
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
 import { 
   collection, query, orderBy, onSnapshot, doc, setDoc, 
-  serverTimestamp, where, updateDoc, deleteDoc
+  serverTimestamp, where, updateDoc, deleteDoc, getDocs
 } from 'firebase/firestore';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameWeek, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 
-// --- LÓGICA DEL TRANSPOSITOR CORREGIDA (AHORA INFALIBLE CON MINÚSCULAS) ---
+// --- LÓGICA DEL TRANSPOSITOR CORREGIDA ---
 const scale = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const flatToSharp = { 'Db': 'C#', 'Eb': 'D#', 'Gb': 'F#', 'Ab': 'G#', 'Bb': 'A#' };
 
@@ -26,12 +26,12 @@ const getIndex = (c) => {
   const match = c.trim().match(/^([a-gA-G][b#B]?)/);
   if (!match) return -1;
   let root = match[1].charAt(0).toUpperCase() + match[1].slice(1);
-  if (root.length === 2 && root[1].toUpperCase() === 'B') root = root[0] + 'b'; // arregla el bemol mal escrito
+  if (root.length === 2 && root[1].toUpperCase() === 'B') root = root[0] + 'b';
   return scale.indexOf(flatToSharp[root] || root);
 };
 
 const transposeChord = (chord, steps) => {
-  if (!chord || typeof chord !== 'string') return chord; // Seguro anti-crasheo
+  if (!chord || typeof chord !== 'string') return chord;
   const match = chord.trim().match(/^([a-gA-G][b#B]?)(.*)$/);
   if (!match) return chord;
   let root = match[1].charAt(0).toUpperCase() + match[1].slice(1);
@@ -56,10 +56,9 @@ const CATEGORIAS = ['Todas', 'Bienvenida', 'Fuego', 'Alabanza', 'Adoración', 'M
 const NOTAS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
 const MODIFICADORES = ['', 'm', '#', 'b', '7', 'm7'];
 
-// Helper para compatibilidad de base de datos
 const getSongId = (item) => typeof item === 'string' ? item : item.songId;
 
-export default function Alabanza() {
+export default function MinisterioMusical() {
   const navigate = useNavigate();
   const { dbUser } = useOutletContext();
   const [activeTab, setActiveTab] = useState('semanal');
@@ -84,7 +83,7 @@ export default function Alabanza() {
   const [transposeSteps, setTransposeSteps] = useState(0);
   const [currentSlideIdx, setCurrentSlideIdx] = useState(0);
   const [genderToggle, setGenderToggle] = useState('man'); 
-  const [textSize, setTextSize] = useState('sm'); // POR DEFECTO EL MÁS CHICO
+  const [textSize, setTextSize] = useState('sm');
   const [showSettings, setShowSettings] = useState(false);
 
   // Metrónomo
@@ -92,18 +91,16 @@ export default function Alabanza() {
   const audioCtxRef = useRef(null);
   const timerRef = useRef(null);
 
-  // Formulario Canción y Acordes
+  // Formulario Canción
   const [songForm, setSongForm] = useState({ id: null, title: '', artist: '', keyMan: 'C', keyWoman: 'C', bpm: '', category: 'Adoración', link: '', content: '', songChords: '', baseTone: 'man' });
   const textAreaRef = useRef(null);
 
-  // Generar lista completa de acordes para el carrusel
   const allChords = useMemo(() => {
     const list = [];
     NOTAS.forEach(n => MODIFICADORES.forEach(m => list.push(n + m)));
     return list;
   }, []);
 
-  // 🛡️ ACCESO
   const isPastor = dbUser?.role === 'pastor';
   const isAlabanza = dbUser?.area?.toLowerCase() === 'alabanza';
   const hasAccess = isPastor || isAlabanza;
@@ -162,16 +159,16 @@ export default function Alabanza() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [currentSongIdx, activeSetlist]);
 
-  // --- VISOR SETLIST & SLIDES (CONEXIÓN DE TONO BASE Y CONFIGURACIÓN) ---
+  // --- VISOR SETLIST & SLIDES ---
   const changeSongIdx = (newIdx, list = activeSetlist) => {
     setCurrentSongIdx(newIdx);
     setTransposeSteps(0);
     setCurrentSlideIdx(0);
     const nextSong = list[newIdx];
     if (nextSong && nextSong.setlistConfig?.keyType) {
-        setGenderToggle(nextSong.setlistConfig.keyType); // Lee directo del Culto
+        setGenderToggle(nextSong.setlistConfig.keyType);
     } else {
-        setGenderToggle(nextSong?.baseTone || 'man'); // Lee directo de la Canción Original
+        setGenderToggle(nextSong?.baseTone || 'man');
     }
   };
 
@@ -192,7 +189,6 @@ export default function Alabanza() {
 
   const viewingSong = activeSetlist[currentSongIdx];
   
-  // PAGINACIÓN INTELIGENTE AJUSTADA
   const songSlides = useMemo(() => {
     if (!viewingSong) return [];
     const stanzas = viewingSong.content.split(/\n\s*\n/);
@@ -200,7 +196,6 @@ export default function Alabanza() {
     let currentSlide = [];
     let currentLines = 0;
     
-    // Al ser más grande la letra (lg), baja la cantidad de líneas para que nunca se esconda texto
     const maxLines = textSize === 'sm' ? 14 : textSize === 'lg' ? 6 : 10;
     
     stanzas.forEach(stanza => {
@@ -218,7 +213,6 @@ export default function Alabanza() {
     return slides;
   }, [viewingSong, textSize]);
 
-  // CÁLCULO PERFECTO DE TRANSPOSICIÓN (CONTEMPLA EL TONO BASE DE CREACIÓN)
   const baseKey = viewingSong?.baseTone === 'woman' ? viewingSong?.keyWoman : viewingSong?.keyMan;
   const targetKey = genderToggle === 'woman' ? viewingSong?.keyWoman : viewingSong?.keyMan;
   const genderSteps = getStepsDiff(baseKey, targetKey);
@@ -231,7 +225,7 @@ export default function Alabanza() {
     if (currentSlideIdx > 0) setCurrentSlideIdx(p => p - 1);
   };
 
-  // --- ACCIONES PLANIFICACIÓN (CARRUSEL MES) ---
+  // --- ACCIONES PLANIFICACIÓN ---
   const handleNextMonth = () => setViewMonth(addMonths(viewMonth, 1));
   const handlePrevMonth = () => setViewMonth(subMonths(viewMonth, 1));
 
@@ -270,12 +264,45 @@ export default function Alabanza() {
     } catch (e) { toast.error("Error al generar mes"); }
   };
 
+  // ✅ MAGIA: SINCRONIZACIÓN AUTOMÁTICA CON LA AGENDA GENERAL
   const handleUpdateEvent = async (e) => {
     e.preventDefault();
     try {
+      // 1. Guarda en Alabanza
       await updateDoc(doc(db, 'alabanza_events', editingEvent.id), editingEvent);
+      
+      // 2. Sincroniza con la Agenda General (Events)
+      const qEvents = query(collection(db, 'events'), where('date', '==', editingEvent.date));
+      const snap = await getDocs(qEvents);
+      
+      if (!snap.empty) {
+        const mainEventDoc = snap.docs[0];
+        const mainEventData = mainEventDoc.data();
+        const currentAssignments = mainEventData.assignments || {};
+
+        // Mapea el equipo de alabanza al formato de la Agenda
+        const newAssignments = {
+          ...currentAssignments,
+          vocalistas: editingEvent.team.voces || [],
+          teclado: editingEvent.team.teclado ? [editingEvent.team.teclado] : [],
+          bajo: editingEvent.team.bajo ? [editingEvent.team.bajo] : [],
+          bateria: editingEvent.team.bateria ? [editingEvent.team.bateria] : [],
+          g_electrica: editingEvent.team.electrica ? [editingEvent.team.electrica] : [],
+          g_acustica: editingEvent.team.acustica ? [editingEvent.team.acustica] : [],
+        };
+
+        // Limpia arrays vacíos
+        Object.keys(newAssignments).forEach(k => {
+          if (Array.isArray(newAssignments[k]) && newAssignments[k].length === 0) {
+            delete newAssignments[k];
+          }
+        });
+
+        await updateDoc(doc(db, 'events', mainEventDoc.id), { assignments: newAssignments });
+      }
+
       setEditingEvent(null);
-      toast.success("Plan actualizado");
+      toast.success("Organización guardada y sincronizada con Agenda");
     } catch (err) { toast.error("Error al guardar"); }
   };
 
@@ -287,7 +314,7 @@ export default function Alabanza() {
     } catch(e) { toast.error("Error al borrar"); }
   };
 
-  // --- CRUD CANCIONES & ACORDES VIRTUALES ---
+  // --- CRUD CANCIONES & ACORDES ---
   const handleSaveSong = async () => {
     if (!songForm.title || !songForm.content) return toast.error("Título y letra son obligatorios");
     try {
@@ -334,31 +361,22 @@ export default function Alabanza() {
     }, 0);
   };
 
-  // RENDERIZADO DE LETRAS (DISEÑO LACUERDA MEJORADO)
   const renderLyricsWithChords = (text, steps, size) => {
     const lines = text.split('\n');
-    
     const sizeClasses = { sm: 'text-sm md:text-base', md: 'text-base md:text-lg', lg: 'text-lg md:text-xl' };
     const chordSizeClasses = { sm: 'text-sm', md: 'text-base', lg: 'text-lg' };
 
     return lines.map((line, idx) => {
-      // 1. ETIQUETAS LIMPIAS (Intro, Coro, Verso)
       if (line.trim().match(/^\[?(intro|coros?|versos?|puente|pre-coro|instrumental|final|solo)\]?:?/i)) {
-        return <div key={idx} className="mt-6 mb-1 font-black text-slate-900 text-left capitalize text-lg tracking-tight">{line.replace(/\[|\]/g, '')}</div>;
+        return <div key={idx} className="mt-6 mb-1 font-bold text-slate-900 text-left capitalize text-lg">{line.replace(/\[|\]/g, '')}</div>;
       }
-
       const parts = line.split(/(\[[^\]]+\])/g);
       let hasChords = parts.some(p => p.startsWith('[') && p.endsWith(']'));
-      
-      // Si la línea no tiene acordes, se dibuja normal con break-words para que no se escape
       if (!hasChords) {
          return <div key={idx} className={`${sizeClasses[size]} font-medium text-slate-800 min-h-[1.5rem] whitespace-pre-wrap break-words text-left`}>{line}</div>;
       }
-      
-      // Lógica estructural: Agrupa acorde con la sílaba
       const segments = [];
       let currentChord = null;
-      
       parts.forEach(part => {
         if (part.startsWith('[') && part.endsWith(']')) {
           if (currentChord) segments.push({ chord: currentChord, text: '' }); 
@@ -374,11 +392,9 @@ export default function Alabanza() {
         <div key={idx} className="flex flex-wrap items-end justify-start mb-4 w-full text-left">
           {segments.map((seg, i) => (
             <div key={i} className="inline-flex flex-col items-start min-w-[0.3rem]">
-              {/* PISO 1: EL ACORDE */}
               <span className={`text-[#aa8e4a] font-bold leading-none min-h-[1.2em] ${chordSizeClasses[size]}`}>
                 {seg.chord ? transposeChord(seg.chord, steps) : '\u200B'}
               </span>
-              {/* PISO 2: LA LETRA */}
               <span className={`${sizeClasses[size]} font-medium text-slate-800 leading-tight whitespace-pre-wrap break-words text-left max-w-full`}>
                 {seg.text || '\u200B'}
               </span>
@@ -389,7 +405,6 @@ export default function Alabanza() {
     });
   };
 
-  // --- FILTROS ---
   const filteredSongs = songs.filter(s => {
     const matchesSearch = s.title.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = activeCategory === 'Todas' || s.category === activeCategory;
@@ -406,40 +421,40 @@ export default function Alabanza() {
 
   const customChordsArr = (songForm.songChords || '').split(',').map(s => s.trim()).filter(Boolean);
 
-  if (loading) return <div className="flex h-screen items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-brand-600" size={40} /></div>;
+  if (loading) return <div className="flex h-screen items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-blue-600" size={40} /></div>;
 
   return (
-    <div className="pb-36 animate-fade-in min-h-screen bg-slate-50 font-outfit relative">
-      {/* HEADER SUPERIOR CON NAVEGACIÓN */}
-      <div className="px-5 pt-8 pb-4 bg-white border-b border-slate-100 sticky top-0 z-30 shadow-sm">
-        <div className="flex justify-between items-center mb-6">
+    <div className="pb-36 animate-fade-in min-h-screen bg-slate-50 font-sans relative">
+      
+      {/* 🚀 HEADER SOCIALYO */}
+      <div className="px-5 pt-8 pb-4 bg-white border-b border-slate-100 sticky top-0 z-30 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
+        <div className="flex justify-between items-center mb-6 max-w-md mx-auto">
           <div className="flex items-center gap-3 text-left">
-            <button onClick={() => navigate(-1)} className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-600 active:scale-90 transition-all"><ArrowLeft size={20}/></button>
+            <button onClick={() => navigate(-1)} className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center text-slate-600 active:scale-90 transition-all hover:bg-slate-100 border border-slate-100"><ChevronLeft size={24}/></button>
             <div>
-              <h1 className="text-2xl md:text-3xl font-black text-slate-900 uppercase tracking-tighter leading-none">Alabanza</h1>
-              <p className="text-[10px] font-black text-brand-600 uppercase tracking-widest mt-1 flex items-center gap-1.5"><Sparkles size={12} /> Panel de Gestión</p>
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight leading-none">Ministerio Musical</h1>
             </div>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => navigate('/')} className="w-10 h-10 bg-brand-50 text-brand-600 rounded-full flex items-center justify-center active:scale-90 transition-all"><Home size={18}/></button>
           </div>
         </div>
 
-        <div className="flex p-1.5 bg-slate-100 rounded-2xl gap-1">
-          {['semanal', 'mensual', 'cancionero'].map((tab) => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab ? 'bg-white text-slate-900 shadow-md scale-[1.02]' : 'text-slate-400'}`}>{tab}</button>
+        {/* 🚀 TABS PASTILLERO SOCIALYO */}
+        <div className="flex p-1.5 bg-slate-50 border border-slate-100 rounded-full max-w-md mx-auto shadow-inner">
+          {['semanal', 'mensual', 'canciones'].map((tab) => (
+            <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 py-2 rounded-full text-xs font-bold capitalize transition-all duration-300 ${activeTab === tab ? 'bg-white text-blue-600 shadow-sm border border-slate-100' : 'text-slate-500 hover:text-slate-700'}`}>
+              {tab === 'canciones' ? 'Canciones' : tab}
+            </button>
           ))}
         </div>
       </div>
 
-      <div className="px-5 mt-8">
+      <div className="px-5 mt-6 max-w-md mx-auto">
         {/* =========================================
             PESTAÑA: SEMANAL 
         ============================================= */}
         {activeTab === 'semanal' && (
-          <div className="animate-slide-up space-y-6">
+          <div className="animate-slide-up space-y-5">
             {weeklyEvents.length === 0 ? (
-              <div className="py-20 text-center opacity-20"><Calendar size={48} className="mx-auto mb-4" /><p className="font-black text-xs uppercase">Sin actividades esta semana</p></div>
+              <div className="py-20 text-center opacity-40"><Calendar size={40} className="mx-auto mb-3 text-slate-400" /><p className="font-semibold text-sm text-slate-500">Sin actividades esta semana</p></div>
             ) : (
               weeklyEvents.map(ev => {
                 const eventSongs = ev.setlist?.map(item => {
@@ -450,38 +465,37 @@ export default function Alabanza() {
                 }).filter(Boolean) || [];
 
                 return (
-                  <div key={ev.id} className="bg-white p-6 rounded-[35px] border border-slate-100 shadow-sm relative overflow-hidden">
+                  <div key={ev.id} className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)] relative overflow-hidden">
                     <div className="flex justify-between items-start mb-5">
                       <div className="text-left">
-                        <span className={`text-[8px] font-black uppercase tracking-[0.2em] px-2 py-1 rounded-md ${ev.type.includes('Culto') ? 'bg-brand-50 text-brand-600' : 'bg-indigo-50 text-indigo-600'}`}>{ev.type}</span>
-                        <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter mt-2">{format(new Date(ev.date + 'T00:00:00'), "EEEE d 'de' MMMM", { locale: es })}</h3>
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md ${ev.type.includes('Culto') ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-600'}`}>{ev.type}</span>
+                        <h3 className="text-lg font-bold text-slate-900 mt-2">{format(new Date(ev.date + 'T00:00:00'), "EEEE d 'de' MMMM", { locale: es })}</h3>
                       </div>
                       <div className="flex gap-2">
-                        <button onClick={() => handleDeleteEvent(ev.id)} className="p-2 bg-rose-50 rounded-xl text-rose-400 active:scale-90"><Trash2 size={16}/></button>
-                        <button onClick={() => setEditingEvent(ev)} className="p-2 bg-slate-50 rounded-xl text-slate-400 active:scale-90"><Edit3 size={16}/></button>
+                        <button onClick={() => setEditingEvent(ev)} className="w-9 h-9 bg-slate-50 rounded-full text-slate-400 flex items-center justify-center hover:text-blue-600 transition-colors"><Edit3 size={16}/></button>
+                        <button onClick={() => handleDeleteEvent(ev.id)} className="w-9 h-9 bg-slate-50 rounded-full text-slate-400 flex items-center justify-center hover:text-red-500 hover:bg-red-50 transition-colors"><Trash2 size={16}/></button>
                       </div>
                     </div>
                     
                     {/* BANDA ASIGNADA */}
                     {(ev.type.includes('Culto') || ev.type.includes('Ensayo')) && (
-                      <div className="grid grid-cols-2 gap-2 mb-4">
+                      <div className="grid grid-cols-2 gap-3 mb-5">
                         {['teclado', 'bajo', 'bateria', 'electrica', 'acustica'].map(role => ev.team[role] && (
-                          <div key={role} className="flex items-center gap-2 text-left bg-slate-50 p-2 rounded-xl border border-slate-100">
-                            <div className="w-6 h-6 bg-white rounded-lg flex items-center justify-center text-[10px] font-bold shadow-sm">{role.substring(0,2).toUpperCase()}</div>
-                            <p className="text-[10px] font-black text-slate-700 truncate">{ev.team[role]}</p>
+                          <div key={role} className="flex items-center gap-3 text-left bg-slate-50 p-2.5 rounded-[16px] border border-slate-100">
+                            <div className="w-8 h-8 bg-white rounded-[10px] flex items-center justify-center text-[10px] font-bold text-slate-400 shadow-sm shrink-0">{role.substring(0,2).toUpperCase()}</div>
+                            <p className="text-xs font-semibold text-slate-800 truncate">{ev.team[role]}</p>
                           </div>
                         ))}
 
-                        {/* VOCES - MULTIPLE CHIPS */}
                         {ev.team.voces?.length > 0 && (
-                          <div className="col-span-2 flex flex-col gap-2 text-left bg-indigo-50 p-3 rounded-xl border border-indigo-100 mt-1">
+                          <div className="col-span-2 flex flex-col gap-2 text-left bg-blue-50/50 p-4 rounded-[20px] border border-blue-100 mt-1">
                              <div className="flex items-center gap-2">
-                                <div className="w-6 h-6 bg-indigo-600 text-white rounded-lg flex items-center justify-center text-[10px] font-bold shadow-sm shrink-0"><Mic2 size={12}/></div>
-                                <span className="text-[10px] font-black text-indigo-900 uppercase tracking-widest">Voces Asignadas</span>
+                                <div className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center shrink-0"><Mic2 size={12}/></div>
+                                <span className="text-[11px] font-bold text-blue-800 uppercase tracking-wider">Voces Asignadas</span>
                              </div>
-                             <div className="flex flex-wrap gap-1.5 mt-1">
+                             <div className="flex flex-wrap gap-2 mt-1">
                                 {ev.team.voces.map((v, i) => (
-                                   <span key={i} className="bg-white text-indigo-700 border border-indigo-100 px-2.5 py-1.5 rounded-lg text-[10px] font-bold">
+                                   <span key={i} className="bg-white text-slate-700 border border-slate-200 px-3 py-1 rounded-full text-[11px] font-semibold shadow-sm">
                                       {v}
                                    </span>
                                 ))}
@@ -491,45 +505,29 @@ export default function Alabanza() {
                       </div>
                     )}
 
-                    {/* DEVOCIONAL */}
-                    {ev.team.devo && (
-                       <div className="flex items-center gap-2 text-left bg-amber-50 p-3 rounded-xl border border-amber-100 mb-4">
-                         <BookOpen size={14} className="text-amber-600 shrink-0"/>
-                         <p className="text-[10px] font-black text-amber-900 uppercase">Devocional: <span className="text-amber-600">{ev.team.devo}</span></p>
-                       </div>
-                    )}
-
                     {/* SETLIST DETALLADO */}
                     {eventSongs.length > 0 && (
-                      <div className="border-t border-slate-100 pt-4 space-y-3">
-                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-left mb-2 flex items-center justify-between">Setlist <span className="bg-slate-900 text-white px-2 py-0.5 rounded-md">Abrir Modo Ensayo</span></p>
+                      <div className="border-t border-slate-100 pt-5 space-y-3">
+                         <div className="flex items-center justify-between mb-3">
+                           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Setlist</p>
+                           <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-[10px] font-bold cursor-pointer hover:bg-slate-200 transition-colors">Modo Ensayo</span>
+                         </div>
                          {eventSongs.map((song, idx) => (
-                           <div key={song.id} className="flex items-start gap-3 text-left p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer transition-colors active:scale-95" onClick={() => openSongViewer(eventSongs, idx)}>
-                             <PlayCircle size={20} className="text-brand-500 shrink-0 mt-0.5" />
+                           <div key={song.id} className="flex items-start gap-3 text-left p-3.5 rounded-[20px] bg-slate-50 border border-slate-100 cursor-pointer transition-colors hover:bg-slate-100 active:scale-95" onClick={() => openSongViewer(eventSongs, idx)}>
+                             <PlayCircle size={24} className="text-blue-600 shrink-0" strokeWidth={2} />
                              <div className="flex-1 min-w-0">
-                                <span className="block text-xs font-black text-slate-800 uppercase tracking-tighter">{song.title}</span>
+                                <span className="block text-sm font-bold text-slate-800 truncate">{song.title}</span>
                                 <div className="flex flex-wrap gap-2 mt-1.5">
                                    {song.setlistConfig.singer && (
-                                      <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest flex items-center gap-1"><Mic2 size={8}/> {song.setlistConfig.singer}</span>
+                                      <span className="bg-white border border-slate-200 text-slate-600 px-2 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1"><Mic2 size={10}/> {song.setlistConfig.singer}</span>
                                    )}
-                                   <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest">
+                                   <span className="bg-white border border-slate-200 text-slate-600 px-2 py-0.5 rounded text-[10px] font-semibold">
                                       Tono: {song.setlistConfig.keyType === 'woman' ? song.keyWoman : song.keyMan}
                                    </span>
                                 </div>
-                                {song.setlistConfig.notes && (
-                                   <p className="text-[9px] font-bold text-amber-600 mt-2 flex items-center gap-1"><FileText size={10}/> {song.setlistConfig.notes}</p>
-                                )}
                              </div>
                            </div>
                          ))}
-                      </div>
-                    )}
-
-                    {/* OBSERVACIONES GENERALES */}
-                    {ev.observations && (
-                      <div className="mt-4 p-3 bg-slate-50 border-l-4 border-slate-300 rounded-r-xl text-left">
-                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Observaciones</p>
-                         <p className="text-xs font-medium text-slate-700 italic">{ev.observations}</p>
                       </div>
                     )}
                   </div>
@@ -544,30 +542,30 @@ export default function Alabanza() {
         ============================================= */}
         {activeTab === 'mensual' && (
           <div className="animate-slide-up space-y-4">
-            <div className="flex items-center justify-between bg-white p-2 rounded-2xl shadow-sm border border-slate-100 mb-4">
-              <button onClick={handlePrevMonth} className="p-3 bg-slate-50 rounded-xl text-slate-600 active:scale-90"><ChevronLeft size={18}/></button>
-              <h2 className="text-sm font-black text-slate-900 uppercase tracking-widest">{format(viewMonth, 'MMMM yyyy', { locale: es })}</h2>
-              <button onClick={handleNextMonth} className="p-3 bg-slate-50 rounded-xl text-slate-600 active:scale-90"><ChevronRight size={18}/></button>
+            <div className="flex items-center justify-between bg-white p-2.5 rounded-full shadow-sm border border-slate-100 mb-6">
+              <button onClick={handlePrevMonth} className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center text-slate-600 active:scale-90"><ChevronLeft size={20}/></button>
+              <h2 className="text-sm font-bold text-slate-900 capitalize">{format(viewMonth, 'MMMM yyyy', { locale: es })}</h2>
+              <button onClick={handleNextMonth} className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center text-slate-600 active:scale-90"><ChevronRight size={20}/></button>
             </div>
 
-            <button onClick={generateMonth} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-xl flex items-center justify-center gap-2 mb-6">
-              <Calendar size={16} /> Generar Turnos de {format(viewMonth, 'MMMM', { locale: es })}
+            <button onClick={generateMonth} className="w-full py-4 bg-blue-600 text-white rounded-full font-bold text-sm shadow-md shadow-blue-600/20 flex items-center justify-center gap-2 mb-6 active:scale-95 transition-transform">
+              <Calendar size={18} /> Generar Turnos del Mes
             </button>
             
-            <div className="space-y-3">
+            <div className="space-y-4">
               {monthlyEvents.length === 0 ? (
-                <div className="text-center py-10 opacity-40"><p className="text-[10px] font-black uppercase tracking-widest text-slate-500">No hay turnos creados este mes.</p></div>
+                <div className="text-center py-10 opacity-40"><p className="text-xs font-semibold text-slate-500">No hay turnos creados este mes.</p></div>
               ) : (
                 monthlyEvents.map(ev => (
-                  <div key={ev.id} onClick={() => setEditingEvent(ev)} className="bg-white p-5 rounded-[28px] border border-slate-100 shadow-sm flex items-center justify-between active:scale-95 transition-transform cursor-pointer">
+                  <div key={ev.id} onClick={() => setEditingEvent(ev)} className="bg-white p-5 rounded-[24px] border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.02)] flex items-center justify-between active:scale-95 transition-transform cursor-pointer hover:border-blue-200">
                      <div className="flex items-center gap-4 text-left">
-                       <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex flex-col items-center justify-center shrink-0">
-                          <span className="text-[8px] font-black uppercase">{format(new Date(ev.date + 'T00:00:00'), 'MMM', { locale: es })}</span>
-                          <span className="text-lg font-black text-slate-900">{format(new Date(ev.date + 'T00:00:00'), 'dd')}</span>
+                       <div className="w-14 h-14 bg-slate-50 text-slate-500 rounded-[16px] flex flex-col items-center justify-center shrink-0 border border-slate-100">
+                          <span className="text-[10px] font-bold uppercase">{format(new Date(ev.date + 'T00:00:00'), 'MMM', { locale: es })}</span>
+                          <span className="text-lg font-bold text-slate-900 leading-none mt-0.5">{format(new Date(ev.date + 'T00:00:00'), 'dd')}</span>
                        </div>
                        <div>
-                         <h4 className="font-black text-slate-900 text-sm uppercase tracking-tight">{ev.type}</h4>
-                         <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mt-1">
+                         <h4 className="font-bold text-slate-900 text-[15px]">{ev.type}</h4>
+                         <p className="text-[11px] text-slate-500 font-medium mt-1">
                            {ev.type === 'Devocional' ? `Resp: ${ev.team.devo || '?'}` : `${ev.setlist?.length || 0} canciones asignadas`}
                          </p>
                        </div>
@@ -581,20 +579,18 @@ export default function Alabanza() {
         )}
 
         {/* =========================================
-            PESTAÑA: CANCIONERO 
+            PESTAÑA: CANCIONES 
         ============================================= */}
-        {activeTab === 'cancionero' && (
+        {activeTab === 'canciones' && (
           <div className="animate-slide-up space-y-4">
-            <div className="flex gap-2">
-              <div className="flex-1 bg-white rounded-2xl border border-slate-100 flex items-center px-4 gap-3 shadow-sm">
-                <Search size={18} className="text-slate-400" />
-                <input type="text" placeholder="Buscar canción..." className="w-full py-4 text-sm font-bold bg-transparent outline-none text-slate-800" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-              </div>
+            <div className="bg-white rounded-full border border-slate-200 flex items-center px-4 shadow-sm">
+              <Search size={20} className="text-slate-400" strokeWidth={2.5}/>
+              <input type="text" placeholder="Buscar canción..." className="w-full py-3.5 px-3 text-sm font-semibold bg-transparent outline-none text-slate-800 placeholder-slate-400" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
             </div>
 
-            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2 pt-2">
                {CATEGORIAS.map(cat => (
-                 <button key={cat} onClick={() => setActiveCategory(cat)} className={`shrink-0 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeCategory === cat ? 'bg-slate-900 text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200'}`}>
+                 <button key={cat} onClick={() => setActiveCategory(cat)} className={`shrink-0 px-5 py-2 rounded-full text-[11px] font-bold transition-all ${activeCategory === cat ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}>
                    {cat}
                  </button>
                ))}
@@ -602,19 +598,19 @@ export default function Alabanza() {
 
             <div className="grid grid-cols-1 gap-3">
                {filteredSongs.length === 0 ? (
-                 <div className="text-center py-20 opacity-30"><BookOpen size={48} className="mx-auto mb-4 text-slate-400"/><p className="font-black uppercase tracking-[0.3em] text-[10px] text-slate-400">Sin resultados</p></div>
+                 <div className="text-center py-20 opacity-40"><BookOpen size={40} className="mx-auto mb-4 text-slate-400"/><p className="font-semibold text-sm text-slate-500">Sin resultados</p></div>
                ) : (
                  filteredSongs.map(song => (
-                   <div key={song.id} className="bg-white p-5 rounded-[28px] border border-slate-100 shadow-sm flex items-center justify-between active:scale-95 transition-transform">
+                   <div key={song.id} className="bg-white p-4 rounded-[24px] border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.02)] flex items-center justify-between active:scale-95 transition-transform">
                       <div className="flex items-center gap-4 text-left min-w-0 flex-1 cursor-pointer" onClick={() => openSongViewer([song], 0)}>
-                        <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center shrink-0"><span className="font-black text-lg">{song.keyMan || 'C'}</span></div>
+                        <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-[14px] flex items-center justify-center shrink-0 border border-blue-100"><span className="font-bold text-lg">{song.keyMan || 'C'}</span></div>
                         <div className="min-w-0 flex-1">
-                          <h4 className="font-black text-slate-900 text-sm uppercase tracking-tight truncate">{song.title}</h4>
-                          <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mt-1 flex items-center gap-1.5 truncate"><Flame size={10} className="text-brand-500"/> {song.category} {song.bpm ? `• ${song.bpm} BPM` : ''}</p>
+                          <h4 className="font-bold text-slate-900 text-[15px] truncate">{song.title}</h4>
+                          <p className="text-[11px] text-slate-500 font-medium mt-1 truncate">{song.category} {song.bpm ? `• ${song.bpm} BPM` : ''}</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1 shrink-0 ml-2">
-                        <button onClick={() => { setSongForm({ ...song, baseTone: song.baseTone || 'man' }); setIsFormOpen(true); }} className="p-2 bg-slate-50 rounded-xl text-slate-400"><Edit3 size={16}/></button>
+                      <div className="flex items-center shrink-0 ml-2">
+                        <button onClick={() => { setSongForm({ ...song, baseTone: song.baseTone || 'man' }); setIsFormOpen(true); }} className="w-10 h-10 flex items-center justify-center bg-slate-50 rounded-full text-slate-400 hover:text-blue-600 transition-colors"><Edit3 size={18}/></button>
                       </div>
                    </div>
                  ))
@@ -624,32 +620,32 @@ export default function Alabanza() {
         )}
       </div>
 
-      {activeTab === 'cancionero' && (
-        <button onClick={() => { setSongForm({ id: null, title: '', artist: '', keyMan: 'C', keyWoman: 'C', bpm: '', category: 'Adoración', link: '', content: '', songChords: '', baseTone: 'man' }); setIsFormOpen(true); }} className="fixed bottom-28 right-6 w-16 h-16 bg-slate-900 text-white rounded-[26px] shadow-2xl flex items-center justify-center active:scale-90 z-40 transition-all border-4 border-white"><PlusCircle size={32} /></button>
+      {/* FAB Nueva Canción */}
+      {activeTab === 'canciones' && (
+        <button onClick={() => { setSongForm({ id: null, title: '', artist: '', keyMan: 'C', keyWoman: 'C', bpm: '', category: 'Adoración', link: '', content: '', songChords: '', baseTone: 'man' }); setIsFormOpen(true); }} className="fixed bottom-24 right-5 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg shadow-blue-600/30 flex items-center justify-center active:scale-90 z-40 transition-transform"><Plus size={28} strokeWidth={2.5} /></button>
       )}
 
       {/* =============================================================
-          MODAL 1: EDITAR ORGANIZACIÓN DEL DÍA
+          MODAL 1: EDITAR ORGANIZACIÓN DEL DÍA (ESTILO REFERENCIA SOCIALYO)
       ================================================================= */}
       {editingEvent && (
-        <div className="fixed inset-0 z-[200] bg-slate-900/90 backdrop-blur-md flex items-end sm:items-center justify-center font-outfit">
-          <div className="bg-white w-full max-w-md rounded-t-[40px] sm:rounded-[40px] p-8 max-h-[90vh] overflow-y-auto no-scrollbar animate-slide-up">
-            <div className="flex justify-between items-center mb-8">
-              <div className="text-left">
-                <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{editingEvent.type}</h2>
-                <p className="text-xs font-bold text-brand-600 uppercase tracking-widest mt-1">{format(new Date(editingEvent.date + 'T00:00:00'), "d 'de' MMMM", { locale: es })}</p>
-              </div>
-              <button onClick={() => setEditingEvent(null)} className="p-2 bg-slate-50 rounded-full text-slate-400"><X size={24}/></button>
+        <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center font-sans p-4 sm:p-0">
+          <div className="bg-white w-full max-w-md rounded-[32px] p-6 sm:p-8 max-h-[90vh] overflow-y-auto no-scrollbar animate-slide-up shadow-2xl relative">
+            <button onClick={() => setEditingEvent(null)} className="absolute top-6 right-6 w-8 h-8 bg-slate-50 hover:bg-slate-100 rounded-full flex items-center justify-center text-slate-500 transition-colors"><X size={18}/></button>
+            
+            <div className="mb-6 pr-10">
+              <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">{editingEvent.type}</h2>
+              <p className="text-xs font-bold text-amber-600 uppercase tracking-widest mt-1">{format(new Date(editingEvent.date + 'T00:00:00'), "d 'de' MMMM", { locale: es })}</p>
             </div>
 
-            <form onSubmit={handleUpdateEvent} className="space-y-6 pb-6">
+            <form onSubmit={handleUpdateEvent} className="space-y-6 pb-4">
               
               {/* CULTO / ENSAYO: Toda la banda */}
               {(editingEvent.type.includes('Culto') || editingEvent.type.includes('Ensayo')) && (
                 <>
-                  <div className="text-left">
-                    <label className="text-[10px] font-black text-indigo-600 uppercase tracking-widest ml-1 mb-2 flex items-center gap-2"><Mic2 size={12}/> Voces (Múltiple)</label>
-                    <div className="flex flex-wrap gap-2 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                  <div>
+                    <label className="text-[11px] font-black text-indigo-600 uppercase tracking-widest mb-3 flex items-center gap-1.5"><Mic2 size={14}/> Voces (Múltiple)</label>
+                    <div className="flex flex-wrap gap-2 bg-slate-50 p-4 rounded-[24px] border border-slate-100">
                       {teamMembers.map(m => {
                         const isSelected = editingEvent.team.voces?.includes(m.displayName);
                         return (
@@ -657,7 +653,7 @@ export default function Alabanza() {
                             const current = editingEvent.team.voces || [];
                             const newVoces = isSelected ? current.filter(n => n !== m.displayName) : [...current, m.displayName];
                             setEditingEvent({...editingEvent, team: {...editingEvent.team, voces: newVoces}});
-                          }} className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${isSelected ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200'}`}>
+                          }} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${isSelected ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-600 border border-slate-200'}`}>
                             {m.displayName.split(' ')[0]}
                           </button>
                         );
@@ -667,9 +663,9 @@ export default function Alabanza() {
 
                   <div className="grid grid-cols-2 gap-4">
                     {['teclado', 'bajo', 'bateria', 'electrica', 'acustica'].map(role => (
-                      <div key={role} className="text-left">
+                      <div key={role}>
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">{role}</label>
-                        <select className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none" value={editingEvent.team[role] || ''} onChange={e => setEditingEvent({...editingEvent, team: {...editingEvent.team, [role]: e.target.value}})}>
+                        <select className="w-full p-3.5 bg-slate-50 border border-slate-100 rounded-[16px] text-sm font-semibold text-slate-700 outline-none focus:border-blue-300" value={editingEvent.team[role] || ''} onChange={e => setEditingEvent({...editingEvent, team: {...editingEvent.team, [role]: e.target.value}})}>
                           <option value="">-</option>
                           {teamMembers.map(m => <option key={m.id} value={m.displayName}>{m.displayName}</option>)}
                         </select>
@@ -678,16 +674,16 @@ export default function Alabanza() {
                   </div>
 
                   {/* CONSTRUCTOR DE SETLIST DETALLADO */}
-                  <div className="text-left border-t border-slate-100 pt-4">
-                    <label className="text-[10px] font-black text-brand-600 uppercase tracking-widest ml-1 mb-3 flex items-center gap-2"><ListMusic size={12}/> Constructor de Setlist</label>
+                  <div className="border-t border-slate-100 pt-6">
+                    <label className="text-[11px] font-black text-amber-600 uppercase tracking-widest mb-3 flex items-center gap-1.5"><ListMusic size={14}/> Constructor de Setlist</label>
                     
-                    <div className="flex items-center bg-slate-50 border border-slate-200 p-3 rounded-xl mb-3">
-                       <Search size={16} className="text-slate-400 mr-2"/>
-                       <input placeholder="Buscar para agregar..." value={setlistSearchTerm} onChange={e => setSetlistSearchTerm(e.target.value)} className="bg-transparent outline-none w-full text-xs font-bold" />
+                    <div className="flex items-center bg-white border border-slate-200 p-3 rounded-2xl mb-4 shadow-sm">
+                       <Search size={18} className="text-slate-400 mr-2"/>
+                       <input placeholder="Buscar para agregar..." value={setlistSearchTerm} onChange={e => setSetlistSearchTerm(e.target.value)} className="bg-transparent outline-none w-full text-sm font-semibold placeholder-slate-400" />
                     </div>
 
                     {setlistSearchTerm && (
-                      <div className="max-h-40 overflow-y-auto space-y-2 pr-1 mb-4 border-b border-slate-100 pb-4 no-scrollbar">
+                      <div className="max-h-48 overflow-y-auto space-y-2 pr-1 mb-6 border-b border-slate-100 pb-6 no-scrollbar">
                         {filteredSetlistSongs.map(song => {
                           const isSelected = editingEvent.setlist.some(item => getSongId(item) === song.id);
                           return (
@@ -696,23 +692,23 @@ export default function Alabanza() {
                                 if (isSelected) {
                                    newList = newList.filter(item => getSongId(item) !== song.id);
                                 } else {
-                                   newList.push({ songId: song.id, singer: '', keyType: song.baseTone || 'man', notes: '' }); // <-- Usa su tono base por defecto
+                                   newList.push({ songId: song.id, singer: '', keyType: song.baseTone || 'man', notes: '' });
                                 }
                                 setEditingEvent({...editingEvent, setlist: newList});
-                              }} className={`p-3 rounded-xl border-2 transition-all flex items-center justify-between cursor-pointer ${isSelected ? 'border-brand-500 bg-brand-50' : 'border-slate-100 bg-white'}`}>
+                              }} className={`p-3.5 rounded-[16px] border transition-all flex items-center justify-between cursor-pointer ${isSelected ? 'border-blue-600 bg-blue-50' : 'border-slate-100 bg-white hover:border-slate-200'}`}>
                               <div className="flex flex-col">
-                                 <span className="text-xs font-black text-slate-700 uppercase truncate pr-2">{song.title}</span>
-                                 <span className="text-[9px] text-slate-400 font-bold uppercase">{song.category}</span>
+                                 <span className={`text-sm font-bold truncate pr-2 ${isSelected ? 'text-blue-900' : 'text-slate-700'}`}>{song.title}</span>
+                                 <span className="text-[10px] text-slate-400 font-semibold uppercase">{song.category}</span>
                               </div>
-                              {isSelected ? <CheckCircle2 size={16} className="text-brand-600 shrink-0"/> : <PlusCircle size={16} className="text-slate-300 shrink-0"/>}
+                              {isSelected ? <CheckCircle2 size={20} className="text-blue-600 shrink-0"/> : <Plus size={20} className="text-slate-300 shrink-0"/>}
                             </div>
                           )
                         })}
                       </div>
                     )}
 
-                    {/* CANCIONES SELECCIONADAS (Mini Formulario por canción) */}
-                    <div className="space-y-3 mt-4">
+                    {/* CANCIONES SELECCIONADAS */}
+                    <div className="space-y-3">
                        {editingEvent.setlist.map((item, idx) => {
                           const songId = getSongId(item);
                           const song = songs.find(s => s.id === songId);
@@ -721,45 +717,45 @@ export default function Alabanza() {
                           const config = typeof item === 'string' ? { songId, singer: '', keyType: song.baseTone || 'man', notes: '' } : item;
 
                           return (
-                             <div key={idx} className="p-3 bg-white border border-slate-200 rounded-xl shadow-sm relative">
+                             <div key={idx} className="p-4 bg-slate-50 border border-slate-100 rounded-[20px] relative">
                                 <button type="button" onClick={() => {
                                     const newList = [...editingEvent.setlist];
                                     newList.splice(idx, 1);
                                     setEditingEvent({...editingEvent, setlist: newList});
-                                }} className="absolute top-3 right-3 text-rose-400 active:scale-90"><Trash2 size={14}/></button>
+                                }} className="absolute top-4 right-4 text-slate-400 hover:text-red-500 active:scale-90 transition-colors"><Trash2 size={16}/></button>
                                 
-                                <h4 className="text-xs font-black text-slate-800 uppercase tracking-tighter mb-2 pr-6">{song.title}</h4>
+                                <h4 className="text-sm font-bold text-slate-900 mb-3 pr-8">{song.title}</h4>
                                 
-                                <div className="grid grid-cols-2 gap-2 mb-2">
+                                <div className="grid grid-cols-2 gap-3 mb-3">
                                    <div>
-                                      <label className="text-[8px] font-black text-slate-400 uppercase ml-1">Canta (Principal)</label>
+                                      <label className="text-[9px] font-bold text-slate-500 uppercase ml-1 block mb-1">Canta (Principal)</label>
                                       <select value={config.singer} onChange={e => {
                                          const newList = [...editingEvent.setlist];
                                          newList[idx] = { ...config, singer: e.target.value };
                                          setEditingEvent({...editingEvent, setlist: newList});
-                                      }} className="w-full bg-slate-50 border border-slate-100 p-2 rounded-lg text-[10px] font-bold outline-none text-slate-700">
+                                      }} className="w-full bg-white border border-slate-200 p-2.5 rounded-xl text-xs font-semibold outline-none text-slate-700">
                                          <option value="">Nadie / Todos</option>
                                          {teamMembers.map(m => <option key={m.id} value={m.displayName}>{m.displayName}</option>)}
                                       </select>
                                    </div>
                                    <div>
-                                      <label className="text-[8px] font-black text-slate-400 uppercase ml-1">Tono a tocar</label>
+                                      <label className="text-[9px] font-bold text-slate-500 uppercase ml-1 block mb-1">Tono a tocar</label>
                                       <select value={config.keyType} onChange={e => {
                                          const newList = [...editingEvent.setlist];
                                          newList[idx] = { ...config, keyType: e.target.value };
                                          setEditingEvent({...editingEvent, setlist: newList});
-                                      }} className="w-full bg-slate-50 border border-slate-100 p-2 rounded-lg text-[10px] font-bold outline-none text-slate-700">
+                                      }} className="w-full bg-white border border-slate-200 p-2.5 rounded-xl text-xs font-semibold outline-none text-slate-700">
                                          <option value="man">Hombre ({song.keyMan || 'C'})</option>
                                          <option value="woman">Mujer ({song.keyWoman || 'C'})</option>
                                       </select>
                                    </div>
                                 </div>
                                 <div>
-                                   <input placeholder="Notas de ensayo (Ej: Solo acústico al principio)..." value={config.notes || ''} onChange={e => {
+                                   <input placeholder="Notas de ensayo..." value={config.notes || ''} onChange={e => {
                                        const newList = [...editingEvent.setlist];
                                        newList[idx] = { ...config, notes: e.target.value };
                                        setEditingEvent({...editingEvent, setlist: newList});
-                                   }} className="w-full bg-amber-50/50 border border-amber-100 p-2.5 rounded-lg text-[10px] font-bold outline-none placeholder:text-amber-300 text-amber-900" />
+                                   }} className="w-full bg-white border border-slate-200 p-3 rounded-xl text-xs font-medium outline-none text-slate-700" />
                                 </div>
                              </div>
                           )
@@ -769,27 +765,8 @@ export default function Alabanza() {
                 </>
               )}
 
-              {/* ENSAYO: Observaciones */}
-              {editingEvent.type.includes('Ensayo') && (
-                <div className="text-left pt-2 border-t border-slate-100">
-                  <label className="text-[10px] font-black text-amber-600 uppercase tracking-widest ml-1 mb-2 flex items-center gap-2 mt-4"><FileText size={12}/> Observaciones del Ensayo</label>
-                  <textarea placeholder="Ej: Faltó repasar el puente, voces del coro..." className="w-full p-4 bg-amber-50/50 border border-amber-100 rounded-2xl font-medium text-sm h-24 resize-none outline-none focus:border-amber-400" value={editingEvent.observations} onChange={e => setEditingEvent({...editingEvent, observations: e.target.value})} />
-                </div>
-              )}
-
-              {/* DEVOCIONAL */}
-              {(editingEvent.type === 'Devocional' || editingEvent.type.includes('Ensayo')) && (
-                 <div className="text-left pt-2 border-t border-slate-100 mt-4">
-                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block mt-4">Responsable Devocional</label>
-                   <select className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none" value={editingEvent.team.devo || ''} onChange={e => setEditingEvent({...editingEvent, team: {...editingEvent.team, devo: e.target.value}})}>
-                     <option value="">-</option>
-                     {teamMembers.map(m => <option key={m.id} value={m.displayName}>{m.displayName}</option>)}
-                   </select>
-                 </div>
-              )}
-
-              <button type="submit" className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-[0.3em] shadow-xl flex items-center justify-center gap-3 mt-4 active:scale-95 transition-transform">
-                <Save size={18}/> Guardar Organización
+              <button type="submit" disabled={isUploading} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold text-sm shadow-xl flex items-center justify-center gap-2 mt-6 active:scale-95 transition-transform disabled:opacity-50 uppercase tracking-widest">
+                {isUploading ? <Loader2 className="animate-spin" size={20}/> : <Save size={20}/>} {editingId ? "Guardar Organización" : "Confirmar Actividad"}
               </button>
             </form>
           </div>
@@ -797,124 +774,113 @@ export default function Alabanza() {
       )}
 
       {/* =============================================================
-          MODAL 2: NUEVA/EDITAR CANCIÓN
+          MODAL 2: NUEVA/EDITAR CANCIÓN (REDISEÑO SOCIALYO)
       ================================================================= */}
       {isFormOpen && (
-        <div className="fixed inset-0 z-[200] bg-slate-50 flex flex-col animate-slide-up h-[100dvh]">
-          <div className="flex justify-between items-center p-5 border-b bg-white shrink-0 shadow-sm">
-            <div className="text-left"><h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">{songForm.id ? 'Editar Canción' : 'Nueva Canción'}</h2></div>
+        <div className="fixed inset-0 z-[300] bg-white flex flex-col animate-slide-up h-[100dvh]">
+          <div className="flex justify-between items-center px-6 py-5 border-b border-slate-100 bg-white shrink-0">
+            <h2 className="text-xl font-bold text-slate-900">{songForm.id ? 'Editar Canción' : 'Nueva Canción'}</h2>
             <div className="flex gap-2">
-              {songForm.id && <button onClick={() => handleDeleteSong(songForm.id)} className="p-3 bg-rose-50 rounded-full text-rose-500"><Trash2 size={18}/></button>}
-              <button onClick={() => setIsFormOpen(false)} className="p-3 bg-slate-100 rounded-full text-slate-500"><X size={18}/></button>
+              {songForm.id && <button onClick={() => handleDeleteSong(songForm.id)} className="w-10 h-10 bg-red-50 rounded-full flex items-center justify-center text-red-500 active:scale-90 transition-transform"><Trash2 size={18}/></button>}
+              <button onClick={() => setIsFormOpen(false)} className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center text-slate-600 active:scale-90 transition-transform"><X size={18}/></button>
             </div>
           </div>
           
-          <div className="flex-1 overflow-y-auto p-5 pb-48 text-left">
-            <div className="space-y-4">
-              <input placeholder="Título" className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-black text-lg outline-none focus:border-brand-500" value={songForm.title} onChange={e => setSongForm({...songForm, title: e.target.value})} />
+          <div className="flex-1 overflow-y-auto p-6 pb-48 text-left bg-slate-50 no-scrollbar">
+            <div className="max-w-md mx-auto space-y-5">
+              <input placeholder="Título de la canción" className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-bold text-lg outline-none focus:border-blue-500 shadow-sm" value={songForm.title} onChange={e => setSongForm({...songForm, title: e.target.value})} />
               
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 flex items-center gap-1"><User size={10}/> Voz H.</label>
-                   <input placeholder="C" className="w-full p-4 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-2xl font-black uppercase outline-none" value={songForm.keyMan} onChange={e => setSongForm({...songForm, keyMan: e.target.value})} />
+                   <label className="text-[10px] font-bold text-slate-400 uppercase ml-1 mb-1.5 flex items-center gap-1"><User size={12}/> Voz H.</label>
+                   <input placeholder="C" className="w-full p-4 bg-white border border-slate-200 rounded-xl font-bold uppercase outline-none focus:border-blue-500 shadow-sm" value={songForm.keyMan} onChange={e => setSongForm({...songForm, keyMan: e.target.value})} />
                 </div>
                 <div>
-                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 flex items-center gap-1"><User size={10}/> Voz M.</label>
-                   <input placeholder="G" className="w-full p-4 bg-pink-50 text-pink-700 border border-pink-100 rounded-2xl font-black uppercase outline-none" value={songForm.keyWoman} onChange={e => setSongForm({...songForm, keyWoman: e.target.value})} />
+                   <label className="text-[10px] font-bold text-slate-400 uppercase ml-1 mb-1.5 flex items-center gap-1"><User size={12}/> Voz M.</label>
+                   <input placeholder="G" className="w-full p-4 bg-white border border-slate-200 rounded-xl font-bold uppercase outline-none focus:border-pink-500 shadow-sm" value={songForm.keyWoman} onChange={e => setSongForm({...songForm, keyWoman: e.target.value})} />
                 </div>
                 <div>
-                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Tempo</label>
-                   <input placeholder="120" type="number" className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-black outline-none focus:border-brand-500" value={songForm.bpm} onChange={e => setSongForm({...songForm, bpm: e.target.value})} />
+                   <label className="text-[10px] font-bold text-slate-400 uppercase ml-1 mb-1.5 block">Tempo</label>
+                   <input placeholder="120" type="number" className="w-full p-4 bg-white border border-slate-200 rounded-xl font-bold outline-none focus:border-blue-500 shadow-sm" value={songForm.bpm} onChange={e => setSongForm({...songForm, bpm: e.target.value})} />
                 </div>
               </div>
 
-              {/* NUEVO: SELECTOR DE TONO BASE (Para el cálculo de transposición) */}
-              <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl">
-                 <label className="text-[10px] font-black text-amber-800 uppercase tracking-widest block mb-2">¿En qué tono estás escribiendo la letra acá abajo?</label>
+              <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm">
+                 <label className="text-[10px] font-bold text-slate-500 uppercase block mb-3 text-center">¿En qué tono estás escribiendo la letra acá abajo?</label>
                  <div className="flex gap-2">
-                    <button type="button" onClick={() => setSongForm({...songForm, baseTone: 'man'})} className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-colors ${songForm.baseTone === 'man' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200'}`}>Tono Hombre ({songForm.keyMan || 'C'})</button>
-                    <button type="button" onClick={() => setSongForm({...songForm, baseTone: 'woman'})} className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-colors ${songForm.baseTone === 'woman' ? 'bg-pink-600 text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200'}`}>Tono Mujer ({songForm.keyWoman || 'C'})</button>
+                    <button type="button" onClick={() => setSongForm({...songForm, baseTone: 'man'})} className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all ${songForm.baseTone === 'man' ? 'bg-slate-900 text-white shadow-md' : 'bg-slate-50 text-slate-500 border border-slate-100'}`}>Tono H. ({songForm.keyMan || 'C'})</button>
+                    <button type="button" onClick={() => setSongForm({...songForm, baseTone: 'woman'})} className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all ${songForm.baseTone === 'woman' ? 'bg-slate-900 text-white shadow-md' : 'bg-slate-50 text-slate-500 border border-slate-100'}`}>Tono M. ({songForm.keyWoman || 'C'})</button>
                  </div>
               </div>
 
-              {/* CAMPO DE ACORDES DE LA CANCIÓN */}
-              <div className="mt-3">
-                 <label className="text-[10px] font-black text-brand-600 uppercase tracking-widest ml-1 mb-1 block">Acordes de la canción (Separados por coma)</label>
-                 <input placeholder="Ej: C, Dm, F, G..." className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-black outline-none focus:border-brand-500 text-slate-800" value={songForm.songChords || ''} onChange={e => setSongForm({...songForm, songChords: e.target.value})} />
+              <div>
+                 <label className="text-[10px] font-bold text-slate-400 uppercase ml-1 mb-1.5 block">Acordes de la canción (Separados por coma)</label>
+                 <input placeholder="Ej: C, Dm, F, G..." className="w-full p-4 bg-white border border-slate-200 rounded-xl font-bold outline-none focus:border-blue-500 text-sm shadow-sm" value={songForm.songChords || ''} onChange={e => setSongForm({...songForm, songChords: e.target.value})} />
               </div>
 
-              <select className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-bold outline-none" value={songForm.category} onChange={e => setSongForm({...songForm, category: e.target.value})}>
+              <select className="w-full p-4 bg-white border border-slate-200 rounded-xl font-bold outline-none shadow-sm text-sm" value={songForm.category} onChange={e => setSongForm({...songForm, category: e.target.value})}>
                 {CATEGORIAS.filter(c => c !== 'Todas').map(c => <option key={c} value={c}>{c}</option>)}
               </select>
-              <div className="relative">
-                 <Youtube size={18} className="absolute top-4 left-4 text-rose-500" />
-                 <input placeholder="Link YouTube/Spotify (Opcional)" className="w-full py-4 pl-12 pr-4 bg-rose-50 border border-rose-100 rounded-2xl font-bold text-sm outline-none focus:border-rose-400 text-rose-900" value={songForm.link} onChange={e => setSongForm({...songForm, link: e.target.value})} />
-              </div>
               
-              <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
-                 <p className="text-[10px] font-black text-indigo-800 uppercase tracking-widest leading-relaxed">
-                   💡 TIP: Ubicá el cursor justo ANTES de la letra y tocá el acorde abajo. Ejemplo: E<span className="text-brand-600 font-bold bg-white px-1 rounded">[Dm]</span>TERNO
-                 </p>
+              <div className="relative">
+                 <Youtube size={20} className="absolute top-4 left-4 text-rose-500" />
+                 <input placeholder="Link YouTube/Spotify (Opcional)" className="w-full py-4 pl-12 pr-4 bg-white border border-slate-200 rounded-xl font-medium text-sm outline-none focus:border-blue-500 shadow-sm" value={songForm.link} onChange={e => setSongForm({...songForm, link: e.target.value})} />
               </div>
 
-              <textarea ref={textAreaRef} placeholder="Escribí la letra acá y usá el teclado flotante de abajo para insertar los acordes..." className="w-full p-5 bg-white border border-slate-200 rounded-2xl font-medium text-[15px] h-[400px] resize-none outline-none leading-relaxed font-mono shadow-inner pb-32 whitespace-pre-wrap" value={songForm.content} onChange={e => setSongForm({...songForm, content: e.target.value})} />
+              <textarea ref={textAreaRef} placeholder="Escribí la letra acá y usá el teclado flotante de abajo para insertar los acordes..." className="w-full p-5 bg-white border border-slate-200 rounded-2xl font-medium text-sm h-[400px] resize-none outline-none leading-relaxed shadow-sm pb-32 whitespace-pre-wrap" value={songForm.content} onChange={e => setSongForm({...songForm, content: e.target.value})} />
             </div>
           </div>
 
-          {/* TECLADO FLOTANTE HORIZONTAL COMPACTO */}
-          <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-2 pb-6 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-50">
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 text-center mt-1">Deslizá para ver todos los acordes 👉</p>
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar px-2 pb-2">
-               
-               {/* Acordes guardados por el usuario */}
-               {customChordsArr.map((c, i) => (
-                 <button key={`custom-${i}`} type="button" onClick={() => insertChord(c)} className="shrink-0 h-12 min-w-[3.5rem] px-3 bg-brand-50 text-brand-700 rounded-xl text-sm font-black transition-colors border border-brand-200 shadow-sm active:scale-90">
-                   {c}
-                 </button>
-               ))}
-               
-               {customChordsArr.length > 0 && <div className="w-px h-8 bg-slate-300 mx-1 shrink-0"></div>}
-
-               {/* Todos los demás acordes */}
-               {allChords.map(c => (
-                 <button key={c} type="button" onClick={() => insertChord(c)} className="shrink-0 h-12 min-w-[3.5rem] px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-sm font-black transition-colors border border-slate-200 shadow-sm active:scale-90">
-                   {c}
-                 </button>
-               ))}
+          {/* TECLADO FLOTANTE */}
+          <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 p-3 pb-8 shadow-[0_-10px_40px_rgba(0,0,0,0.05)] z-50">
+            <div className="max-w-md mx-auto">
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar px-1 pb-3">
+                 {customChordsArr.map((c, i) => (
+                   <button key={`custom-${i}`} type="button" onClick={() => insertChord(c)} className="shrink-0 h-10 min-w-[3rem] px-3 bg-blue-50 text-blue-600 rounded-[12px] text-sm font-bold border border-blue-100 active:scale-90 transition-transform">
+                     {c}
+                   </button>
+                 ))}
+                 {customChordsArr.length > 0 && <div className="w-px h-8 bg-slate-200 mx-1 shrink-0"></div>}
+                 {allChords.map(c => (
+                   <button key={c} type="button" onClick={() => insertChord(c)} className="shrink-0 h-10 min-w-[3rem] px-3 bg-white text-slate-700 rounded-[12px] text-sm font-bold border border-slate-200 active:scale-90 transition-transform">
+                     {c}
+                   </button>
+                 ))}
+              </div>
+              <button onClick={handleSaveSong} className="w-full py-4 bg-blue-600 text-white rounded-full font-bold text-sm shadow-md shadow-blue-600/20 flex justify-center items-center gap-2 active:scale-95 transition-transform"><Save size={18}/> Guardar Canción</button>
             </div>
-            <button onClick={handleSaveSong} className="w-full mt-2 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl flex justify-center items-center gap-2"><Save size={18}/> Guardar Canción</button>
           </div>
         </div>
       )}
 
       {/* =============================================================
-          MODAL 3: VISOR SETLIST / PROYECTOR
+          MODAL 3: VISOR SETLIST (Proyector Mantenido Oscuro)
       ================================================================= */}
       {viewingSong && (
-        <div className="fixed inset-0 z-[300] bg-white flex flex-col animate-slide-up h-[100dvh] overflow-hidden">
-          <div className="flex justify-between items-start p-5 bg-slate-900 text-white shrink-0 relative">
+        <div className="fixed inset-0 z-[400] bg-slate-900 flex flex-col animate-slide-up h-[100dvh] overflow-hidden">
+          <div className="flex justify-between items-start p-6 shrink-0 relative border-b border-slate-800">
             <div className="text-left flex-1 min-w-0 pr-4">
               <div className="flex items-center gap-2 mb-2">
-                 <span className="bg-white/20 text-white px-2.5 py-1 rounded-md text-[8px] font-black uppercase tracking-widest">{viewingSong.category}</span>
+                 <span className="bg-slate-800 text-slate-300 px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-widest">{viewingSong.category}</span>
                  {viewingSong.setlistConfig?.notes && (
-                    <span className="bg-amber-500 text-amber-900 px-2 py-1 rounded-md text-[8px] font-black uppercase flex items-center gap-1"><FileText size={8}/> Notas</span>
+                    <span className="bg-amber-500/20 text-amber-400 px-3 py-1 rounded-md text-[10px] font-bold uppercase flex items-center gap-1.5"><FileText size={12}/> Notas</span>
                  )}
               </div>
-              <h2 className="text-2xl font-black uppercase tracking-tighter truncate">{viewingSong.title}</h2>
-              {activeSetlist.length > 1 && <p className="text-[10px] font-black text-brand-400 uppercase tracking-widest mt-1">Setlist: {currentSongIdx + 1} de {activeSetlist.length}</p>}
+              <h2 className="text-2xl font-bold text-white truncate">{viewingSong.title}</h2>
+              {activeSetlist.length > 1 && <p className="text-xs font-semibold text-slate-400 mt-1">Setlist: {currentSongIdx + 1} de {activeSetlist.length}</p>}
             </div>
             
-            <div className="flex items-center gap-2">
-               <button onClick={() => setShowSettings(!showSettings)} className="p-3 bg-white/10 rounded-full text-slate-300 active:scale-75 transition-all shrink-0"><Settings size={20}/></button>
-               <button onClick={closeViewer} className="p-3 bg-white/10 rounded-full text-slate-300 active:scale-75 transition-all shrink-0"><X size={20}/></button>
+            <div className="flex items-center gap-3">
+               <button onClick={() => setShowSettings(!showSettings)} className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-slate-300 active:scale-90 transition-transform shrink-0"><Settings size={20}/></button>
+               <button onClick={closeViewer} className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-slate-300 active:scale-90 transition-transform shrink-0"><X size={20}/></button>
             </div>
 
             {showSettings && (
-               <div className="absolute top-20 right-5 bg-slate-800 border border-slate-700 rounded-xl p-3 shadow-xl z-50 animate-slide-up">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 text-center">Tamaño de Letra</p>
+               <div className="absolute top-24 right-6 bg-slate-800 border border-slate-700 rounded-[20px] p-4 shadow-2xl z-50 animate-slide-up">
+                  <p className="text-xs font-bold text-slate-400 mb-3 text-center">Tamaño de Letra</p>
                   <div className="flex gap-2">
                      {['sm', 'md', 'lg'].map(s => (
-                        <button key={s} onClick={() => { setTextSize(s); setShowSettings(false); }} className={`w-10 h-10 rounded-lg flex items-center justify-center font-black transition-colors ${textSize === s ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+                        <button key={s} onClick={() => { setTextSize(s); setShowSettings(false); }} className={`w-12 h-12 rounded-xl flex items-center justify-center font-black transition-colors ${textSize === s ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>
                            {s === 'sm' ? 'A' : s === 'md' ? 'A+' : 'A++'}
                         </button>
                      ))}
@@ -924,59 +890,59 @@ export default function Alabanza() {
           </div>
 
           {viewingSong.setlistConfig?.notes && (
-             <div className="bg-amber-400 text-amber-900 px-5 py-2 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 shrink-0">
-                <FileText size={14} className="shrink-0"/>
+             <div className="bg-amber-400 text-amber-900 px-6 py-3 text-xs font-bold flex items-center gap-2 shrink-0">
+                <FileText size={16} className="shrink-0"/>
                 <span className="truncate">{viewingSong.setlistConfig.notes}</span>
              </div>
           )}
 
-          <div className="bg-slate-800 p-3 flex gap-2 shrink-0 shadow-md z-10">
-            <div className="flex-[1.5] bg-slate-900/50 rounded-xl p-2 flex flex-col border border-slate-700 justify-between">
-              <div className="flex bg-slate-800 rounded-lg p-1 mb-2">
-                <button onClick={() => setGenderToggle('man')} className={`flex-1 text-[9px] font-black uppercase tracking-widest py-1.5 rounded-md transition-colors ${genderToggle === 'man' ? 'bg-indigo-500 text-white' : 'text-slate-400'}`}>Hombre</button>
-                <button onClick={() => setGenderToggle('woman')} className={`flex-1 text-[9px] font-black uppercase tracking-widest py-1.5 rounded-md transition-colors ${genderToggle === 'woman' ? 'bg-pink-500 text-white' : 'text-slate-400'}`}>Mujer</button>
+          <div className="bg-slate-900 p-4 flex gap-3 shrink-0 z-10 border-b border-slate-800">
+            <div className="flex-[1.5] bg-slate-800 rounded-[20px] p-3 flex flex-col justify-between">
+              <div className="flex bg-slate-900 rounded-xl p-1 mb-3">
+                <button onClick={() => setGenderToggle('man')} className={`flex-1 text-[10px] font-bold uppercase py-2 rounded-lg transition-colors ${genderToggle === 'man' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400'}`}>Hombre</button>
+                <button onClick={() => setGenderToggle('woman')} className={`flex-1 text-[10px] font-bold uppercase py-2 rounded-lg transition-colors ${genderToggle === 'woman' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400'}`}>Mujer</button>
               </div>
-              <div className="flex items-center justify-between px-1">
-                <button onClick={() => setTransposeSteps(p => p - 1)} className="w-8 h-8 rounded-md bg-slate-700 text-white flex items-center justify-center active:scale-95 transition-transform"><ArrowDownCircle size={16}/></button>
-                <div className="text-center"><span className="block text-[8px] text-slate-400 font-black uppercase tracking-widest">Tono Actual</span><span className="block text-lg font-black text-white">{transposeChord(genderToggle === 'woman' ? viewingSong.keyWoman : viewingSong.keyMan, transposeSteps)}</span></div>
-                <button onClick={() => setTransposeSteps(p => p + 1)} className="w-8 h-8 rounded-md bg-slate-700 text-white flex items-center justify-center active:scale-95 transition-transform"><ArrowUpCircle size={16}/></button>
+              <div className="flex items-center justify-between px-2">
+                <button onClick={() => setTransposeSteps(p => p - 1)} className="w-10 h-10 rounded-full bg-slate-700 text-white flex items-center justify-center active:scale-90 transition-transform"><ArrowDownCircle size={20}/></button>
+                <div className="text-center"><span className="block text-[9px] text-slate-400 font-bold uppercase tracking-widest mb-1">Tono Actual</span><span className="block text-2xl font-black text-white">{transposeChord(genderToggle === 'woman' ? viewingSong.keyWoman : viewingSong.keyMan, transposeSteps)}</span></div>
+                <button onClick={() => setTransposeSteps(p => p + 1)} className="w-10 h-10 rounded-full bg-slate-700 text-white flex items-center justify-center active:scale-90 transition-transform"><ArrowUpCircle size={20}/></button>
               </div>
             </div>
 
-            <div className="flex-1 bg-slate-900/50 rounded-xl p-2 flex flex-col justify-center items-center border border-slate-700">
-               <span className="block text-[8px] text-slate-400 font-black uppercase tracking-widest mb-1">Metrónomo</span>
-               <div className="flex items-center gap-3">
-                 <span className="block text-xl font-black text-white">{viewingSong.bpm || '--'}</span>
-                 <button onClick={() => toggleMetronome(viewingSong.bpm)} className={`w-10 h-10 rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-all ${isPlayingMetro ? 'bg-rose-500 shadow-rose-500/50 animate-pulse' : 'bg-brand-600 shadow-brand-500/50'}`}>
-                   {isPlayingMetro ? <StopCircle size={20} className="text-white"/> : <PlayCircle size={20} className="text-white"/>}
+            <div className="flex-1 bg-slate-800 rounded-[20px] p-3 flex flex-col justify-center items-center">
+               <span className="block text-[9px] text-slate-400 font-bold uppercase tracking-widest mb-2">Metrónomo</span>
+               <div className="flex flex-col items-center gap-2">
+                 <span className="block text-2xl font-black text-white leading-none">{viewingSong.bpm || '--'}</span>
+                 <button onClick={() => toggleMetronome(viewingSong.bpm)} className={`px-6 py-2 rounded-full font-bold text-xs shadow-md active:scale-95 transition-all ${isPlayingMetro ? 'bg-rose-500 text-white animate-pulse' : 'bg-white text-slate-900'}`}>
+                   {isPlayingMetro ? 'PARAR' : 'PLAY'}
                  </button>
                </div>
             </div>
           </div>
 
-          <div className="flex-1 relative bg-[#fdfdfd] overflow-hidden flex items-start justify-start p-6 pb-20">
+          <div className="flex-1 relative bg-slate-900 overflow-hidden flex items-start justify-start p-8 pb-24">
              <div className="absolute left-0 top-0 bottom-0 w-1/2 z-10" onClick={handlePrevSlide}></div>
              <div className="absolute right-0 top-0 bottom-0 w-1/2 z-10" onClick={handleNextSlide}></div>
              
-             <div className="w-full transition-all duration-300 pointer-events-none">
+             <div className="w-full transition-all duration-300 pointer-events-none text-white">
                {renderLyricsWithChords(songSlides[currentSlideIdx] || '', effectiveSteps, textSize)}
              </div>
 
-             <div className="absolute bottom-20 left-1/2 -translate-x-1/2 flex gap-1 z-20 pointer-events-none">
+             <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-1.5 z-20 pointer-events-none">
                {songSlides.map((_, i) => (
-                 <div key={i} className={`h-1.5 rounded-full transition-all ${i === currentSlideIdx ? 'w-6 bg-brand-500' : 'w-1.5 bg-slate-200'}`}></div>
+                 <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === currentSlideIdx ? 'w-8 bg-white' : 'w-2 bg-slate-600'}`}></div>
                ))}
              </div>
           </div>
 
           {activeSetlist.length > 1 && (
-            <div className="bg-slate-900 p-4 flex items-center gap-4 border-t border-slate-800 shrink-0 z-20 relative">
-              <button onClick={() => { if(currentSongIdx > 0) changeSongIdx(currentSongIdx - 1) }} className={`p-4 rounded-2xl flex items-center justify-center transition-all ${currentSongIdx === 0 ? 'opacity-30' : 'bg-slate-800 text-white active:scale-90'}`}><ChevronLeft size={24} /></button>
+            <div className="bg-slate-950 p-5 flex items-center gap-4 border-t border-slate-900 shrink-0 z-20 relative">
+              <button onClick={() => { if(currentSongIdx > 0) changeSongIdx(currentSongIdx - 1) }} className={`w-12 h-12 rounded-full flex items-center justify-center transition-transform ${currentSongIdx === 0 ? 'opacity-30' : 'bg-slate-800 text-white active:scale-90'}`}><ChevronLeft size={24} /></button>
               <div className="flex-1 text-center min-w-0">
-                <span className="block text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">{currentSongIdx < activeSetlist.length - 1 ? 'SIGUIENTE CANCIÓN' : 'FIN DEL SETLIST'}</span>
-                <span className="block text-sm font-black text-white truncate mt-1">{currentSongIdx < activeSetlist.length - 1 ? activeSetlist[currentSongIdx+1].title : '-'}</span>
+                <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest truncate">{currentSongIdx < activeSetlist.length - 1 ? 'Siguiente' : 'Fin del Setlist'}</span>
+                <span className="block text-base font-bold text-white truncate mt-1">{currentSongIdx < activeSetlist.length - 1 ? activeSetlist[currentSongIdx+1].title : '-'}</span>
               </div>
-              <button onClick={() => { if(currentSongIdx < activeSetlist.length - 1) changeSongIdx(currentSongIdx + 1) }} className={`p-4 rounded-2xl flex items-center justify-center transition-all ${currentSongIdx === activeSetlist.length - 1 ? 'opacity-30' : 'bg-brand-600 text-white active:scale-90'}`}><ChevronRight size={24} /></button>
+              <button onClick={() => { if(currentSongIdx < activeSetlist.length - 1) changeSongIdx(currentSongIdx + 1) }} className={`w-12 h-12 rounded-full flex items-center justify-center transition-transform ${currentSongIdx === activeSetlist.length - 1 ? 'opacity-30' : 'bg-blue-600 text-white active:scale-90 shadow-lg shadow-blue-600/30'}`}><ChevronRight size={24} /></button>
             </div>
           )}
         </div>
