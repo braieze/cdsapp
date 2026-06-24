@@ -80,7 +80,7 @@ export default function ServiceDetails() {
   useEffect(() => {
     if (!event) return;
     
-    // 🎯 PUNTO 2: Bloqueo de seguridad. Si declinó, no escuchamos el chat.
+    // Bloqueo de seguridad. Si declinó, no escuchamos el chat.
     if (event.confirmations?.[currentUser.displayName] === 'declined' && !isModerator) {
       setMessages([]);
       return;
@@ -189,7 +189,7 @@ export default function ServiceDetails() {
     if (window.confirm("¿Eliminar mensaje?")) await deleteDoc(doc(db, `events/${id}/notes`, msgId));
   };
 
-  if (loading) return <div className="fixed inset-0 bg-white z-[100] flex items-center justify-center"><Loader2 className="animate-spin text-brand-600" /></div>;
+  if (loading) return <div className="fixed inset-0 bg-[#F8F9FE] z-[100] flex flex-col items-center justify-center font-sans"><Loader2 className="animate-spin text-blue-600 mb-4" size={40}/><p className="text-sm font-semibold text-slate-500">Cargando...</p></div>;
 
   const myRole = Object.keys(event.assignments || {}).find(role => event.assignments[role].includes(currentUser.displayName));
   const myStatus = event.confirmations?.[currentUser.displayName];
@@ -198,108 +198,123 @@ export default function ServiceDetails() {
   const MessageContent = ({ m, isPinnedView = false }) => {
     const isMyMessage = m.uid === currentUser.uid;
     return (
-      <div className={`${isPinnedView ? 'w-full' : 'p-1 rounded-[22px] shadow-sm relative group'} ${!isPinnedView && (isMyMessage ? 'bg-slate-900 text-white rounded-tr-none' : 'bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200/40')}`}>
-        {m.image && <img src={m.image} referrerPolicy="no-referrer" onClick={(e) => { e.stopPropagation(); setViewingImage(m.image); }} className={`${isPinnedView ? 'w-16 h-16 rounded-lg float-right ml-2' : 'w-full h-auto rounded-[18px]'} object-cover`} />}
+      <div className={`${isPinnedView ? 'w-full' : 'p-1 relative group'} ${!isPinnedView && (isMyMessage ? 'bg-blue-600 text-white rounded-[20px] rounded-tr-[4px] shadow-sm' : 'bg-white text-slate-800 rounded-[20px] rounded-tl-[4px] shadow-[0_2px_10px_rgba(0,0,0,0.02)] border border-slate-100')}`}>
+        {m.image && <img src={m.image} referrerPolicy="no-referrer" onClick={(e) => { e.stopPropagation(); setViewingImage(m.image); }} className={`${isPinnedView ? 'w-16 h-16 rounded-xl float-right ml-3 object-cover' : 'w-full h-auto rounded-[16px] object-cover mb-1'}`} />}
         {m.checklist && (
-          <div className={`${isPinnedView ? 'mt-1' : 'p-4'} space-y-2`}>
+          <div className={`${isPinnedView ? 'mt-1' : 'p-3'} space-y-2`}>
             {m.checklist.map((task, i) => (
               <button key={i} onClick={async (e) => {
                 e.stopPropagation();
                 const newChecklist = [...m.checklist];
                 newChecklist[i].completed = !newChecklist[i].completed;
                 await updateDoc(doc(db, `events/${id}/notes`, m.id), { checklist: newChecklist });
-              }} className="flex items-center gap-3 w-full text-left">
-                {task.completed ? <CheckSquare size={18} className={isPinnedView ? "text-white/80" : (isMyMessage ? "text-white" : "text-brand-600")}/> : <Square size={18} className="opacity-40"/>}
-                <span className={`${isPinnedView ? 'text-xs' : 'text-sm'} font-black ${task.completed ? 'opacity-40 line-through' : ''}`}>{task.text}</span>
+              }} className="flex items-start gap-3 w-full text-left">
+                <div className="mt-0.5">
+                  {task.completed ? <CheckSquare size={18} className={isPinnedView ? "text-blue-600" : (isMyMessage ? "text-white" : "text-blue-600")}/> : <Square size={18} className="opacity-50"/>}
+                </div>
+                <span className={`${isPinnedView ? 'text-xs' : 'text-[15px]'} font-semibold leading-snug ${task.completed ? 'opacity-60 line-through' : ''}`}>{task.text}</span>
               </button>
             ))}
           </div>
         )}
-        {m.text && <p className={`font-semibold leading-relaxed whitespace-pre-wrap ${isPinnedView ? 'text-xs truncate' : 'px-4 py-3 text-[15px]'}`}>{m.text}</p>}
+        {m.text && <p className={`font-medium leading-relaxed whitespace-pre-wrap ${isPinnedView ? 'text-sm truncate text-slate-700' : 'px-3 py-2 text-[15px]'}`}>{m.text}</p>}
       </div>
     );
   };
 
   return (
-    <div className="fixed inset-0 bg-white flex flex-col overflow-hidden animate-fade-in z-[100] font-outfit">
+    <div className="fixed inset-0 bg-[#F8F9FE] flex flex-col overflow-hidden animate-fade-in z-[100] font-sans">
       
-      <header className="bg-slate-900 text-white pt-14 pb-5 px-6 rounded-b-[45px] shadow-2xl z-50 flex-shrink-0 border-b-4 border-brand-500/20">
-        <div className="flex items-center justify-between mb-5">
-          <button onClick={() => navigate('/servicios')} className="p-2.5 bg-white/10 rounded-2xl active:scale-90 transition-transform"><ChevronLeft size={24} /></button>
-          <div className="text-center flex-1 px-4">
-            <h1 className="text-lg font-black truncate uppercase tracking-tighter leading-tight">{event.title}</h1>
-            <p className="text-[10px] font-black text-brand-400 uppercase tracking-[0.2em] mt-1">{format(new Date(event.date + 'T00:00:00'), "EEEE d MMMM", { locale: es })}</p>
+      {/* 🚀 HEADER SOCIALYO */}
+      <header className="bg-white pt-12 pb-5 px-5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] z-50 flex-shrink-0 border-b border-slate-100 rounded-b-[32px]">
+        <div className="max-w-md mx-auto">
+          <div className="flex items-center justify-between mb-6">
+            <button onClick={() => navigate('/servicios')} className="w-10 h-10 flex items-center justify-center bg-slate-50 text-slate-700 rounded-full active:scale-90 transition-transform"><ChevronLeft size={24} strokeWidth={2.5}/></button>
+            <div className="text-center flex-1 px-4 min-w-0">
+              <h1 className="text-lg font-bold text-slate-900 truncate">{event.title}</h1>
+              <p className="text-xs font-bold text-blue-600 capitalize mt-0.5">{format(new Date(event.date + 'T00:00:00'), "EEEE d MMMM", { locale: es })}</p>
+            </div>
+            <div className="w-10"></div>
           </div>
-          <div className="w-12"></div>
-        </div>
 
-        <div className="bg-white/5 border border-white/10 rounded-[24px] p-4 flex items-center justify-between mb-4 shadow-inner">
-           <div className="flex items-center gap-3 overflow-hidden">
-              <div className="bg-brand-500/20 p-2.5 rounded-xl text-brand-400 shadow-lg"><Users size={20} /></div>
-              <div className="min-w-0 flex-1"><p className="text-[8px] font-black text-white/30 uppercase tracking-widest">Tu lugar en el equipo</p><p className="text-sm font-black text-white capitalize truncate">{myRole?.replace(/_/g, ' ') || 'Servidor'}</p></div>
-           </div>
-           <button onClick={() => navigate(`/calendario/${id}`)} className="text-[9px] font-black bg-white text-slate-900 px-4 py-2.5 rounded-xl active:scale-95 transition-all shadow-xl uppercase tracking-widest">Equipo</button>
-        </div>
-
-        {!myStatus ? (
-          <div className="flex gap-3"><button onClick={() => handleResponse('confirmed')} className="flex-1 bg-emerald-500 text-white py-3.5 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-emerald-900/20 active:scale-95 transition-all">Confirmar ✓</button><button onClick={() => handleResponse('declined')} className="flex-1 bg-white/10 text-white/60 py-3.5 rounded-2xl font-black text-[10px] uppercase active:scale-95">Informar Baja</button></div>
-        ) : (
-          <div className={`p-4 rounded-2xl flex items-center justify-between border-2 ${myStatus === 'confirmed' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'}`}>
-            <span className="text-[10px] font-black uppercase flex items-center gap-3 tracking-widest">{myStatus === 'confirmed' ? <CheckCircle size={18}/> : <XCircle size={18}/>} {myStatus === 'confirmed' ? 'Servicio Confirmado' : 'Baja Notificada'}</span>
-            <button onClick={() => handleResponse(null)} className="text-[9px] font-black uppercase underline decoration-2 underline-offset-4 ml-2">Cambiar</button>
+          <div className="bg-[#F8F9FE] border border-slate-100 rounded-[24px] p-4 flex items-center justify-between mb-5 shadow-inner">
+             <div className="flex items-center gap-3 overflow-hidden">
+                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 shrink-0"><Users size={18} /></div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tu lugar en el equipo</p>
+                  <p className="text-sm font-bold text-slate-900 capitalize truncate">{myRole?.replace(/_/g, ' ') || 'Servidor'}</p>
+                </div>
+             </div>
+             <button onClick={() => navigate(`/calendario/${id}`)} className="text-xs font-bold bg-white text-slate-700 border border-slate-200 px-4 py-2 rounded-full active:scale-95 transition-all shadow-sm">Ver Equipo</button>
           </div>
-        )}
+
+          {!myStatus ? (
+            <div className="flex gap-3">
+              <button onClick={() => handleResponse('confirmed')} className="flex-1 bg-emerald-500 text-white py-3.5 rounded-full font-bold text-sm shadow-md shadow-emerald-500/20 active:scale-95 transition-all">Confirmar Asistencia</button>
+              <button onClick={() => handleResponse('declined')} className="flex-1 bg-slate-50 border border-slate-200 text-slate-600 py-3.5 rounded-full font-bold text-sm active:scale-95 transition-all">Informar Baja</button>
+            </div>
+          ) : (
+            <div className={`p-4 rounded-[20px] flex items-center justify-between border ${myStatus === 'confirmed' ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-red-50 border-red-100 text-red-600'}`}>
+              <span className="text-xs font-bold flex items-center gap-2">{myStatus === 'confirmed' ? <CheckCircle size={18}/> : <XCircle size={18}/>} {myStatus === 'confirmed' ? 'Asistencia Confirmada' : 'Baja Notificada'}</span>
+              <button onClick={() => handleResponse(null)} className="text-xs font-bold underline underline-offset-2 ml-2 opacity-70 hover:opacity-100">Cambiar</button>
+            </div>
+          )}
+        </div>
       </header>
 
-      <main className="flex-1 overflow-hidden flex flex-col relative bg-slate-50/50">
+      <main className="flex-1 overflow-hidden flex flex-col relative w-full max-w-md mx-auto">
         {/* 🎯 PUNTO 2: Lógica de Bloqueo de Chat */}
         {myStatus === 'declined' && !isModerator ? (
-          <div className="absolute inset-0 z-[60] bg-white/95 backdrop-blur-md flex flex-col items-center justify-center p-10 text-center animate-fade-in">
-             <div className="w-24 h-24 bg-rose-50 text-rose-500 rounded-[40px] flex items-center justify-center mb-6 shadow-xl shadow-rose-100 border-2 border-rose-100">
-                <Lock size={48} strokeWidth={2.5}/>
+          <div className="absolute inset-0 z-[60] bg-[#F8F9FE]/90 backdrop-blur-md flex flex-col items-center justify-center p-8 text-center animate-fade-in">
+             <div className="w-20 h-20 bg-white text-red-500 rounded-full flex items-center justify-center mb-6 shadow-sm border border-red-100">
+                <Lock size={32} strokeWidth={2.5}/>
              </div>
-             <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter mb-4">Chat Restringido</h3>
-             <p className="text-sm text-slate-500 font-bold leading-relaxed mb-8 uppercase tracking-widest">
+             <h3 className="text-xl font-bold text-slate-900 mb-3">Chat Restringido</h3>
+             <p className="text-sm text-slate-500 font-medium leading-relaxed mb-8">
                 Has notificado que no podrás asistir a este servicio. El chat solo está disponible para los servidores activos.
              </p>
-             <button onClick={() => handleResponse(null)} className="w-full py-5 bg-slate-900 text-white rounded-[24px] font-black text-xs uppercase tracking-[0.3em] shadow-2xl active:scale-95 transition-all">
+             <button onClick={() => handleResponse(null)} className="w-full py-4 bg-slate-900 text-white rounded-full font-bold text-sm shadow-lg active:scale-95 transition-all">
                 Reconsiderar Asistencia
              </button>
           </div>
         ) : (
           <>
-            <div className="bg-white/80 backdrop-blur-md z-40 border-b border-slate-200 flex-shrink-0">
-                <div className="px-6 py-4 flex items-center justify-between">
-                  <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><MessageSquare size={14} className="text-brand-600"/> Coordinación de Equipo</h3>
-                  <button onClick={() => setHideReceipts(!hideReceipts)} className="p-2 text-slate-400 bg-slate-100 rounded-xl active:scale-90">{hideReceipts ? <Eye size={18} /> : <EyeOff size={18} />}</button>
+            <div className="z-40 flex-shrink-0 pt-2">
+                <div className="px-5 py-3 flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2"><MessageSquare size={16} className="text-blue-500"/> Equipo Operativo</h3>
+                  <button onClick={() => setHideReceipts(!hideReceipts)} className="w-8 h-8 flex items-center justify-center text-slate-400 bg-white rounded-full shadow-sm active:scale-90 transition-transform">{hideReceipts ? <Eye size={16} /> : <EyeOff size={16} />}</button>
                 </div>
                 
                 {pinnedMessage && (
                   <div onClick={() => document.getElementById(`msg-${pinnedMessage.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })} 
-                       className="mx-4 mb-4 bg-brand-600 text-white p-5 rounded-[28px] shadow-xl shadow-brand-100 flex items-start gap-4 animate-slide-down cursor-pointer border-b-4 border-brand-700/50">
-                    <Pin size={22} className="flex-shrink-0 mt-1 opacity-70 rotate-12"/><div className="flex-1"><p className="text-[9px] font-black uppercase opacity-60 mb-2 tracking-[0.2em]">Nota Importante</p><MessageContent m={pinnedMessage} isPinnedView={true} /></div>
-                    {isModerator && <button onClick={(e) => { e.stopPropagation(); togglePin(pinnedMessage.id, true); }} className="p-2 bg-black/20 rounded-full active:scale-75"><X size={16}/></button>}
+                       className="mx-5 mb-2 bg-blue-50 border border-blue-100 p-4 rounded-[24px] shadow-sm flex items-start gap-3 animate-slide-down cursor-pointer">
+                    <Pin size={18} className="flex-shrink-0 mt-0.5 text-blue-600"/>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1">Mensaje Fijado</p>
+                      <MessageContent m={pinnedMessage} isPinnedView={true} />
+                    </div>
+                    {isModerator && <button onClick={(e) => { e.stopPropagation(); togglePin(pinnedMessage.id, true); }} className="p-2 text-slate-400 hover:text-red-500 rounded-full active:scale-75 transition-colors -mt-1 -mr-1"><X size={16}/></button>}
                   </div>
                 )}
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-8 scroll-smooth no-scrollbar pb-32">
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6 scroll-smooth no-scrollbar pb-36">
               {messages.map((m) => {
                   const isMy = m.uid === currentUser.uid;
                   const readers = allUsers.filter(u => m.readBy?.includes(u.id) && u.id !== m.uid).map(u => u.displayName?.split(' ')[0]);
                   return (
                     <div key={m.id} id={`msg-${m.id}`} className="flex flex-col animate-fade-in group">
                         <div className={`flex flex-col ${isMy ? 'items-end' : 'items-start'}`}>
-                            <div className="relative max-w-[88%]">
+                            <div className="relative max-w-[85%]">
                               <MessageContent m={m} />
-                              <div className={`absolute top-0 flex gap-2 opacity-0 group-hover:opacity-100 transition-all ${isMy ? '-left-16' : '-right-16'}`}>
-                                 {(isModerator || isMy) && <button onClick={() => deleteMessage(m.id)} className="p-2 bg-rose-50 text-rose-500 rounded-xl shadow-sm border border-rose-100"><Trash2 size={14}/></button>}
-                                 {isModerator && <button onClick={() => togglePin(m.id, m.isPinned)} className={`p-2 rounded-xl shadow-sm border ${m.isPinned ? 'bg-brand-600 text-white border-brand-500' : 'bg-white text-brand-600 border-slate-100'}`}><Pin size={14}/></button>}
+                              <div className={`absolute top-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-all ${isMy ? '-left-14' : '-right-14'}`}>
+                                 {(isModerator || isMy) && <button onClick={() => deleteMessage(m.id)} className="w-8 h-8 flex items-center justify-center bg-white text-red-500 rounded-full shadow-sm border border-slate-100"><Trash2 size={14}/></button>}
+                                 {isModerator && <button onClick={() => togglePin(m.id, m.isPinned)} className={`w-8 h-8 flex items-center justify-center rounded-full shadow-sm border ${m.isPinned ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-400 border-slate-100'}`}><Pin size={14}/></button>}
                               </div>
                             </div>
-                            <div className={`mt-2 px-1 flex flex-col ${isMy ? 'items-end' : 'items-start'}`}>
-                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">{m.sender?.split(' ')[0]} • {m.createdAt ? format(m.createdAt.toDate(), 'HH:mm') : '...'}</span>
-                              {!hideReceipts && readers.length > 0 && <button onClick={() => setShowReadersId(m.id)} className="text-[8px] font-black text-brand-500/60 mt-1 flex items-center gap-1.5 uppercase tracking-widest"><Eye size={10} /> Visto por {readers.length}</button>}
+                            <div className={`mt-1.5 px-2 flex flex-col ${isMy ? 'items-end' : 'items-start'}`}>
+                              <span className="text-[10px] font-semibold text-slate-400">{m.sender?.split(' ')[0]} • {m.createdAt ? format(m.createdAt.toDate(), 'HH:mm') : '...'}</span>
+                              {!hideReceipts && readers.length > 0 && <button onClick={() => setShowReadersId(m.id)} className="text-[10px] font-semibold text-blue-500/70 mt-0.5 flex items-center gap-1"><Eye size={10} /> Visto por {readers.length}</button>}
                             </div>
                         </div>
                     </div>
@@ -308,72 +323,75 @@ export default function ServiceDetails() {
               <div ref={scrollRef} className="h-4" />
             </div>
 
-            <footer className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200 p-5 pb-10 z-[70] shadow-[0_-20px_50px_rgba(0,0,0,0.08)]">
+            {/* 🚀 FOOTER INPUT SOCIALYO */}
+            <footer className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-100 p-4 pb-6 z-[70]">
               {imagePreview && (
                 <div className="absolute bottom-full left-5 mb-4 animate-scale-in">
-                  <img src={imagePreview} className="w-24 h-24 object-cover rounded-[24px] border-4 border-white shadow-2xl" />
-                  <button onClick={() => { setSelectedFile(null); setImagePreview(null); }} className="absolute -top-3 -right-3 bg-rose-600 text-white p-2 rounded-full shadow-lg border-2 border-white"><X size={14}/></button>
+                  <img src={imagePreview} className="w-20 h-20 object-cover rounded-[16px] border border-slate-200 shadow-lg" />
+                  <button onClick={() => { setSelectedFile(null); setImagePreview(null); }} className="absolute -top-2 -right-2 bg-red-500 text-white p-1.5 rounded-full shadow-sm"><X size={14}/></button>
                 </div>
               )}
               
               {showChecklistCreator && (
-                <div className="absolute bottom-full left-5 right-5 bg-white border-2 border-slate-100 rounded-[35px] p-6 mb-5 space-y-4 shadow-2xl animate-slide-up text-left">
-                  <div className="flex justify-between items-center"><span className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em]">Nueva Tarea Grupal</span><button onClick={() => setShowChecklistCreator(false)} className="p-2 bg-slate-50 rounded-full text-slate-400"><X size={16}/></button></div>
-                  <div className="max-h-48 overflow-y-auto pr-2 no-scrollbar space-y-2.5">
+                <div className="absolute bottom-full left-5 right-5 bg-white border border-slate-100 rounded-[28px] p-5 mb-4 space-y-3 shadow-xl animate-slide-up text-left">
+                  <div className="flex justify-between items-center"><span className="text-xs font-bold text-slate-900 uppercase tracking-wider">Nueva Lista de Tareas</span><button onClick={() => setShowChecklistCreator(false)} className="w-8 h-8 bg-slate-50 flex items-center justify-center rounded-full text-slate-500"><X size={16}/></button></div>
+                  <div className="max-h-48 overflow-y-auto pr-1 no-scrollbar space-y-2">
                       {tempTasks.map((t, i) => (
                         <input key={i} type="text" value={t} onChange={(e) => {
                           const newT = [...tempTasks]; newT[i] = e.target.value; 
                           if (i === tempTasks.length - 1 && e.target.value !== '') newT.push('');
                           setTempTasks(newT);
-                        }} placeholder="Escribir requerimiento..." className="w-full text-sm p-4 bg-slate-50 border-2 border-transparent rounded-[20px] outline-none font-bold text-slate-700 focus:bg-white focus:border-brand-500 transition-all shadow-inner" />
+                        }} placeholder="Escribir tarea..." className="w-full text-sm py-3 px-4 bg-[#F8F9FE] border border-slate-200 rounded-xl outline-none font-medium text-slate-800 focus:bg-white focus:border-blue-500 transition-all" />
                       ))}
                   </div>
-                  <p className="text-[9px] font-black text-slate-300 uppercase text-center tracking-widest">Las tareas aparecerán para todo el equipo</p>
+                  <p className="text-[10px] font-bold text-slate-400 text-center pt-2">Las tareas aparecerán para todo el equipo</p>
                 </div>
               )}
 
-              <div className="flex items-end gap-3">
-                <div className="flex gap-2">
-                  <label className="p-4 bg-slate-50 border-2 border-slate-100 rounded-[22px] text-slate-500 cursor-pointer active:scale-95 transition-all shadow-sm"><ImageIcon size={22}/><input type="file" className="hidden" accept="image/*" onChange={(e) => {
+              <div className="flex items-end gap-2">
+                <div className="flex gap-2 mb-1">
+                  <label className="w-10 h-10 bg-slate-50 border border-slate-200 rounded-full flex items-center justify-center text-slate-500 cursor-pointer active:scale-95 transition-all"><ImageIcon size={18}/><input type="file" className="hidden" accept="image/*" onChange={(e) => {
                       const file = e.target.files[0];
                       if (file) { setSelectedFile(file); setImagePreview(URL.createObjectURL(file)); }
                   }} /></label>
-                  <button onClick={() => setShowChecklistCreator(!showChecklistCreator)} className={`p-4 border-2 rounded-[22px] active:scale-95 transition-all shadow-sm ${showChecklistCreator ? 'bg-brand-600 text-white border-brand-600 shadow-lg' : 'bg-slate-50 text-slate-400 border-slate-100'}`}><ListPlus size={22}/></button>
+                  <button onClick={() => setShowChecklistCreator(!showChecklistCreator)} className={`w-10 h-10 border rounded-full flex items-center justify-center active:scale-95 transition-all ${showChecklistCreator ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-500 border-slate-200'}`}><ListPlus size={18}/></button>
                 </div>
-                <textarea rows="1" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Escribe al equipo..." className="flex-1 bg-slate-50 border-2 border-slate-100 rounded-[25px] px-6 py-4 text-[15px] outline-none resize-none max-h-36 font-semibold focus:border-brand-500 focus:bg-white transition-all shadow-inner" />
-                <button onClick={handleSendMessage} disabled={isSending || (!newMessage.trim() && !selectedFile && !showChecklistCreator)} className="bg-slate-900 text-white p-5 rounded-[25px] shadow-2xl disabled:opacity-30 active:scale-90 transition-all">{isSending ? <Loader2 size={24} className="animate-spin"/> : <Send size={24}/>}</button>
+                <div className="flex-1 bg-[#F8F9FE] border border-slate-200 rounded-[24px] flex items-end">
+                   <textarea rows="1" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Escribe un mensaje..." className="w-full bg-transparent px-4 py-3 text-sm outline-none resize-none max-h-32 font-medium text-slate-800 placeholder-slate-400" />
+                </div>
+                <button onClick={handleSendMessage} disabled={isSending || (!newMessage.trim() && !selectedFile && !showChecklistCreator)} className="w-12 h-12 mb-0.5 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-md shadow-blue-600/20 disabled:opacity-50 disabled:bg-slate-300 active:scale-95 transition-transform shrink-0">
+                   {isSending ? <Loader2 size={20} className="animate-spin"/> : <Send size={20} className="ml-1"/>}
+                </button>
               </div>
             </footer>
           </>
         )}
       </main>
 
-      {/* VISUALIZADOR DE IMAGEN FULL SCREEN (PUNTO 8) */}
+      {/* VISUALIZADOR DE IMAGEN */}
       {viewingImage && (
-        <div className="fixed inset-0 z-[200] bg-slate-900/98 backdrop-blur-2xl flex items-center justify-center p-4 animate-fade-in" onClick={() => setViewingImage(null)}>
-          <img src={viewingImage} referrerPolicy="no-referrer" className="max-w-full max-h-[80vh] object-contain rounded-3xl shadow-2xl border-4 border-white/10" onClick={e => e.stopPropagation()} />
-          <button className="absolute top-12 right-8 text-white p-4 bg-white/10 rounded-full backdrop-blur-xl border border-white/20 active:scale-75 transition-all"><X size={32}/></button>
+        <div className="fixed inset-0 z-[200] bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in" onClick={() => setViewingImage(null)}>
+          <img src={viewingImage} referrerPolicy="no-referrer" className="max-w-full max-h-[80vh] object-contain rounded-[24px] shadow-2xl" onClick={e => e.stopPropagation()} />
+          <button className="absolute top-12 right-6 w-12 h-12 text-white bg-white/20 rounded-full flex items-center justify-center backdrop-blur-md active:scale-90 transition-transform"><X size={24}/></button>
         </div>
       )}
 
-      {/* LISTA DE LECTORES (PUNTO 8: FIX ANDROID) */}
+      {/* LISTA DE LECTORES */}
       {showReadersId && (
-        <div className="fixed inset-0 z-[200] bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-8 animate-fade-in" onClick={() => setShowReadersId(null)}>
-          <div className="bg-white w-full max-w-xs rounded-[45px] p-8 shadow-2xl animate-scale-in border-2 border-slate-100 text-left" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-8 border-b pb-5 border-slate-50">
+        <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6 animate-fade-in" onClick={() => setShowReadersId(null)}>
+          <div className="bg-white w-full max-w-xs rounded-[32px] p-6 shadow-2xl animate-scale-in text-left" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
               <div>
-                <h4 className="font-black text-slate-900 text-sm uppercase tracking-tighter">Visto por:</h4>
-                <p className="text-[9px] font-black text-brand-600 uppercase tracking-widest mt-1">Acuse de lectura</p>
+                <h4 className="font-bold text-slate-900 text-sm">Visto por</h4>
+                <p className="text-[10px] font-bold text-slate-400 mt-0.5">Acuse de lectura</p>
               </div>
-              <button onClick={() => setShowReadersId(null)} className="p-2.5 bg-slate-50 rounded-full text-slate-400 active:scale-75 transition-all"><X size={18}/></button>
+              <button onClick={() => setShowReadersId(null)} className="w-8 h-8 bg-slate-50 flex items-center justify-center rounded-full text-slate-500 active:scale-90 transition-transform"><X size={16}/></button>
             </div>
-            <div className="space-y-4 max-h-72 overflow-y-auto no-scrollbar">
+            <div className="space-y-4 max-h-64 overflow-y-auto no-scrollbar pr-1">
               {allUsers.filter(u => messages.find(m => m.id === showReadersId)?.readBy?.includes(u.id) && u.id !== messages.find(m => m.id === showReadersId)?.uid).map(u => (
-                <div key={u.id} className="flex items-center gap-4 animate-fade-in">
-                  <div className="w-11 h-11 rounded-2xl overflow-hidden border-2 border-white shadow-lg bg-slate-100 flex-shrink-0">
-                    <img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}&background=0f172a&color=fff`} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                  </div>
-                  <span className="text-xs font-black text-slate-800 uppercase tracking-tight truncate">{u.displayName}</span>
+                <div key={u.id} className="flex items-center gap-3 animate-fade-in">
+                  <img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}&background=EBF4FF&color=2563EB`} referrerPolicy="no-referrer" className="w-10 h-10 rounded-full object-cover bg-slate-100" />
+                  <span className="text-sm font-bold text-slate-800">{u.displayName}</span>
                 </div>
               ))}
             </div>
@@ -383,10 +401,10 @@ export default function ServiceDetails() {
 
       {/* TOASTS */}
       {toast && (
-        <div className="fixed bottom-32 left-6 right-6 z-[1000] animate-slide-up">
-          <div className={`flex items-center gap-4 px-8 py-5 rounded-[30px] shadow-2xl border-2 ${toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-400' : 'bg-slate-900 text-white border-slate-700'}`}>
-            <CheckCircle size={24}/>
-            <span className="text-[11px] font-black uppercase tracking-widest">{toast.message}</span>
+        <div className="fixed bottom-28 left-0 right-0 z-[1000] animate-slide-up flex justify-center pointer-events-none">
+          <div className={`flex items-center gap-3 px-6 py-3 rounded-full shadow-lg border ${toast.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-900 text-white border-slate-800'}`}>
+            <CheckCircle size={18}/>
+            <span className="text-xs font-bold">{toast.message}</span>
           </div>
         </div>
       )}
