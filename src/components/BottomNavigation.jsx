@@ -100,31 +100,38 @@ export default function BottomNavigation({ dbUser }) {
   ];
 
   return (
-    // DISEÑO SOCIALYO: Fondo blanco sólido, anclado al fondo, punta a punta.
-    <nav className="fixed bottom-0 left-0 right-0 w-full bg-white border-t border-slate-100 z-50 h-[80px]">
-      <div className="max-w-md mx-auto flex justify-around items-center h-full px-4 pb-2">
+    // DISEÑO NATIVO: Fondo translúcido con blur, sombra muy suave y margen de seguridad inferior para iOS/Android
+    <nav className="fixed bottom-0 left-0 right-0 w-full bg-white/90 backdrop-blur-xl border-t border-slate-200/50 z-[100] pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_25px_rgba(0,0,0,0.03)]">
+      <div className="max-w-md mx-auto flex justify-around items-center h-[68px] px-2">
         {navItems.map((item) => {
           const isActive = path === item.path;
-          const Icon = isActive ? item.solid : item.outline; // Alterna entre relleno y línea
+          const Icon = isActive ? item.solid : item.outline; 
           
           return (
             <Link 
               key={item.path} 
               to={item.path} 
-              className="flex items-center justify-center w-14 h-14 active:scale-90 transition-transform duration-200"
+              // Cambiamos el contenedor a un diseño de columna para centrar y añadir el punto nativo si queremos
+              className="relative flex flex-col items-center justify-center w-full h-full active:scale-[0.92] transition-transform duration-200"
             >
               <div className="relative flex items-center justify-center">
                 <Icon 
-                  className={`transition-all duration-300 ${isActive ? 'w-8 h-8 text-slate-900' : 'w-7 h-7 text-slate-400'}`} 
+                  // MANTENEMOS EL MISMO TAMAÑO (w-7 h-7) para evitar saltos raros. Solo cambiamos el color.
+                  className={`transition-colors duration-200 ${isActive ? 'w-7 h-7 text-blue-600' : 'w-7 h-7 text-slate-400'}`} 
                 />
                 
-                {/* Badge rediseñado: Limpio, pequeño y sin rebote */}
+                {/* Badge NATIVO: Borde blanco, perfectamente circular y posicionado */}
                 {item.badge > 0 && (
-                  <span className="absolute -top-1 -right-1.5 bg-red-500 text-white text-[9px] font-bold h-4 min-w-[16px] px-1 flex items-center justify-center rounded-full border-2 border-white shadow-sm">
+                  <span className="absolute -top-1 -right-1.5 bg-red-500 text-white text-[9px] font-black h-4 min-w-[16px] px-1 flex items-center justify-center rounded-full ring-2 ring-white shadow-sm">
                     {item.badge}
                   </span>
                 )}
               </div>
+              
+              {/* MICRO-INTERACCIÓN: El típico puntito azul debajo del icono activo de las apps modernas */}
+              {isActive && (
+                 <span className="absolute bottom-1.5 w-1 h-1 rounded-full bg-blue-600"></span>
+              )}
             </Link>
           );
         })}
