@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom'; 
 import { 
-  Cake, MessageCircle, MoreVertical, Trash2, 
-  Archive, Pin, Sparkles, BellRing, X, Plus
+  Cake, MessageCircle, MoreHorizontal, Trash2, 
+  Archive, Pin, Sparkles, BellRing, X, Plus, Heart
 } from 'lucide-react';
 import TopBar from '../components/TopBar'; 
 import CreatePostModal from '../components/CreatePostModal';
@@ -33,13 +33,13 @@ function CommentPreview({ postId, count, onClick }) {
   if (realCount === 0 && previewComments.length === 0) return null;
 
   return (
-    <div className="mt-3 cursor-pointer bg-slate-50/50 p-3 rounded-2xl border border-slate-100/50" onClick={(e) => { e.stopPropagation(); onClick(); }}>
-      <p className="text-xs text-slate-500 font-bold mb-1.5 hover:text-slate-700 transition-colors">Ver los {realCount} comentarios</p>
+    <div className="mt-3 cursor-pointer pt-3 border-t border-slate-50" onClick={(e) => { e.stopPropagation(); onClick(); }}>
+      <p className="text-xs text-slate-500 font-medium mb-2 hover:text-slate-700 transition-colors">Ver los {realCount} comentarios</p>
       <div className="space-y-1.5">
         {previewComments.map((c, idx) => (
           <div key={idx} className="flex gap-2 text-left items-start text-[13px] leading-tight">
             <span className="font-bold text-slate-900 shrink-0">{c.name?.split(' ')[0]}</span>
-            <span className="text-slate-600 line-clamp-1">{c.text}</span>
+            <span className="text-slate-600 line-clamp-1 font-medium">{c.text}</span>
           </div>
         ))}
       </div>
@@ -47,7 +47,7 @@ function CommentPreview({ postId, count, onClick }) {
   );
 }
 
-// --- 👥 NUEVO SUB-COMPONENTE: MODAL DE LISTA DE REACCIONES ---
+// --- 👥 SUB-COMPONENTE: MODAL DE LISTA DE REACCIONES ---
 function ReactionsListModal({ isOpen, onClose, reactions = [] }) {
   const [activeTab, setActiveTab] = useState('Todas');
   
@@ -62,16 +62,16 @@ function ReactionsListModal({ isOpen, onClose, reactions = [] }) {
     <div className="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 font-sans animate-fade-in">
       <div className="bg-white w-full max-w-sm rounded-t-[32px] sm:rounded-[32px] shadow-2xl animate-slide-up flex flex-col h-[65vh]">
         
-        <div className="flex justify-between items-center p-5 border-b border-slate-100 shrink-0">
+        <div className="flex justify-between items-center p-6 border-b border-slate-100 shrink-0">
           <h3 className="text-lg font-bold text-slate-900 tracking-tight">Reacciones</h3>
-          <button onClick={onClose} className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-200"><X size={18}/></button>
+          <button onClick={onClose} className="w-8 h-8 bg-slate-50 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors"><X size={18}/></button>
         </div>
 
         {usedEmojis.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto px-4 py-3 border-b border-slate-50 shrink-0" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
+          <div className="flex gap-2 overflow-x-auto px-5 py-3 border-b border-slate-50 shrink-0 no-scrollbar">
             <button 
               onClick={() => setActiveTab('Todas')}
-              className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors whitespace-nowrap ${activeTab === 'Todas' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+              className={`px-4 py-2 rounded-full text-xs font-bold transition-colors whitespace-nowrap ${activeTab === 'Todas' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
             >
               Todas {reactions.length}
             </button>
@@ -81,7 +81,7 @@ function ReactionsListModal({ isOpen, onClose, reactions = [] }) {
                 <button 
                   key={emoji} 
                   onClick={() => setActiveTab(emoji)}
-                  className={`px-4 py-1.5 rounded-full text-sm font-bold transition-colors whitespace-nowrap flex items-center gap-1.5 ${activeTab === emoji ? 'bg-slate-100 text-slate-900 border border-slate-200' : 'bg-transparent text-slate-600 hover:bg-slate-50'}`}
+                  className={`px-4 py-2 rounded-full text-sm font-bold transition-colors whitespace-nowrap flex items-center gap-1.5 ${activeTab === emoji ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                 >
                   {emoji} <span className="text-xs">{count}</span>
                 </button>
@@ -90,9 +90,9 @@ function ReactionsListModal({ isOpen, onClose, reactions = [] }) {
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
+        <div className="flex-1 overflow-y-auto p-5 space-y-4 no-scrollbar">
           {displayedReactions.length === 0 ? (
-            <p className="text-center text-sm text-slate-400 mt-10">No hay reacciones aún.</p>
+            <p className="text-center text-sm text-slate-400 mt-10 font-medium">No hay reacciones aún.</p>
           ) : (
             displayedReactions.map((r, i) => (
               <div key={i} className="flex items-center justify-between">
@@ -102,7 +102,7 @@ function ReactionsListModal({ isOpen, onClose, reactions = [] }) {
                   </div>
                   <span className="text-sm font-semibold text-slate-800">{r.name}</span>
                 </div>
-                <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-lg shadow-sm border border-slate-100">
+                <div className="text-xl">
                   {r.emoji}
                 </div>
               </div>
@@ -115,15 +115,15 @@ function ReactionsListModal({ isOpen, onClose, reactions = [] }) {
 }
 
 const PostSkeleton = () => (
-  <div className="bg-white p-5 rounded-[32px] shadow-[0_2px_10px_rgba(0,0,0,0.03)] border border-slate-100 animate-pulse mb-5 mx-4">
+  <div className="bg-white p-5 rounded-[32px] shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-slate-50 animate-pulse mb-6 mx-5">
     <div className="flex gap-3 mb-4">
-      <div className="w-11 h-11 bg-slate-200 rounded-full"></div>
+      <div className="w-10 h-10 bg-slate-200 rounded-full"></div>
       <div className="flex-1 space-y-2 py-1">
         <div className="h-3 bg-slate-200 rounded w-1/4"></div>
         <div className="h-2 bg-slate-200 rounded w-1/6"></div>
       </div>
     </div>
-    <div className="h-52 bg-slate-100 rounded-2xl w-full mb-2"></div>
+    <div className="h-48 bg-slate-100 rounded-[24px] w-full mb-2"></div>
   </div>
 );
 
@@ -187,7 +187,7 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  const EMOJIS = ['❤️', '🔥', '🙏', '🙌'];
+  const EMOJIS = ['❤️', '🔥', '🙏', '👍'];
 
   const handleReaction = async (postId, reactions, emoji) => {
     if (!currentUser) return;
@@ -283,12 +283,12 @@ export default function Home() {
   const displayedPosts = filteredPosts.slice(0, visibleCount);
   const hasMorePosts = visibleCount < filteredPosts.length;
 
-  const myProfileImg = currentUser?.photoURL || `https://ui-avatars.com/api/?name=${currentUser?.displayName}&background=0f172a&color=fff`;
+  const myProfileImg = currentUser?.photoURL || `https://ui-avatars.com/api/?name=${currentUser?.displayName}&background=EBF4FF&color=2563EB`;
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24 font-sans relative">
+    <div className="min-h-screen bg-[#F8F9FE] pb-24 font-sans relative">
       
-      {/* 🚀 TOPBAR: Usamos propiedades para pasar la funcionalidad de cumpleaños */}
+      {/* TOPBAR */}
       <TopBar birthdaysCount={birthdays.length} onBirthdayClick={() => setIsBirthdayModalOpen(true)} />
 
       {toast.show && (
@@ -297,59 +297,59 @@ export default function Home() {
         </div>
       )}
 
-      {/* 🚀 STORIES: Scroll invisible y restablecidas */}
-      <div 
-        className="flex gap-4 px-4 pb-3 pt-4 overflow-x-auto bg-slate-50" 
-        style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }} // Oculta barra en Firefox/Edge
-      >
+      {/* 🚀 STORIES: SocialYo Style */}
+      <div className="flex gap-4 px-5 pb-2 pt-5 overflow-x-auto no-scrollbar max-w-md mx-auto">
         {canCreatePost && (
-          <div className="flex flex-col items-center gap-1.5 min-w-fit cursor-pointer" onClick={() => { setEditingPost(null); setIsModalOpen(true); }}>
-            <div className="w-16 h-16 rounded-full border-[2.5px] border-dashed border-slate-300 bg-white flex items-center justify-center active:scale-95 transition-transform">
-              <Plus size={24} className="text-slate-400" />
+          <div className="flex flex-col items-center gap-1.5 min-w-fit cursor-pointer group" onClick={() => { setEditingPost(null); setIsModalOpen(true); }}>
+            <div className="w-[68px] h-[68px] rounded-full border-[1.5px] border-dashed border-slate-300 flex items-center justify-center bg-transparent group-active:scale-95 transition-transform">
+              <Plus size={26} className="text-slate-400" strokeWidth={1.5} />
             </div>
-            <span className="text-[11px] text-slate-600 font-bold">Crear</span>
+            <span className="text-[11px] text-slate-800 font-semibold">Add Story</span>
           </div>
         )}
         
         {storyDevocionales.map((post) => {
-          const storyPhoto = post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}&background=0f172a&color=fff`;
+          const storyPhoto = post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}&background=EBF4FF&color=2563EB`;
           return (
-            <div key={post.id} className="flex flex-col items-center gap-1.5 min-w-fit cursor-pointer active:scale-95 transition-transform" onClick={() => navigate(`/post/${post.id}`)}>
-              <div className="w-16 h-16 rounded-full p-[2.5px] bg-gradient-to-br from-blue-400 via-indigo-500 to-purple-600">
-                <img src={storyPhoto} alt={post.authorName} className="w-full h-full rounded-full object-cover border-[2.5px] border-white bg-white" />
+            <div key={post.id} className="flex flex-col items-center gap-1.5 min-w-fit cursor-pointer group active:scale-95 transition-transform" onClick={() => navigate(`/post/${post.id}`)}>
+              {/* El anillo gradiente con padding para el espacio blanco */}
+              <div className="w-[68px] h-[68px] rounded-full bg-gradient-to-tr from-blue-600 to-blue-400 p-[2px]">
+                {/* Borde blanco que separa la foto del anillo */}
+                <div className="w-full h-full rounded-full border-[2.5px] border-[#F8F9FE] overflow-hidden bg-white">
+                  <img src={storyPhoto} alt={post.authorName} className="w-full h-full object-cover" />
+                </div>
               </div>
-              <span className="text-[11px] text-slate-700 font-bold max-w-[64px] truncate">{post.authorName?.split(' ')[0]}</span>
+              <span className="text-[11px] text-slate-800 font-semibold max-w-[68px] truncate text-center">{post.authorName?.split(' ')[0]}</span>
             </div>
           );
         })}
       </div>
 
-      <div className="px-4 mt-2 max-w-md mx-auto space-y-4">
+      <div className="px-5 mt-4 max-w-md mx-auto space-y-5">
         
-        {/* 🚀 NUEVA CAJA "QUÉ ESTÁS PENSANDO" (Integrada y Premium) */}
+        {/* 🚀 INPUT "CREAR POST" COMO BURBUJA */}
         {canCreatePost && (
           <div 
             onClick={() => { setEditingPost(null); setIsModalOpen(true); }}
-            className="bg-white rounded-full p-2 flex items-center shadow-[0_2px_10px_rgba(0,0,0,0.02)] border border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors"
+            className="bg-white rounded-full p-2 flex items-center shadow-[0_2px_15px_rgba(0,0,0,0.03)] border border-slate-50 cursor-pointer active:scale-95 transition-transform"
           >
-            <img src={myProfileImg} alt="Mi perfil" className="w-10 h-10 rounded-full object-cover ml-1 border border-slate-100" />
+            <img src={myProfileImg} alt="Mi perfil" className="w-10 h-10 rounded-full object-cover ml-1 bg-slate-100" />
             <div className="flex-1 px-4">
               <p className="text-[13px] font-medium text-slate-400 truncate">¿Con qué nos quieres bendecir hoy?</p>
             </div>
-            {/* Botón "+" integrado idéntico al mockup */}
-            <div className="w-10 h-10 bg-blue-500 text-white rounded-full flex items-center justify-center shrink-0 shadow-sm shadow-blue-500/30">
+            <div className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center shrink-0 shadow-md shadow-blue-600/20">
               <Plus size={20} strokeWidth={2.5} />
             </div>
           </div>
         )}
 
-        {/* 🚀 PESTAÑAS PASTILLERO SOCIALYO (Sin 'Noticia') */}
-        <div className="bg-white p-1.5 rounded-full border border-slate-100 flex shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
+        {/* 🚀 PESTAÑAS PASTILLERO SOCIALYO */}
+        <div className="bg-slate-100 p-1 rounded-full flex">
           {['Todo', 'Devocional', 'Oración'].map((cat) => (
             <button 
               key={cat} onClick={() => { setFilter(cat); setVisibleCount(5); }} 
-              className={`flex-1 py-2.5 rounded-full text-[12px] font-bold transition-all duration-300 ${
-                filter === cat ? 'bg-blue-600 text-white shadow-sm scale-[1.02]' : 'text-slate-500 hover:text-slate-700'
+              className={`flex-1 py-2.5 rounded-full text-xs font-semibold transition-all duration-300 ${
+                filter === cat ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'
               }`}
             >
               {cat}
@@ -357,7 +357,7 @@ export default function Home() {
           ))}
           {isPastor && (
             <button onClick={() => { setFilter('Archivados'); setVisibleCount(5); }} 
-              className={`flex-1 py-2 rounded-full text-[12px] font-bold transition-all duration-300 ${filter === 'Archivados' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+              className={`flex-1 py-2.5 rounded-full text-xs font-semibold transition-all duration-300 ${filter === 'Archivados' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
               Archivados
             </button>
           )}
@@ -365,8 +365,8 @@ export default function Home() {
 
       </div>
 
-      {/* Feed */}
-      <div className="pb-6 max-w-md mx-auto mt-5">
+      {/* 🚀 FEED DE POSTS */}
+      <div className="pb-6 max-w-md mx-auto mt-6">
         {loading ? (
             <><PostSkeleton /><PostSkeleton /></>
         ) : displayedPosts.length === 0 ? (
@@ -374,11 +374,11 @@ export default function Home() {
               <div className="w-16 h-16 bg-white shadow-sm border border-slate-100 rounded-full flex items-center justify-center mb-3">
                 <Sparkles size={24} className="text-slate-400"/>
               </div>
-              <p className="text-sm font-semibold text-slate-500">Muro al día. No hay publicaciones.</p>
+              <p className="text-sm font-medium text-slate-500">Muro al día. No hay publicaciones.</p>
             </div>
         ) : (
             displayedPosts.map(post => {
-              const profileImg = post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}&background=0f172a&color=fff`;
+              const profileImg = post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}&background=EBF4FF&color=2563EB`;
               const isOracion = post.type === 'Oración';
               const isDevocional = post.type === 'Devocional';
               const postReactions = post.reactions || [];
@@ -386,16 +386,17 @@ export default function Home() {
               const usedEmojisDisplay = [...new Set(postReactions.map(r => r.emoji))].slice(0, 3);
 
               return (
-              <div key={post.id} className={`bg-white rounded-[32px] p-5 mb-5 mx-4 shadow-[0_4px_20px_rgba(0,0,0,0.02)] border border-slate-100 overflow-hidden relative ${post.isPinned ? 'border-amber-200/50 bg-gradient-to-b from-amber-50/10 to-white' : ''}`}>
+              <div key={post.id} className="bg-white rounded-[32px] p-5 mb-6 mx-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-50 relative">
                 
-                {post.isPinned && <div className="absolute top-0 right-0 bg-amber-500 text-white px-3 py-1 rounded-bl-xl text-[9px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm"><Pin size={10} fill="currentColor"/> Fijado</div>}
+                {post.isPinned && <div className="absolute top-0 right-5 bg-amber-500 text-white px-3 py-1 rounded-b-lg text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 shadow-sm"><Pin size={10} fill="currentColor"/> Fijado</div>}
 
+                {/* Header del Post */}
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <img src={profileImg} alt="Avatar" className="w-10 h-10 rounded-full object-cover border border-slate-100 bg-slate-50" />
+                    <img src={profileImg} alt="Avatar" className="w-11 h-11 rounded-full object-cover bg-slate-100" />
                     <div>
-                      <h3 className="font-bold text-sm text-slate-900 leading-none tracking-tight">{post.authorName}</h3>
-                      <p className={`text-[11px] font-semibold mt-1 ${isOracion ? 'text-purple-600' : isDevocional ? 'text-indigo-600' : 'text-slate-400'}`}>
+                      <h3 className="font-bold text-sm text-slate-900 leading-tight">{post.authorName}</h3>
+                      <p className="text-[11px] font-medium text-slate-400 mt-0.5">
                         {isOracion ? '🛐 Pedido de Oración' : isDevocional ? '📖 Devocional' : post.role}
                       </p>
                     </div>
@@ -404,23 +405,23 @@ export default function Home() {
                   {isModerator && (
                     <div className="relative">
                       <button onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === post.id ? null : post.id); }} className="p-2 text-slate-400 hover:text-slate-800 transition-colors rounded-full hover:bg-slate-50">
-                        <MoreVertical size={18}/>
+                        <MoreHorizontal size={20}/>
                       </button>
                       {menuOpenId === post.id && (
-                        <div className="absolute right-0 top-10 bg-white shadow-xl rounded-2xl border border-slate-100 py-2 w-48 z-50">
-                          <button onClick={() => handlePin(post.id, post.isPinned)} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2">
-                            <Pin size={14}/> {post.isPinned ? 'Desanclar' : 'Fijar arriba'}
+                        <div className="absolute right-0 top-10 bg-white shadow-xl rounded-2xl border border-slate-100 py-2 w-48 z-50 animate-slide-down">
+                          <button onClick={() => handlePin(post.id, post.isPinned)} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                            <Pin size={16} strokeWidth={1.5}/> {post.isPinned ? 'Desanclar' : 'Fijar arriba'}
                           </button>
-                          <button onClick={() => handleReNotify(post)} className="w-full text-left px-4 py-2.5 text-xs font-bold text-blue-600 hover:bg-slate-50 flex items-center gap-2">
-                            <BellRing size={14}/> Re-Notificar
+                          <button onClick={() => handleReNotify(post)} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-blue-600 hover:bg-slate-50 flex items-center gap-2">
+                            <BellRing size={16} strokeWidth={1.5}/> Re-Notificar
                           </button>
                           {isPastor && (
-                            <button onClick={() => handleArchive(post.id, post.isArchived)} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-50 flex items-center gap-2">
-                              <Archive size={14}/> {post.isArchived ? 'Desarchivar' : 'Archivar'}
+                            <button onClick={() => handleArchive(post.id, post.isArchived)} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-slate-500 hover:bg-slate-50 flex items-center gap-2">
+                              <Archive size={16} strokeWidth={1.5}/> {post.isArchived ? 'Desarchivar' : 'Archivar'}
                             </button>
                           )}
-                          <button onClick={() => handleDeletePost(post.id)} className="w-full text-left px-4 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-2">
-                            <Trash2 size={14}/> Eliminar
+                          <button onClick={() => handleDeletePost(post.id)} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2">
+                            <Trash2 size={16} strokeWidth={1.5}/> Eliminar
                           </button>
                         </div>
                       )}
@@ -428,23 +429,26 @@ export default function Home() {
                   )}
                 </div>
 
+                {/* Contenido */}
                 <div className="cursor-pointer" onClick={() => navigate(`/post/${post.id}`)}>
-                  {post.title && <h2 className={`font-black text-slate-900 tracking-tight leading-snug mb-2 ${isDevocional ? 'text-lg uppercase italic' : 'text-[16px]'}`}>{post.title}</h2>}
-                  <p className="text-[14px] text-slate-600 mb-4 leading-relaxed whitespace-pre-wrap line-clamp-4">
+                  {post.title && <h2 className="font-bold text-[16px] text-slate-900 tracking-tight leading-snug mb-2">{post.title}</h2>}
+                  <p className="text-[14px] text-slate-700 mb-4 leading-relaxed font-medium whitespace-pre-wrap line-clamp-4">
                     {post.content}
                   </p>
                 </div>
 
+                {/* Imagen */}
                 {post.image && (
-                  <div className={`mb-4 cursor-pointer overflow-hidden bg-slate-50 border border-slate-100 ${isDevocional ? 'rounded-[24px] aspect-square' : 'rounded-[18px] max-h-72'}`} onClick={() => navigate(`/post/${post.id}`)}>
+                  <div className={`mb-4 cursor-pointer overflow-hidden bg-slate-100 ${isDevocional ? 'rounded-[24px] aspect-square' : 'rounded-[24px] max-h-72'}`} onClick={() => navigate(`/post/${post.id}`)}>
                     <img src={post.image} alt="Post image" className="w-full h-full object-cover transition-transform duration-500 hover:scale-105" />
                   </div>
                 )}
 
-                <div className="h-px w-full bg-slate-100 my-3"></div>
-
-                <div className="flex items-center justify-between relative pt-1">
-                  <div className="flex items-center gap-1.5">
+                {/* Footer Acciones Estilo SocialYo */}
+                <div className="flex items-center justify-between pt-1 relative">
+                  <div className="flex items-center gap-5">
+                    
+                    {/* Reacciones */}
                     <div className="relative">
                       {activeReactionPost === post.id && (
                         <div className="absolute bottom-10 left-0 bg-white rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-slate-100 px-2 py-1.5 flex items-center gap-1 z-50 animate-slide-up">
@@ -452,37 +456,36 @@ export default function Home() {
                             const isSelected = postReactions.some(r => r.uid === currentUser?.uid && r.emoji === emoji);
                             return (
                               <button key={emoji} onClick={() => handleReaction(post.id, post.reactions, emoji)} 
-                                      className={`w-9 h-9 flex items-center justify-center hover:scale-125 transition-transform rounded-full text-xl ${isSelected ? 'bg-slate-100' : 'hover:bg-slate-50'}`}>
+                                      className={`w-10 h-10 flex items-center justify-center hover:scale-125 transition-transform rounded-full text-2xl ${isSelected ? 'bg-slate-100' : 'hover:bg-slate-50'}`}>
                                 {emoji}
                               </button>
                             )
                           })}
-                          <div className="absolute -bottom-1.5 left-4 w-3 h-3 bg-white border-r border-b border-slate-100 rotate-45" />
+                          <div className="absolute -bottom-1.5 left-5 w-3 h-3 bg-white border-r border-b border-slate-100 rotate-45" />
                         </div>
                       )}
                       
-                      <button onClick={() => setActiveReactionPost(activeReactionPost === post.id ? null : post.id)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-slate-500 hover:bg-slate-50 active:scale-95 transition-all font-semibold text-xs">
-                        <MessageCircle size={18} className="text-slate-400" />
-                        Reaccionar
+                      <button onClick={() => setActiveReactionPost(activeReactionPost === post.id ? null : post.id)} className={`flex items-center gap-1.5 transition-colors ${postReactions.some(r => r.uid === currentUser?.uid) ? 'text-rose-500' : 'text-slate-500 hover:text-rose-500'}`}>
+                        <Heart size={20} strokeWidth={1.5} className={postReactions.some(r => r.uid === currentUser?.uid) ? "fill-rose-500" : ""} />
+                        <span className="text-xs font-medium">{postReactions.length > 0 ? postReactions.length : 'Reaccionar'}</span>
                       </button>
                     </div>
 
-                    <button onClick={() => navigate(`/post/${post.id}`)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-slate-500 hover:bg-slate-50 active:scale-95 transition-all font-semibold text-xs">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                      </svg>
-                      {post.commentsCount > 0 ? post.commentsCount : 'Comentar'}
+                    {/* Comentarios */}
+                    <button onClick={() => navigate(`/post/${post.id}`)} className="flex items-center gap-1.5 text-slate-500 hover:text-blue-500 transition-colors">
+                      <MessageCircle size={20} strokeWidth={1.5} />
+                      <span className="text-xs font-medium">{post.commentsCount > 0 ? post.commentsCount : 'Comentar'}</span>
                     </button>
                   </div>
 
+                  {/* Resumen de emojis usados a la derecha */}
                   {postReactions.length > 0 && (
                     <button onClick={() => setViewReactionsPostId(post.id)} className="flex items-center gap-1 px-2 py-1 rounded-full hover:bg-slate-50 transition-colors">
-                      <div className="flex -space-x-1">
+                      <div className="flex -space-x-1.5">
                         {usedEmojisDisplay.map((emj, idx) => (
                           <div key={idx} className="w-5 h-5 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[10px] z-10 shadow-sm">{emj}</div>
                         ))}
                       </div>
-                      <span className="text-xs font-bold text-slate-500 ml-1">{postReactions.length}</span>
                     </button>
                   )}
                 </div>
@@ -494,14 +497,13 @@ export default function Home() {
 
         {hasMorePosts && !loading && (
           <div className="flex justify-center mt-2 pb-8">
-            <button onClick={() => setVisibleCount(prev => prev + 5)} className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-6 py-3 rounded-full active:scale-95 transition-transform shadow-sm">
+            <button onClick={() => setVisibleCount(prev => prev + 5)} className="text-xs font-bold text-slate-600 bg-white border border-slate-200 px-6 py-3 rounded-full active:scale-95 transition-transform shadow-sm hover:bg-slate-50">
               Cargar más publicaciones
             </button>
           </div>
         )}
       </div>
 
-      {/* ✅ Pasamos la lógica del Modal para que el botón "+" de la nueva caja dispare esto */}
       <CreatePostModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} postToEdit={editingPost} />
       <BirthdayModal isOpen={isBirthdayModalOpen} onClose={() => setIsBirthdayModalOpen(false)} users={birthdays} dbUser={dbUser} />
       
