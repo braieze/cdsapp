@@ -21,15 +21,19 @@ import { toast } from 'sonner';
 import { OPERATIVE_EVENT_TYPES } from './Calendar';
 import { ONESIGNAL_CONFIG } from '../oneSignalConfig';
 
-// ✅ DICCIONARIO DE DESCRIPCIONES DE ROLES
+/**
+ * Diccionario de descripciones para roles operativos.
+ * Utilizado en el componente de detalles de servicio para proporcionar 
+ * información contextual sobre las tareas de cada equipo.
+ */
 const ROLE_DESCRIPTIONS = {
-  bienvenida: "Son quienes dan el primer contacto con la gente con sonrisas, abrazos y palabras lindas.",
-  porteria: "Es quien cierra la iglesia al final del culto, apaga las luces, controla arriba que estén cerradas las ventanas, el gas, todas las puertas, el portón y etc.",
-  oracion_inicio: "Es quien ora con el micrófono a las 19:30hs antes de cada culto.",
-  pasillos: "Son quienes acomodan a las personas mientras van llegando, es decir saber qué sillas hay disponibles y acomodar según la cantidad de personas que sea y etc.",
-  seguridad_autos: "Es quien controla en el afuera de la iglesia todos los autos de la cuadra.",
-  control_banos: "Son quienes limpian los baños antes durante y después del culto, reponen papel y controlan quiénes entran.",
-  servicio_altar: "Es quien repone el agua al predicador, equipo de alabanza, está atento a cualquier indicación es quien apaga y prende las luces a gusto de la persona que coordina."
+  bienvenida: "Encargados de la primera impresión: brindan una recepción cálida, con una sonrisa, abrazos y palabras de aliento para cada asistente.",
+  porteria: "Responsables del cierre y seguridad final: verifican el apagado de luces, el correcto cierre de puertas, ventanas, portones y el suministro de gas tras finalizar el culto.",
+  oracion_inicio: "Encargados de abrir el tiempo de oración: realizan la apertura espiritual con el micrófono a las 19:30hs antes de comenzar el culto.",
+  pasillos: "Responsables del acomodamiento: gestionan el flujo de personas, optimizando el uso de sillas disponibles para asegurar que cada asistente encuentre un lugar cómodo según la afluencia.",
+  seguridad_autos: "Encargados de la vigilancia externa: supervisan el cuidado y orden de los vehículos estacionados en la cuadra de la iglesia durante el evento.",
+  control_banos: "Responsables de la higiene y mantenimiento: garantizan la limpieza antes, durante y después del culto, además de asegurar la reposición constante de insumos como papel y jabón.",
+  servicio_altar: "Encargados del soporte en plataforma: asisten al predicador y al equipo de alabanza (reposición de agua, etc.) y gestionan la iluminación de la sala según las indicaciones del coordinador."
 };
 
 export default function EventDetails() {
