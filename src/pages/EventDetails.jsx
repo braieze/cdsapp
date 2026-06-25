@@ -22,18 +22,17 @@ import { OPERATIVE_EVENT_TYPES } from './Calendar';
 import { ONESIGNAL_CONFIG } from '../oneSignalConfig';
 
 /**
- * Diccionario de descripciones para roles operativos.
- * Utilizado en el componente de detalles de servicio para proporcionar 
- * información contextual sobre las tareas de cada equipo.
+ * Diccionario de descripciones para los roles de servicio.
+ * Explica de manera sencilla y clara qué se espera en cada tarea.
  */
 const ROLE_DESCRIPTIONS = {
-  bienvenida: "Encargados de la primera impresión: brindan una recepción cálida, con una sonrisa, abrazos y palabras de aliento para cada asistente.",
-  porteria: "Responsables del cierre y seguridad final: verifican el apagado de luces, el correcto cierre de puertas, ventanas, portones y el suministro de gas tras finalizar el culto.",
-  oracion_inicio: "Encargados de abrir el tiempo de oración: realizan la apertura espiritual con el micrófono a las 19:30hs antes de comenzar el culto.",
-  pasillos: "Responsables del acomodamiento: gestionan el flujo de personas, optimizando el uso de sillas disponibles para asegurar que cada asistente encuentre un lugar cómodo según la afluencia.",
-  seguridad_autos: "Encargados de la vigilancia externa: supervisan el cuidado y orden de los vehículos estacionados en la cuadra de la iglesia durante el evento.",
-  control_banos: "Responsables de la higiene y mantenimiento: garantizan la limpieza antes, durante y después del culto, además de asegurar la reposición constante de insumos como papel y jabón.",
-  servicio_altar: "Encargados del soporte en plataforma: asisten al predicador y al equipo de alabanza (reposición de agua, etc.) y gestionan la iluminación de la sala según las indicaciones del coordinador."
+  bienvenida: "Tu labor es recibir a cada persona que llega a la iglesia con una gran sonrisa, un abrazo afectuoso y palabras amables. Sos la primera cara que ven, así que tu bienvenida marca el tono de su experiencia en el culto.",
+  porteria: "Tu responsabilidad comienza al terminar el culto. Tenes que asegurarte de que el auditorio quede cerrado y seguro: verificar que todas las ventanas estén trabadas, las luces apagadas, el gas cerrado, las puertas internas bloqueadas y, finalmente, cerrar el portón de entrada.",
+  oracion_inicio: "Tu tarea es dirigirnos a todos en oración antes de comenzar el culto. Tenes que estar listo a las 19:30hs con el micrófono para guiar a la iglesia en este momento de entrega y preparación.",
+  pasillos: "Tu objetivo es ayudar a que todos estén cómodos. Debes estar atento a cuántas personas llegan y guiarlas a los asientos que estén disponibles, asegurándote de aprovechar bien el espacio y que nadie se quede parado.",
+  seguridad_autos: "Tu lugar es fuera de la iglesia. Estás a cargo de supervisar el orden y la seguridad de todos los autos estacionados en la cuadra durante todo el tiempo que dure la reunión.",
+  control_banos: "Tu misión es mantener los baños en perfectas condiciones. Antes, durante y después del culto, debes revisar que estén limpios, reponer el papel higiénico y estar atento a cualquier necesidad de quienes ingresan.",
+  servicio_altar: "Tu función es asistir al predicador y al equipo de alabanza en lo que necesiten. Debes estar pendiente para acercar agua, ajustar la intensidad de las luces según la música o el momento del culto, y estar atento a cualquier seña o indicación del coordinador. Ademas, debes acomodar el alfoli en el momento de la ofrenda"
 };
 
 export default function EventDetails() {
