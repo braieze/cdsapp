@@ -1,16 +1,35 @@
-# React + Vite
+# CDS App - Comunidad y Gestión de Servidores ⛪
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+CDS App es una plataforma móvil híbrida diseñada para digitalizar, organizar y potenciar la comunicación interna de la iglesia. Construida con una estética de red social moderna ("Mobile-First"), la aplicación permite conectar a los miembros, organizar a los equipos de servidores y distribuir contenido educativo y anuncios urgentes de manera centralizada.
 
-Currently, two official plugins are available:
+## 🚀 ¿Qué problema resuelve?
+* **Comunicación Desorganizada:** Sustituye los grupos de mensajería masiva por un muro social limpio donde los anuncios importantes, devocionales y pedidos de oración tienen su propio espacio.
+* **Falta de Alcance:** A través de notificaciones Push segmentadas (vía OneSignal), asegura que los avisos urgentes o enlaces de transmisión (Meet/YouTube) lleguen directamente a la pantalla del usuario.
+* **Gestión de Equipos:** Permite administrar los roles de los servidores (bienvenida, portería, altar, etc.), facilitando la organización de los servicios semanales.
+* **Distribución de Material:** Centraliza estudios, clases y herramientas financieras (ofrendas/tesorería) en un solo entorno cerrado y seguro.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## ✨ Funcionalidades Principales
 
-## React Compiler
+* **Muro Social Interactivo (Feed):** Publicaciones categorizadas (Todo, Devocional, Oración, Urgente) con capacidad de reacción (emojis) y comentarios.
+* **Historias (Stories):** Carrusel superior para contenido efímero y devocionales destacados.
+* **Sistema de Roles y Permisos:** 
+  * *Pastores/Líderes:* Pueden fijar posts, archivar contenido, y lanzar notificaciones Push manualmente a toda la congregación o a áreas específicas.
+  * *Miembros:* Acceso al contenido público, perfil personal y academia.
+* **Notificaciones Push y Deep Linking:** Al tocar una notificación, el usuario es redirigido exactamente a la publicación o evento mencionado.
+* **Academia (StudyHub):** Módulo de aprendizaje para tomar clases y estudios bíblicos directamente desde la app.
+* **Actualizaciones OTA (Over-The-Air):** Integración con Capgo para enviar actualizaciones de diseño y código a los usuarios sin necesidad de descargar un nuevo APK.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 🛠️ Stack Tecnológico
 
-## Expanding the ESLint configuration
+* **Frontend:** React.js, Tailwind CSS (Diseño UI/UX premium y responsivo).
+* **Backend & Base de Datos:** Firebase (Auth, Firestore, Cloud Storage).
+* **Contenedor Móvil:** Capacitor (iOS/Android).
+* **Notificaciones:** OneSignal (Cordova Plugin & Web SDK).
+* **Distribución OTA:** Capgo Updater.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 💻 Instalación y Desarrollo Local
+
+1. **Clonar el repositorio:**
+   ```bash
+   git clone [https://github.com/tu-usuario/cds-app.git](https://github.com/tu-usuario/cds-app.git)
+   cd cds-app
