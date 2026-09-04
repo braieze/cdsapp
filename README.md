@@ -27,9 +27,3 @@ CDS App es una plataforma móvil híbrida diseñada para digitalizar, organizar 
 * **Notificaciones:** OneSignal (Cordova Plugin & Web SDK).
 * **Distribución OTA:** Capgo Updater.
 
-## 💻 Instalación y Desarrollo Local
-
-1. **Clonar el repositorio:**
-   ```bash
-   git clone [https://github.com/tu-usuario/cds-app.git](https://github.com/tu-usuario/cds-app.git)
-   cd cds-app
