@@ -7,10 +7,9 @@ import { Toaster } from 'sonner';
 
 import { Capacitor } from '@capacitor/core'; 
 import { App as CapApp } from '@capacitor/app'; 
-import { CapacitorUpdater } from '@capgo/capacitor-updater'; // ✅ Mantenemos las actualizaciones OTA
+import { CapacitorUpdater } from '@capgo/capacitor-updater'; 
 
 import OneSignalWeb from 'react-onesignal'; 
-// ✅ ONESIGNAL VERSIÓN 5
 import OneSignal from 'onesignal-cordova-plugin';
 
 // Importaciones de Páginas
@@ -30,82 +29,55 @@ import Ofrendar from './pages/Ofrendar';
 import Tesoreria from './pages/Tesoreria';
 import Alabanza from './pages/Alabanza'; 
 
-// ✅ ACADEMIA CDS
 import StudyHub from './pages/StudyHub';
 import CreateStudy from './pages/CreateStudy'; 
 import StudyDetail from './pages/StudyDetail';
 import CreateLesson from './pages/CreateLesson';
 import LessonView from './pages/LessonView';
-
 import PresentationPanel from './pages/PresentationPanel'; 
 
-// --- 🧭 MANEJADOR DE NAVEGACIÓN PRO (Deep Linking Fix) ---
+// --- 🧭 MANEJADOR DE NAVEGACIÓN PRO ---
 function NavigationHandler() {
   const navigate = useNavigate();
   const location = useLocation();
   const isNative = Capacitor.isNativePlatform();
 
   useEffect(() => {
-    // Estilos globales para Android
     if (isNative && Capacitor.getPlatform() === 'android') {
       const style = document.createElement('style');
       style.innerHTML = `img { display: block; max-width: 100%; content-visibility: auto; }`;
       document.head.appendChild(style);
     }
 
-    // 📱 LÓGICA NATIVA (Android/iOS)
     if (isNative) {
       const handleNotificationClick = (event) => {
         const data = event.notification.additionalData;
-        console.log("DEBUG NOTIF NATIVA:", data);
-
-        if (data?.url) {
-          window.open(data.url, '_blank');
-          return;
-        }
-
+        if (data?.url) { window.open(data.url, '_blank'); return; }
         const route = data?.route;
         if (route) {
           const finalRoute = route.startsWith('/') ? route : `/${route}`;
-          setTimeout(() => {
-            console.log("Navegando a:", finalRoute);
-            navigate(finalRoute);
-          }, 400);
+          setTimeout(() => navigate(finalRoute), 400);
         }
       };
 
       OneSignal.Notifications.addEventListener("click", handleNotificationClick);
-
       const backListener = CapApp.addListener('backButton', () => {
-        if (location.pathname === '/') {
-          CapApp.exitApp();
-        } else {
-          navigate(-1);
-        }
+        if (location.pathname === '/') CapApp.exitApp();
+        else navigate(-1);
       });
 
       return () => {
         OneSignal.Notifications.removeEventListener("click", handleNotificationClick);
         backListener.remove();
       };
-    } 
-    // 💻 LÓGICA WEB
-    else {
+    } else {
       const handleWebClick = (event) => {
         const data = event.notification.data;
-        console.log("DEBUG NOTIF WEB:", data);
-
-        if (data?.url) {
-          window.open(data.url, '_blank');
-          return;
-        }
-
+        if (data?.url) { window.open(data.url, '_blank'); return; }
         const route = data?.route;
         if (route) {
           const finalRoute = route.startsWith('/') ? route : `/${route}`;
-          setTimeout(() => {
-            navigate(finalRoute);
-          }, 400);
+          setTimeout(() => navigate(finalRoute), 400);
         }
       };
       OneSignalWeb.Notifications.addEventListener("click", handleWebClick);
@@ -118,17 +90,27 @@ function NavigationHandler() {
 
 export default function App() {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  
+  // Dividimos la carga en dos estados para lograr la transición perfecta
+  const [authLoading, setAuthLoading] = useState(true);
+  const [splashMinTime, setSplashMinTime] = useState(true);
+  
   const isNative = Capacitor.isNativePlatform();
 
-  // ✅ NOTIFICAR A CAPGO QUE LA APP ESTÁ LISTA PARA ACTUALIZACIONES OTA
+  // Forzamos que la pantalla de carga dure al menos 2 segundos
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSplashMinTime(false);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, []);
+
   useEffect(() => {
     if (isNative) {
       CapacitorUpdater.notifyAppReady().catch(err => console.error("Error OTA:", err));
     }
   }, [isNative]);
 
-  // 1. INICIALIZAR ONESIGNAL
   useEffect(() => {
     const initNotifications = async () => {
       try {
@@ -144,21 +126,17 @@ export default function App() {
         }
       } catch (e) { console.error("Error init notif:", e); }
     };
-
     initNotifications();
 
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      setLoading(false); 
-      if (currentUser) {
-        syncMaster(currentUser);
-      }
+      setAuthLoading(false); // Firebase ya respondió
+      if (currentUser) syncMaster(currentUser);
     });
 
     return () => unsubscribe();
   }, [isNative]);
 
-  // 2. SINCRONIZACIÓN DE PERFIL
   const syncMaster = async (currentUser) => {
     try {
       const userRef = doc(db, 'users', currentUser.uid);
@@ -175,27 +153,44 @@ export default function App() {
         });
       }
 
-      if (isNative) {
-        OneSignal.login(currentUser.uid);
-      } else {
-        await OneSignalWeb.login(currentUser.uid);
-      }
-
+      if (isNative) OneSignal.login(currentUser.uid);
+      else await OneSignalWeb.login(currentUser.uid);
     } catch (error) { console.error("Error en syncMaster:", error); }
   };
 
-  // 🚀 PANTALLA DE CARGA (SPLASH SCREEN PREMIUM)
-  if (loading) {
+  // 🚀 PANTALLA DE CARGA NATIVA PREMIUM
+  // Solo se oculta cuando Firebase termina Y pasaron al menos los 2 segundos
+  if (authLoading || splashMinTime) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#F8F9FE] font-sans">
-        <div className="flex flex-col items-center animate-fade-in">
-          <img 
-            src="/logo.png" 
-            alt="CDS App Logo" 
-            className="w-24 h-24 object-contain animate-pulse drop-shadow-sm" 
-            onError={(e) => { e.target.style.display = 'none'; }} 
-          />
-          <h1 className="mt-4 text-xl font-bold text-slate-900 tracking-tight">SocialYo.</h1>
+      <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#F8F9FE] font-sans transition-opacity duration-500">
+        <div className="relative flex flex-col items-center animate-fade-in-up">
+          
+          {/* Contenedor del Logo con estilo icono de iOS */}
+          <div className="w-28 h-28 mb-6 bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-slate-50 flex items-center justify-center overflow-hidden relative">
+            <img 
+              src="/logo.png" 
+              alt="SocialYo Logo" 
+              className="w-full h-full object-cover scale-110" 
+              onError={(e) => { e.target.style.display = 'none'; }} 
+            />
+            {/* Brillo superpuesto para efecto premium */}
+            <div className="absolute inset-0 bg-gradient-to-tr from-white/10 via-white/30 to-transparent"></div>
+          </div>
+          
+          <h1 className="text-[28px] font-black text-slate-900 tracking-tighter">SocialYo.</h1>
+          
+          {/* Animación de carga moderna tipo 'Typing' */}
+          <div className="mt-8 flex gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-blue-600 animate-bounce" style={{ animationDelay: '0ms' }}></div>
+            <div className="w-2 h-2 rounded-full bg-blue-600 animate-bounce" style={{ animationDelay: '150ms' }}></div>
+            <div className="w-2 h-2 rounded-full bg-blue-600 animate-bounce" style={{ animationDelay: '300ms' }}></div>
+          </div>
+        </div>
+
+        {/* Branding inferior */}
+        <div className="absolute bottom-10 flex flex-col items-center animate-fade-in">
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Powered by</span>
+          <span className="text-sm font-bold text-slate-900">CDS App</span>
         </div>
       </div>
     );
@@ -207,14 +202,10 @@ export default function App() {
       <Toaster richColors position="top-center" expand={false} />
       
       <Routes>
-        {/* 🔓 RUTAS PÚBLICAS */}
         <Route path="/login" element={!user ? <Login /> : <Navigate to="/" replace />} />
         <Route path="/ofrendar" element={<Ofrendar />} /> 
-        
-        {/* 🧙‍♂️ RUTA MÁGICA DE DEMO */}
         <Route path="/demo-control" element={<PresentationPanel />} />
 
-        {/* 🔐 RUTAS PROTEGIDAS CON LAYOUT (MENÚ INFERIOR) */}
         <Route element={user ? <MainLayout /> : <Navigate to="/login" replace />}>
           <Route index element={<Home />} />
           <Route path="post/:postId" element={<PostDetail />} />
@@ -228,8 +219,6 @@ export default function App() {
           <Route path="directorio" element={<Directory />} />
           <Route path="tesoreria" element={<Tesoreria />} /> 
           <Route path="alabanza" element={<Alabanza />} /> 
-
-          {/* 🎓 ACADEMIA */}
           <Route path="estudio" element={<StudyHub />} />
           <Route path="estudio/crear" element={<CreateStudy />} /> 
           <Route path="estudio/crear/:id" element={<CreateStudy />} /> 

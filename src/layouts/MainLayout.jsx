@@ -43,10 +43,27 @@ export default function MainLayout() {
     return () => unsubscribe();
   }, [user]);
 
-  if (fetchingUser) {
+if (fetchingUser) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F8F9FE]">
-        <Loader2 className="animate-spin text-blue-600" size={32} />
+      <div className="min-h-[100dvh] bg-slate-100 flex justify-center font-sans">
+        <div className="w-full max-w-md bg-[#F8F9FE] min-h-[100dvh] relative shadow-2xl p-5 pt-12">
+          {/* Skeleton animado para transición perfecta sin spinner azul */}
+          <div className="animate-pulse flex flex-col gap-6">
+            <div className="flex justify-between items-center mb-4">
+              <div className="h-8 bg-slate-200 rounded-lg w-1/3"></div>
+              <div className="flex gap-2">
+                <div className="w-10 h-10 bg-slate-200 rounded-full"></div>
+                <div className="w-10 h-10 bg-slate-200 rounded-full"></div>
+              </div>
+            </div>
+            <div className="flex gap-4 overflow-hidden">
+              <div className="w-[68px] h-[68px] rounded-full bg-slate-200 shrink-0"></div>
+              <div className="w-[68px] h-[68px] rounded-full bg-slate-200 shrink-0"></div>
+              <div className="w-[68px] h-[68px] rounded-full bg-slate-200 shrink-0"></div>
+            </div>
+            <div className="h-64 bg-slate-200 rounded-[32px] w-full mt-4"></div>
+          </div>
+        </div>
       </div>
     );
   }
