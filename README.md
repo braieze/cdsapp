@@ -8,6 +8,8 @@
 
 **[ PROYECTO EN PRODUCCIÓN | +100 Usuarios Activos ]**
 
+🔗 **Ver en vivo:** [Visitar la aplicación activa](LINK_DE_PRODUCCION_ACA)
+
 CDS App es una plataforma móvil híbrida diseñada para digitalizar y centralizar la comunicación interna de congregaciones. Desarrollada con una arquitectura **Mobile-First**, la aplicación reemplaza la fricción y el ruido de los grupos de mensajería masiva por un entorno privado, estructurado y altamente escalable para la distribución de contenido y la gestión operativa de equipos.
 
 ## 🚀 El problema que resuelve
