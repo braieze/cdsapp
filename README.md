@@ -1,29 +1,34 @@
-# CDS App - Comunidad y Gestión de Servidores ⛪
+<div align="center">
+  <img src="./cds-app-portada.gif" alt="CDS App Demo en vivo" width="800" />
+</div>
 
-CDS App es una plataforma móvil híbrida diseñada para digitalizar, organizar y potenciar la comunicación interna de la iglesia. Construida con una estética de red social moderna ("Mobile-First"), la aplicación permite conectar a los miembros, organizar a los equipos de servidores y distribuir contenido educativo y anuncios urgentes de manera centralizada.
+<br />
 
-## 🚀 ¿Qué problema resuelve?
-* **Comunicación Desorganizada:** Sustituye los grupos de mensajería masiva por un muro social limpio donde los anuncios importantes, devocionales y pedidos de oración tienen su propio espacio.
-* **Falta de Alcance:** A través de notificaciones Push segmentadas (vía OneSignal), asegura que los avisos urgentes o enlaces de transmisión (Meet/YouTube) lleguen directamente a la pantalla del usuario.
-* **Gestión de Equipos:** Permite administrar los roles de los servidores (bienvenida, portería, altar, etc.), facilitando la organización de los servicios semanales.
-* **Distribución de Material:** Centraliza estudios, clases y herramientas financieras (ofrendas/tesorería) en un solo entorno cerrado y seguro.
+# ⛪ CDS App - Plataforma Comunitaria y Gestión de Equipos
 
-## ✨ Funcionalidades Principales
+**[ PROYECTO EN PRODUCCIÓN | +100 Usuarios Activos ]**
 
-* **Muro Social Interactivo (Feed):** Publicaciones categorizadas (Todo, Devocional, Oración, Urgente) con capacidad de reacción (emojis) y comentarios.
-* **Historias (Stories):** Carrusel superior para contenido efímero y devocionales destacados.
-* **Sistema de Roles y Permisos:** 
-  * *Pastores/Líderes:* Pueden fijar posts, archivar contenido, y lanzar notificaciones Push manualmente a toda la congregación o a áreas específicas.
-  * *Miembros:* Acceso al contenido público, perfil personal y academia.
-* **Notificaciones Push y Deep Linking:** Al tocar una notificación, el usuario es redirigido exactamente a la publicación o evento mencionado.
-* **Academia (StudyHub):** Módulo de aprendizaje para tomar clases y estudios bíblicos directamente desde la app.
-* **Actualizaciones OTA (Over-The-Air):** Integración con Capgo para enviar actualizaciones de diseño y código a los usuarios sin necesidad de descargar un nuevo APK.
+CDS App es una plataforma móvil híbrida diseñada para digitalizar y centralizar la comunicación interna de congregaciones. Desarrollada con una arquitectura **Mobile-First**, la aplicación reemplaza la fricción y el ruido de los grupos de mensajería masiva por un entorno privado, estructurado y altamente escalable para la distribución de contenido y la gestión operativa de equipos.
+
+## 🚀 El problema que resuelve
+
+* **Ruido comunicacional:** Sustituye los chats desordenados por un muro social (Feed) categorizado, donde los anuncios urgentes, devocionales y pedidos de oración tienen su propio espacio protegido.
+* **Falta de alcance inmediato:** A través de notificaciones Push segmentadas vía OneSignal, asegura que los avisos críticos o links de transmisión (Meet/YouTube) lleguen directamente a la pantalla del usuario.
+* **Gestión de voluntarios:** Permite administrar los roles de los servidores (bienvenida, portería, altar, etc.), facilitando la logística de los servicios semanales.
+* **Fricción en actualizaciones:** Al integrar distribución **OTA (Over-The-Air)**, el envío de correcciones de código o rediseños llega directamente al dispositivo del usuario sin depender de descargas manuales o tiempos de revisión en tiendas.
+
+## ✨ Funcionalidades Core
+
+* **Feed Interactivo & Stories:** Muro social con soporte para interacciones (reacciones nativas, comentarios) y carrusel superior para contenido efímero y devocionales destacados.
+* **Notificaciones con Deep Linking:** Al tocar una alerta Push, el enrutamiento redirige al usuario exactamente a la publicación o evento mencionado en la base de datos.
+* **Roles y Permisos Dinámicos (RBAC):**
+  * *Administradores/Líderes:* Capacidad para fijar/archivar posts, gestionar usuarios y disparar campañas de notificaciones push manuales a segmentos específicos.
+  * *Miembros:* Acceso a consumo de contenido, perfil personal interactivo y módulo de aprendizaje.
+* **StudyHub (Academia):** Módulo LMS integrado para el consumo estructurado de clases, estudios bíblicos y herramientas financieras de la institución.
 
 ## 🛠️ Stack Tecnológico
 
-* **Frontend:** React.js, Tailwind CSS (Diseño UI/UX premium y responsivo).
-* **Backend & Base de Datos:** Firebase (Auth, Firestore, Cloud Storage).
+* **Frontend & Interfaz:** React.js, Tailwind CSS (UI/UX premium).
+* **Backend & BaaS:** Firebase (Authentication, Firestore Realtime Database, Cloud Storage).
 * **Contenedor Móvil:** Capacitor (iOS/Android).
-* **Notificaciones:** OneSignal (Cordova Plugin & Web SDK).
-* **Distribución OTA:** Capgo Updater.
-
+* **Infraestructura Cloud:** OneSignal (Push & Web SDK), Capgo (OTA Updater).
