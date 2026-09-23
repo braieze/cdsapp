@@ -7,3 +7,15 @@ body {
   font-family: system-ui, -apple-system, sans-serif;
   -webkit-tap-highlight-color: transparent; /* Quita el destello azul al tocar botones en el celu */
 }
+
+@layer utilities {
+  /* Oculta el scrollbar en navegadores basados en WebKit (Chrome, Safari, Edge) */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  /* Oculta el scrollbar en Firefox y otros */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}

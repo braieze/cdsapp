@@ -18,23 +18,20 @@ import { ONESIGNAL_CONFIG } from '../oneSignalConfig';
 // --- 💬 SUB-COMPONENTE: PREVIEW DE COMENTARIOS ---
 function CommentPreview({ postId, count, onClick }) {
   const [previewComments, setPreviewComments] = useState([]);
-  const [realCount, setRealCount] = useState(count); 
   
   useEffect(() => {
     if (!postId) return;
+    // Solo traemos la preview, el conteo total ya lo tenemos por props (count)
     const qPreview = query(collection(db, `posts/${postId}/comments`), orderBy('createdAt', 'desc'), limit(2));
     const unsubPreview = onSnapshot(qPreview, (snap) => setPreviewComments(snap.docs.map(d => d.data())));
-    const unsubCount = onSnapshot(collection(db, `posts/${postId}/comments`), (snap) => {
-      setRealCount(snap.size);
-    });
-    return () => { unsubPreview(); unsubCount(); };
+    return () => unsubPreview();
   }, [postId]);
 
-  if (realCount === 0 && previewComments.length === 0) return null;
+  if ((count || 0) === 0 && previewComments.length === 0) return null;
 
   return (
     <div className="mt-3 cursor-pointer pt-3 border-t border-slate-50" onClick={(e) => { e.stopPropagation(); onClick(); }}>
-      <p className="text-xs text-slate-500 font-medium mb-2 hover:text-slate-700 transition-colors">Ver los {realCount} comentarios</p>
+      <p className="text-xs text-slate-500 font-medium mb-2 hover:text-slate-700 transition-colors">Ver los {count || 0} comentarios</p>
       <div className="space-y-1.5">
         {previewComments.map((c, idx) => (
           <div key={idx} className="flex gap-2 text-left items-start text-[13px] leading-tight">
@@ -98,7 +95,12 @@ function ReactionsListModal({ isOpen, onClose, reactions = [] }) {
               <div key={i} className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden">
-                    <img src={`https://ui-avatars.com/api/?name=${r.name}&background=f8fafc&color=0f172a`} alt={r.name} className="w-full h-full object-cover"/>
+                    <img 
+                      src={`https://ui-avatars.com/api/?name=${r.name}&background=f8fafc&color=0f172a`} 
+                      alt={r.name} 
+                      className="w-full h-full object-cover"
+                      onError={(e) => { e.target.src = 'https://ui-avatars.com/api/?name=User&background=f8fafc&color=0f172a'; }}
+                    />
                   </div>
                   <span className="text-sm font-semibold text-slate-800">{r.name}</span>
                 </div>
@@ -135,7 +137,6 @@ export default function Home() {
   const isPastor = dbUser?.role === 'pastor';
   const isLider = dbUser?.role === 'lider';
   const isStaff = isPastor || isLider;
-  const isModerator = isStaff;
   const isMiembro = dbUser?.role === 'miembro';
   const canCreatePost = isStaff || dbUser?.area === 'recepcion';
 
@@ -195,12 +196,17 @@ export default function Home() {
     const reactionsArr = reactions || [];
     const myIdx = reactionsArr.findIndex(r => r.uid === currentUser.uid);
     let newReactions = [...reactionsArr];
+    
     if (myIdx >= 0) {
-      if (newReactions[myIdx].emoji === emoji) newReactions.splice(myIdx, 1);
-      else newReactions[myIdx].emoji = emoji;
+      if (newReactions[myIdx].emoji === emoji) {
+        newReactions.splice(myIdx, 1);
+      } else {
+        newReactions[myIdx] = { ...newReactions[myIdx], emoji }; // ✅ Fix mutación
+      }
     } else {
       newReactions.push({ uid: currentUser.uid, name: currentUser.displayName, emoji });
     }
+    
     await updateDoc(postRef, { reactions: newReactions });
     setActiveReactionPost(null); 
   };
@@ -210,7 +216,7 @@ export default function Home() {
     try {
       await updateDoc(doc(db, 'posts', postId), { isArchived: !currentStatus });
       setMenuOpenId(null);
-    } catch (e) { console.error(e); }
+    } catch (e) { showToast("Error al archivar"); }
   };
 
   const handlePin = async (postId, currentPinned) => {
@@ -218,17 +224,17 @@ export default function Home() {
     try {
       await updateDoc(doc(db, 'posts', postId), { isPinned: !currentPinned });
       setMenuOpenId(null);
-    } catch (e) { console.error(e); }
+    } catch (e) { showToast("Error al fijar"); }
   };
 
   const handleDeletePost = async (postId) => {
-    if (!isModerator) return;
+    if (!isStaff) return;
     if (!window.confirm("¿Seguro que deseas eliminar permanentemente este post?")) return;
     try {
       await deleteDoc(doc(db, 'posts', postId));
       setMenuOpenId(null);
       showToast("Post eliminado");
-    } catch (e) { console.error(e); }
+    } catch (e) { showToast("Error al eliminar"); }
   };
 
   const handleReNotify = async (post) => {
@@ -265,7 +271,7 @@ export default function Home() {
         body: JSON.stringify(payload)
       });
       showToast("¡Aviso enviado con éxito!");
-    } catch (error) { console.error(error); }
+    } catch (error) { showToast("Error al notificar"); }
   };
 
   const filteredPosts = useMemo(() => {
@@ -286,222 +292,222 @@ export default function Home() {
   const myProfileImg = currentUser?.photoURL || `https://ui-avatars.com/api/?name=${currentUser?.displayName}&background=EBF4FF&color=2563EB`;
 
   return (
-    <div className="min-h-screen bg-[#F8F9FE] pb-24 font-sans relative">
+    <div className="min-h-screen bg-slate-50 font-sans relative flex justify-center">
       
-      {/* TOPBAR */}
-      <TopBar birthdaysCount={birthdays.length} onBirthdayClick={() => setIsBirthdayModalOpen(true)} />
-
-      {toast.show && (
-        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[250] bg-slate-900 text-white px-5 py-2.5 rounded-full text-sm font-bold shadow-xl animate-slide-up">
-          {toast.message}
-        </div>
+      {/* OVERLAY INVISIBLE PARA CERRAR MENÚS AL HACER CLIC AFUERA */}
+      {(menuOpenId || activeReactionPost) && (
+        <div 
+          className="fixed inset-0 z-40" 
+          onClick={() => { setMenuOpenId(null); setActiveReactionPost(null); }}
+        />
       )}
 
-      {/* 🚀 STORIES: SocialYo Style */}
-      <div className="flex gap-4 px-5 pb-2 pt-5 overflow-x-auto no-scrollbar max-w-md mx-auto">
-        {canCreatePost && (
-          <div className="flex flex-col items-center gap-1.5 min-w-fit cursor-pointer group" onClick={() => { setEditingPost(null); setIsModalOpen(true); }}>
-            <div className="w-[68px] h-[68px] rounded-full border-[1.5px] border-dashed border-slate-300 flex items-center justify-center bg-transparent group-active:scale-95 transition-transform">
-              <Plus size={26} className="text-slate-400" strokeWidth={1.5} />
-            </div>
-            <span className="text-[11px] text-slate-800 font-semibold">Add Story</span>
+      {/* CONTENEDOR CENTRAL ESTRICTO PARA PC */}
+      <div className="w-full max-w-md bg-[#F8F9FE] min-h-screen pb-24 shadow-sm border-x border-slate-100 relative">
+        
+        <TopBar birthdaysCount={birthdays.length} onBirthdayClick={() => setIsBirthdayModalOpen(true)} />
+
+        {toast.show && (
+          <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[250] bg-slate-900 text-white px-5 py-2.5 rounded-full text-sm font-bold shadow-xl animate-slide-up">
+            {toast.message}
           </div>
         )}
-        
-        {storyDevocionales.map((post) => {
-          const storyPhoto = post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}&background=EBF4FF&color=2563EB`;
-          return (
-            <div key={post.id} className="flex flex-col items-center gap-1.5 min-w-fit cursor-pointer group active:scale-95 transition-transform" onClick={() => navigate(`/post/${post.id}`)}>
-              {/* El anillo gradiente con padding para el espacio blanco */}
-              <div className="w-[68px] h-[68px] rounded-full bg-gradient-to-tr from-blue-600 to-blue-400 p-[2px]">
-                {/* Borde blanco que separa la foto del anillo */}
-                <div className="w-full h-full rounded-full border-[2.5px] border-[#F8F9FE] overflow-hidden bg-white">
-                  <img src={storyPhoto} alt={post.authorName} className="w-full h-full object-cover" />
-                </div>
+
+        <div className="flex gap-4 px-5 pb-2 pt-5 overflow-x-auto no-scrollbar">
+          {canCreatePost && (
+            <div className="flex flex-col items-center gap-1.5 min-w-fit cursor-pointer group" onClick={() => { setEditingPost(null); setIsModalOpen(true); }}>
+              <div className="w-[68px] h-[68px] rounded-full border-[1.5px] border-dashed border-slate-300 flex items-center justify-center bg-transparent group-active:scale-95 transition-transform">
+                <Plus size={26} className="text-slate-400" strokeWidth={1.5} />
               </div>
-              <span className="text-[11px] text-slate-800 font-semibold max-w-[68px] truncate text-center">{post.authorName?.split(' ')[0]}</span>
+              <span className="text-[11px] text-slate-800 font-semibold">Add Story</span>
             </div>
-          );
-        })}
-      </div>
-
-      <div className="px-5 mt-4 max-w-md mx-auto space-y-5">
-        
-        {/* 🚀 INPUT "CREAR POST" COMO BURBUJA */}
-        {canCreatePost && (
-          <div 
-            onClick={() => { setEditingPost(null); setIsModalOpen(true); }}
-            className="bg-white rounded-full p-2 flex items-center shadow-[0_2px_15px_rgba(0,0,0,0.03)] border border-slate-50 cursor-pointer active:scale-95 transition-transform"
-          >
-            <img src={myProfileImg} alt="Mi perfil" className="w-10 h-10 rounded-full object-cover ml-1 bg-slate-100" />
-            <div className="flex-1 px-4">
-              <p className="text-[13px] font-medium text-slate-400 truncate">¿Con qué nos quieres bendecir hoy?</p>
-            </div>
-            <div className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center shrink-0 shadow-md shadow-blue-600/20">
-              <Plus size={20} strokeWidth={2.5} />
-            </div>
-          </div>
-        )}
-
-        {/* 🚀 PESTAÑAS PASTILLERO SOCIALYO */}
-        <div className="bg-slate-100 p-1 rounded-full flex">
-          {['Todo', 'Devocional', 'Oración'].map((cat) => (
-            <button 
-              key={cat} onClick={() => { setFilter(cat); setVisibleCount(5); }} 
-              className={`flex-1 py-2.5 rounded-full text-xs font-semibold transition-all duration-300 ${
-                filter === cat ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
-          {isPastor && (
-            <button onClick={() => { setFilter('Archivados'); setVisibleCount(5); }} 
-              className={`flex-1 py-2.5 rounded-full text-xs font-semibold transition-all duration-300 ${filter === 'Archivados' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-              Archivados
-            </button>
           )}
+          
+          {storyDevocionales.map((post) => {
+            const storyPhoto = post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}&background=EBF4FF&color=2563EB`;
+            return (
+              <div key={post.id} className="flex flex-col items-center gap-1.5 min-w-fit cursor-pointer group active:scale-95 transition-transform" onClick={() => navigate(`/post/${post.id}`)}>
+                <div className="w-[68px] h-[68px] rounded-full bg-gradient-to-tr from-blue-600 to-blue-400 p-[2px]">
+                  <div className="w-full h-full rounded-full border-[2.5px] border-[#F8F9FE] overflow-hidden bg-white">
+                    <img src={storyPhoto} alt={post.authorName} className="w-full h-full object-cover" />
+                  </div>
+                </div>
+                <span className="text-[11px] text-slate-800 font-semibold max-w-[68px] truncate text-center">{post.authorName?.split(' ')[0]}</span>
+              </div>
+            );
+          })}
         </div>
 
-      </div>
-
-      {/* 🚀 FEED DE POSTS */}
-      <div className="pb-6 max-w-md mx-auto mt-6">
-        {loading ? (
-            <><PostSkeleton /><PostSkeleton /></>
-        ) : displayedPosts.length === 0 ? (
-            <div className="text-center py-20 flex flex-col items-center">
-              <div className="w-16 h-16 bg-white shadow-sm border border-slate-100 rounded-full flex items-center justify-center mb-3">
-                <Sparkles size={24} className="text-slate-400"/>
+        <div className="px-5 mt-4 space-y-5">
+          {canCreatePost && (
+            <div 
+              onClick={() => { setEditingPost(null); setIsModalOpen(true); }}
+              className="bg-white rounded-full p-2 flex items-center shadow-[0_2px_15px_rgba(0,0,0,0.03)] border border-slate-50 cursor-pointer active:scale-95 transition-transform"
+            >
+              <img src={myProfileImg} alt="Mi perfil" className="w-10 h-10 rounded-full object-cover ml-1 bg-slate-100" />
+              <div className="flex-1 px-4">
+                <p className="text-[13px] font-medium text-slate-400 truncate">¿Con qué nos quieres bendecir hoy?</p>
               </div>
-              <p className="text-sm font-medium text-slate-500">Muro al día. No hay publicaciones.</p>
+              <div className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center shrink-0 shadow-md shadow-blue-600/20">
+                <Plus size={20} strokeWidth={2.5} />
+              </div>
             </div>
-        ) : (
-            displayedPosts.map(post => {
-              const profileImg = post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}&background=EBF4FF&color=2563EB`;
-              const isOracion = post.type === 'Oración';
-              const isDevocional = post.type === 'Devocional';
-              const postReactions = post.reactions || [];
+          )}
 
-              const usedEmojisDisplay = [...new Set(postReactions.map(r => r.emoji))].slice(0, 3);
-
-              return (
-              <div key={post.id} className="bg-white rounded-[32px] p-5 mb-6 mx-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-50 relative">
-                
-                {post.isPinned && <div className="absolute top-0 right-5 bg-amber-500 text-white px-3 py-1 rounded-b-lg text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 shadow-sm"><Pin size={10} fill="currentColor"/> Fijado</div>}
-
-                {/* Header del Post */}
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <img src={profileImg} alt="Avatar" className="w-11 h-11 rounded-full object-cover bg-slate-100" />
-                    <div>
-                      <h3 className="font-bold text-sm text-slate-900 leading-tight">{post.authorName}</h3>
-                      <p className="text-[11px] font-medium text-slate-400 mt-0.5">
-                        {isOracion ? '🛐 Pedido de Oración' : isDevocional ? '📖 Devocional' : post.role}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  {isModerator && (
-                    <div className="relative">
-                      <button onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === post.id ? null : post.id); }} className="p-2 text-slate-400 hover:text-slate-800 transition-colors rounded-full hover:bg-slate-50">
-                        <MoreHorizontal size={20}/>
-                      </button>
-                      {menuOpenId === post.id && (
-                        <div className="absolute right-0 top-10 bg-white shadow-xl rounded-2xl border border-slate-100 py-2 w-48 z-50 animate-slide-down">
-                          <button onClick={() => handlePin(post.id, post.isPinned)} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2">
-                            <Pin size={16} strokeWidth={1.5}/> {post.isPinned ? 'Desanclar' : 'Fijar arriba'}
-                          </button>
-                          <button onClick={() => handleReNotify(post)} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-blue-600 hover:bg-slate-50 flex items-center gap-2">
-                            <BellRing size={16} strokeWidth={1.5}/> Re-Notificar
-                          </button>
-                          {isPastor && (
-                            <button onClick={() => handleArchive(post.id, post.isArchived)} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-slate-500 hover:bg-slate-50 flex items-center gap-2">
-                              <Archive size={16} strokeWidth={1.5}/> {post.isArchived ? 'Desarchivar' : 'Archivar'}
-                            </button>
-                          )}
-                          <button onClick={() => handleDeletePost(post.id)} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2">
-                            <Trash2 size={16} strokeWidth={1.5}/> Eliminar
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Contenido */}
-                <div className="cursor-pointer" onClick={() => navigate(`/post/${post.id}`)}>
-                  {post.title && <h2 className="font-bold text-[16px] text-slate-900 tracking-tight leading-snug mb-2">{post.title}</h2>}
-                  <p className="text-[14px] text-slate-700 mb-4 leading-relaxed font-medium whitespace-pre-wrap line-clamp-4">
-                    {post.content}
-                  </p>
-                </div>
-
-                {/* Imagen */}
-                {post.image && (
-                  <div className={`mb-4 cursor-pointer overflow-hidden bg-slate-100 ${isDevocional ? 'rounded-[24px] aspect-square' : 'rounded-[24px] max-h-72'}`} onClick={() => navigate(`/post/${post.id}`)}>
-                    <img src={post.image} alt="Post image" className="w-full h-full object-cover transition-transform duration-500 hover:scale-105" />
-                  </div>
-                )}
-
-                {/* Footer Acciones Estilo SocialYo */}
-                <div className="flex items-center justify-between pt-1 relative">
-                  <div className="flex items-center gap-5">
-                    
-                    {/* Reacciones */}
-                    <div className="relative">
-                      {activeReactionPost === post.id && (
-                        <div className="absolute bottom-10 left-0 bg-white rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-slate-100 px-2 py-1.5 flex items-center gap-1 z-50 animate-slide-up">
-                          {EMOJIS.map(emoji => {
-                            const isSelected = postReactions.some(r => r.uid === currentUser?.uid && r.emoji === emoji);
-                            return (
-                              <button key={emoji} onClick={() => handleReaction(post.id, post.reactions, emoji)} 
-                                      className={`w-10 h-10 flex items-center justify-center hover:scale-125 transition-transform rounded-full text-2xl ${isSelected ? 'bg-slate-100' : 'hover:bg-slate-50'}`}>
-                                {emoji}
-                              </button>
-                            )
-                          })}
-                          <div className="absolute -bottom-1.5 left-5 w-3 h-3 bg-white border-r border-b border-slate-100 rotate-45" />
-                        </div>
-                      )}
-                      
-                      <button onClick={() => setActiveReactionPost(activeReactionPost === post.id ? null : post.id)} className={`flex items-center gap-1.5 transition-colors ${postReactions.some(r => r.uid === currentUser?.uid) ? 'text-rose-500' : 'text-slate-500 hover:text-rose-500'}`}>
-                        <Heart size={20} strokeWidth={1.5} className={postReactions.some(r => r.uid === currentUser?.uid) ? "fill-rose-500" : ""} />
-                        <span className="text-xs font-medium">{postReactions.length > 0 ? postReactions.length : 'Reaccionar'}</span>
-                      </button>
-                    </div>
-
-                    {/* Comentarios */}
-                    <button onClick={() => navigate(`/post/${post.id}`)} className="flex items-center gap-1.5 text-slate-500 hover:text-blue-500 transition-colors">
-                      <MessageCircle size={20} strokeWidth={1.5} />
-                      <span className="text-xs font-medium">{post.commentsCount > 0 ? post.commentsCount : 'Comentar'}</span>
-                    </button>
-                  </div>
-
-                  {/* Resumen de emojis usados a la derecha */}
-                  {postReactions.length > 0 && (
-                    <button onClick={() => setViewReactionsPostId(post.id)} className="flex items-center gap-1 px-2 py-1 rounded-full hover:bg-slate-50 transition-colors">
-                      <div className="flex -space-x-1.5">
-                        {usedEmojisDisplay.map((emj, idx) => (
-                          <div key={idx} className="w-5 h-5 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[10px] z-10 shadow-sm">{emj}</div>
-                        ))}
-                      </div>
-                    </button>
-                  )}
-                </div>
-
-                <CommentPreview postId={post.id} count={post.commentsCount || 0} onClick={() => navigate(`/post/${post.id}`)} />
-              </div>
-            )})
-        )}
-
-        {hasMorePosts && !loading && (
-          <div className="flex justify-center mt-2 pb-8">
-            <button onClick={() => setVisibleCount(prev => prev + 5)} className="text-xs font-bold text-slate-600 bg-white border border-slate-200 px-6 py-3 rounded-full active:scale-95 transition-transform shadow-sm hover:bg-slate-50">
-              Cargar más publicaciones
-            </button>
+          <div className="bg-slate-100 p-1 rounded-full flex">
+            {['Todo', 'Devocional', 'Oración'].map((cat) => (
+              <button 
+                key={cat} onClick={() => { setFilter(cat); setVisibleCount(5); }} 
+                className={`flex-1 py-2.5 rounded-full text-xs font-semibold transition-all duration-300 ${
+                  filter === cat ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+            {isPastor && (
+              <button onClick={() => { setFilter('Archivados'); setVisibleCount(5); }} 
+                className={`flex-1 py-2.5 rounded-full text-xs font-semibold transition-all duration-300 ${filter === 'Archivados' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                Archivados
+              </button>
+            )}
           </div>
-        )}
+        </div>
+
+        <div className="pb-6 mt-6">
+          {loading ? (
+              <><PostSkeleton /><PostSkeleton /></>
+          ) : displayedPosts.length === 0 ? (
+              <div className="text-center py-20 flex flex-col items-center">
+                <div className="w-16 h-16 bg-white shadow-sm border border-slate-100 rounded-full flex items-center justify-center mb-3">
+                  <Sparkles size={24} className="text-slate-400"/>
+                </div>
+                <p className="text-sm font-medium text-slate-500">Muro al día. No hay publicaciones.</p>
+              </div>
+          ) : (
+              displayedPosts.map(post => {
+                const profileImg = post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}&background=EBF4FF&color=2563EB`;
+                const isOracion = post.type === 'Oración';
+                const isDevocional = post.type === 'Devocional';
+                const postReactions = post.reactions || [];
+                const usedEmojisDisplay = [...new Set(postReactions.map(r => r.emoji))].slice(0, 3);
+
+                return (
+                <div key={post.id} className="bg-white rounded-[32px] p-5 mb-6 mx-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-50 relative">
+                  
+                  {post.isPinned && <div className="absolute top-0 right-5 bg-amber-500 text-white px-3 py-1 rounded-b-lg text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 shadow-sm"><Pin size={10} fill="currentColor"/> Fijado</div>}
+
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <img 
+                        src={profileImg} 
+                        alt="Avatar" 
+                        className="w-11 h-11 rounded-full object-cover bg-slate-100" 
+                        onError={(e) => { e.target.src = 'https://ui-avatars.com/api/?name=User&background=EBF4FF&color=2563EB'; }}
+                      />
+                      <div>
+                        <h3 className="font-bold text-sm text-slate-900 leading-tight">{post.authorName}</h3>
+                        <p className="text-[11px] font-medium text-slate-400 mt-0.5">
+                          {isOracion ? '🛐 Pedido de Oración' : isDevocional ? '📖 Devocional' : post.role}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {isStaff && (
+                      <div className="relative z-50">
+                        <button onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === post.id ? null : post.id); }} className="p-2 text-slate-400 hover:text-slate-800 transition-colors rounded-full hover:bg-slate-50">
+                          <MoreHorizontal size={20}/>
+                        </button>
+                        {menuOpenId === post.id && (
+                          <div className="absolute right-0 top-10 bg-white shadow-xl rounded-2xl border border-slate-100 py-2 w-48 animate-slide-down">
+                            <button onClick={() => handlePin(post.id, post.isPinned)} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                              <Pin size={16} strokeWidth={1.5}/> {post.isPinned ? 'Desanclar' : 'Fijar arriba'}
+                            </button>
+                            <button onClick={() => handleReNotify(post)} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-blue-600 hover:bg-slate-50 flex items-center gap-2">
+                              <BellRing size={16} strokeWidth={1.5}/> Re-Notificar
+                            </button>
+                            {isPastor && (
+                              <button onClick={() => handleArchive(post.id, post.isArchived)} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-slate-500 hover:bg-slate-50 flex items-center gap-2">
+                                <Archive size={16} strokeWidth={1.5}/> {post.isArchived ? 'Desarchivar' : 'Archivar'}
+                              </button>
+                            )}
+                            <button onClick={() => handleDeletePost(post.id)} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2">
+                              <Trash2 size={16} strokeWidth={1.5}/> Eliminar
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="cursor-pointer" onClick={() => navigate(`/post/${post.id}`)}>
+                    {post.title && <h2 className="font-bold text-[16px] text-slate-900 tracking-tight leading-snug mb-2">{post.title}</h2>}
+                    <p className="text-[14px] text-slate-700 mb-4 leading-relaxed font-medium whitespace-pre-wrap line-clamp-4">
+                      {post.content}
+                    </p>
+                  </div>
+
+                  {post.image && (
+                    <div className={`mb-4 cursor-pointer overflow-hidden bg-slate-100 ${isDevocional ? 'rounded-[24px] aspect-square' : 'rounded-[24px] max-h-72'}`} onClick={() => navigate(`/post/${post.id}`)}>
+                      <img src={post.image} alt="Post image" className="w-full h-full object-cover transition-transform duration-500 hover:scale-105" />
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between pt-1 relative z-50">
+                    <div className="flex items-center gap-5">
+                      
+                      <div className="relative">
+                        {activeReactionPost === post.id && (
+                          <div className="absolute bottom-10 left-0 bg-white rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-slate-100 px-2 py-1.5 flex items-center gap-1 animate-slide-up">
+                            {EMOJIS.map(emoji => {
+                              const isSelected = postReactions.some(r => r.uid === currentUser?.uid && r.emoji === emoji);
+                              return (
+                                <button key={emoji} onClick={() => handleReaction(post.id, post.reactions, emoji)} 
+                                        className={`w-10 h-10 flex items-center justify-center hover:scale-125 transition-transform rounded-full text-2xl ${isSelected ? 'bg-slate-100' : 'hover:bg-slate-50'}`}>
+                                  {emoji}
+                                </button>
+                              )
+                            })}
+                            <div className="absolute -bottom-1.5 left-5 w-3 h-3 bg-white border-r border-b border-slate-100 rotate-45" />
+                          </div>
+                        )}
+                        
+                        <button onClick={(e) => { e.stopPropagation(); setActiveReactionPost(activeReactionPost === post.id ? null : post.id); }} className={`flex items-center gap-1.5 transition-colors ${postReactions.some(r => r.uid === currentUser?.uid) ? 'text-rose-500' : 'text-slate-500 hover:text-rose-500'}`}>
+                          <Heart size={20} strokeWidth={1.5} className={postReactions.some(r => r.uid === currentUser?.uid) ? "fill-rose-500" : ""} />
+                          <span className="text-xs font-medium">{postReactions.length > 0 ? postReactions.length : 'Reaccionar'}</span>
+                        </button>
+                      </div>
+
+                      <button onClick={() => navigate(`/post/${post.id}`)} className="flex items-center gap-1.5 text-slate-500 hover:text-blue-500 transition-colors">
+                        <MessageCircle size={20} strokeWidth={1.5} />
+                        <span className="text-xs font-medium">{post.commentsCount > 0 ? post.commentsCount : 'Comentar'}</span>
+                      </button>
+                    </div>
+
+                    {postReactions.length > 0 && (
+                      <button onClick={() => setViewReactionsPostId(post.id)} className="flex items-center gap-1 px-2 py-1 rounded-full hover:bg-slate-50 transition-colors">
+                        <div className="flex -space-x-1.5">
+                          {usedEmojisDisplay.map((emj, idx) => (
+                            <div key={idx} className="w-5 h-5 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[10px] shadow-sm">{emj}</div>
+                          ))}
+                        </div>
+                      </button>
+                    )}
+                  </div>
+
+                  <CommentPreview postId={post.id} count={post.commentsCount || 0} onClick={() => navigate(`/post/${post.id}`)} />
+                </div>
+              )})
+          )}
+
+          {hasMorePosts && !loading && (
+            <div className="flex justify-center mt-2 pb-8">
+              <button onClick={() => setVisibleCount(prev => prev + 5)} className="text-xs font-bold text-slate-600 bg-white border border-slate-200 px-6 py-3 rounded-full active:scale-95 transition-transform shadow-sm hover:bg-slate-50">
+                Cargar más publicaciones
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <CreatePostModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} postToEdit={editingPost} />
