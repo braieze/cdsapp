@@ -1,16 +1,36 @@
-# React + Vite
+<div align="center">
+  <img src="./cds-app-portada.gif" alt="CDS App Demo en vivo" width="800" />
+</div>
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+<br />
 
-Currently, two official plugins are available:
+# ⛪ CDS App - Plataforma Comunitaria y Gestión de Equipos
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+**[ PROYECTO EN PRODUCCIÓN | +100 Usuarios Activos ]**
 
-## React Compiler
+🔗 **Ver en vivo:** [Visitar la aplicación activa](https://cdsapp.vercel.app/#/servicios)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+CDS App es una plataforma móvil híbrida diseñada para digitalizar y centralizar la comunicación interna de congregaciones. Desarrollada con una arquitectura **Mobile-First**, la aplicación reemplaza la fricción y el ruido de los grupos de mensajería masiva por un entorno privado, estructurado y altamente escalable para la distribución de contenido y la gestión operativa de equipos.
 
-## Expanding the ESLint configuration
+## 🚀 El problema que resuelve
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+* **Ruido comunicacional:** Sustituye los chats desordenados por un muro social (Feed) categorizado, donde los anuncios urgentes, devocionales y pedidos de oración tienen su propio espacio protegido.
+* **Falta de alcance inmediato:** A través de notificaciones Push segmentadas vía OneSignal, asegura que los avisos críticos o links de transmisión (Meet/YouTube) lleguen directamente a la pantalla del usuario.
+* **Gestión de voluntarios:** Permite administrar los roles de los servidores (bienvenida, portería, altar, etc.), facilitando la logística de los servicios semanales.
+* **Fricción en actualizaciones:** Al integrar distribución **OTA (Over-The-Air)**, el envío de correcciones de código o rediseños llega directamente al dispositivo del usuario sin depender de descargas manuales o tiempos de revisión en tiendas.
+
+## ✨ Funcionalidades Core
+
+* **Feed Interactivo & Stories:** Muro social con soporte para interacciones (reacciones nativas, comentarios) y carrusel superior para contenido efímero y devocionales destacados.
+* **Notificaciones con Deep Linking:** Al tocar una alerta Push, el enrutamiento redirige al usuario exactamente a la publicación o evento mencionado en la base de datos.
+* **Roles y Permisos Dinámicos (RBAC):**
+  * *Administradores/Líderes:* Capacidad para fijar/archivar posts, gestionar usuarios y disparar campañas de notificaciones push manuales a segmentos específicos.
+  * *Miembros:* Acceso a consumo de contenido, perfil personal interactivo y módulo de aprendizaje.
+* **StudyHub (Academia):** Módulo LMS integrado para el consumo estructurado de clases, estudios bíblicos y herramientas financieras de la institución.
+
+## 🛠️ Stack Tecnológico
+
+* **Frontend & Interfaz:** React.js, Tailwind CSS (UI/UX premium).
+* **Backend & BaaS:** Firebase (Authentication, Firestore Realtime Database, Cloud Storage).
+* **Contenedor Móvil:** Capacitor (iOS/Android).
+* **Infraestructura Cloud:** OneSignal (Push & Web SDK), Capgo (OTA Updater).
