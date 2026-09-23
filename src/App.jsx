@@ -4,10 +4,12 @@ import { auth, db } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'; 
 import { Toaster } from 'sonner';
+
 import { Capacitor } from '@capacitor/core'; 
 import { App as CapApp } from '@capacitor/app'; 
-import OneSignalWeb from 'react-onesignal'; 
+import { CapacitorUpdater } from '@capgo/capacitor-updater'; // ✅ Mantenemos las actualizaciones OTA
 
+import OneSignalWeb from 'react-onesignal'; 
 // ✅ ONESIGNAL VERSIÓN 5
 import OneSignal from 'onesignal-cordova-plugin';
 
@@ -26,7 +28,7 @@ import Profile from './pages/Profile';
 import Directory from './pages/Directory';
 import Ofrendar from './pages/Ofrendar'; 
 import Tesoreria from './pages/Tesoreria';
-import Alabanza from './pages/Alabanza'; // ✅ MÓDULO DE ALABANZA AGREGADO
+import Alabanza from './pages/Alabanza'; 
 
 // ✅ ACADEMIA CDS
 import StudyHub from './pages/StudyHub';
@@ -35,7 +37,7 @@ import StudyDetail from './pages/StudyDetail';
 import CreateLesson from './pages/CreateLesson';
 import LessonView from './pages/LessonView';
 
-import PresentationPanel from './pages/PresentationPanel'; // ✅ Asegurate que la ruta sea correcta
+import PresentationPanel from './pages/PresentationPanel'; 
 
 // --- 🧭 MANEJADOR DE NAVEGACIÓN PRO (Deep Linking Fix) ---
 function NavigationHandler() {
@@ -119,6 +121,13 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const isNative = Capacitor.isNativePlatform();
 
+  // ✅ NOTIFICAR A CAPGO QUE LA APP ESTÁ LISTA PARA ACTUALIZACIONES OTA
+  useEffect(() => {
+    if (isNative) {
+      CapacitorUpdater.notifyAppReady().catch(err => console.error("Error OTA:", err));
+    }
+  }, [isNative]);
+
   // 1. INICIALIZAR ONESIGNAL
   useEffect(() => {
     const initNotifications = async () => {
@@ -175,10 +184,19 @@ export default function App() {
     } catch (error) { console.error("Error en syncMaster:", error); }
   };
 
+  // 🚀 PANTALLA DE CARGA (SPLASH SCREEN PREMIUM)
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900">
-        <div className="w-12 h-12 border-4 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#F8F9FE] font-sans">
+        <div className="flex flex-col items-center animate-fade-in">
+          <img 
+            src="/logo.png" 
+            alt="CDS App Logo" 
+            className="w-24 h-24 object-contain animate-pulse drop-shadow-sm" 
+            onError={(e) => { e.target.style.display = 'none'; }} 
+          />
+          <h1 className="mt-4 text-xl font-bold text-slate-900 tracking-tight">SocialYo.</h1>
+        </div>
       </div>
     );
   }
@@ -193,7 +211,7 @@ export default function App() {
         <Route path="/login" element={!user ? <Login /> : <Navigate to="/" replace />} />
         <Route path="/ofrendar" element={<Ofrendar />} /> 
         
-        {/* 🧙‍♂️ RUTA MÁGICA DE DEMO (Salió del Layout para funcionar 100%) */}
+        {/* 🧙‍♂️ RUTA MÁGICA DE DEMO */}
         <Route path="/demo-control" element={<PresentationPanel />} />
 
         {/* 🔐 RUTAS PROTEGIDAS CON LAYOUT (MENÚ INFERIOR) */}
@@ -209,7 +227,7 @@ export default function App() {
           <Route path="perfil" element={<Profile />} /> 
           <Route path="directorio" element={<Directory />} />
           <Route path="tesoreria" element={<Tesoreria />} /> 
-          <Route path="alabanza" element={<Alabanza />} /> {/* ✅ RUTA DE ALABANZA AGREGADA */}
+          <Route path="alabanza" element={<Alabanza />} /> 
 
           {/* 🎓 ACADEMIA */}
           <Route path="estudio" element={<StudyHub />} />

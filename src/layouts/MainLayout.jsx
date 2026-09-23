@@ -10,18 +10,18 @@ export default function MainLayout() {
   const [fetchingUser, setFetchingUser] = useState(true);
   const user = auth.currentUser;
   const location = useLocation();
+  const path = location.pathname;
 
-  // 🎯 LÓGICA DE VISIBILIDAD DE NAVEGACIÓN (Punto 2)
-  // Mostramos el menú SIEMPRE, EXCEPTO cuando:
-  // 1. Estamos en el detalle de una serie (/estudio/ID_DE_SERIE)
-  // 2. Estamos en una clase (/estudio/clase/ID_DE_CLASE)
-  // 3. Estamos creando/editando (/estudio/crear o /estudio/nueva-clase)
-  // 4. Estamos en el módulo de Alabanza (/alabanza) <- ¡NUEVO!
-  
-  const hideNav = location.pathname.includes('/estudio/') || 
-                  location.pathname.includes('/editar-clase/') ||
-                  location.pathname.includes('/nueva-clase/') ||
-                  location.pathname.includes('/alabanza');
+  // 🎯 LÓGICA DE VISIBILIDAD DE NAVEGACIÓN
+  // Evaluamos la URL actual para decidir si ocultamos la barra inferior.
+  const hideNav = 
+    path.includes('/post/') || // Detalles de publicación
+    path.includes('/estudio/') || // Hub, Clases y Creación de Academia
+    path === '/alabanza' || // Módulo de Alabanza
+    path.includes('/notificaciones') || // Pantalla de notificaciones
+    path.includes('/chat') || // Cualquier chat
+    (path.includes('/calendario/') && path !== '/calendario') || // Detalle de evento específico
+    (path.includes('/servicios/') && path !== '/servicios'); // Detalle de servicio específico
 
   useEffect(() => {
     if (!user) {
@@ -45,21 +45,40 @@ export default function MainLayout() {
 
   if (fetchingUser) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <Loader2 className="animate-spin text-brand-600" size={32} />
+      <div className="min-h-screen flex items-center justify-center bg-[#F8F9FE]">
+        <Loader2 className="animate-spin text-blue-600" size={32} />
       </div>
     );
   }
 
   return (
-    // ✅ pb-36 se mantiene solo si el menú está visible
-    <div className={`min-h-[100dvh] bg-slate-50 font-outfit text-slate-800 transition-all duration-300 ${hideNav ? 'pb-0' : 'pb-36'}`}>
-      <main className="max-w-md mx-auto animate-fade-in relative bg-slate-50">
-        <Outlet context={{ dbUser }} /> 
-      </main>
+    /* 
+      Fondo global para PC (Gris oscuro/azulado). 
+      Si se abre en celular, este fondo no se nota porque el contenedor central ocupa todo.
+    */
+    <div className="min-h-[100dvh] bg-slate-100 flex justify-center font-sans">
+      
+      {/* 
+        Contenedor estricto que simula la pantalla del celular.
+        max-w-md limita el ancho, bg-[#F8F9FE] es el color base de la app.
+      */}
+      <div className={`w-full max-w-md bg-[#F8F9FE] min-h-[100dvh] relative shadow-2xl transition-all duration-300 ${hideNav ? 'pb-0' : 'pb-24'}`}>
+        
+        <main className="animate-fade-in h-full">
+          <Outlet context={{ dbUser }} /> 
+        </main>
 
-      {/* ✅ Solo renderiza el BottomNavigation si NO estamos en un detalle/clase/alabanza */}
-      {!hideNav && <BottomNavigation dbUser={dbUser} />}
+        {/* 
+          Enjaulamos el BottomNavigation para que respete el ancho del celular.
+          Usamos left-1/2 y -translate-x-1/2 para mantenerlo perfectamente centrado en pantallas grandes.
+        */}
+        {!hideNav && (
+          <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-[100]">
+            <BottomNavigation dbUser={dbUser} />
+          </div>
+        )}
+
+      </div>
     </div>
   );
 }

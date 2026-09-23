@@ -100,9 +100,11 @@ export default function BottomNavigation({ dbUser }) {
   ];
 
   return (
-    // DISEÑO NATIVO: Fondo translúcido con blur, sombra muy suave y margen de seguridad inferior para iOS/Android
-    <nav className="fixed bottom-0 left-0 right-0 w-full bg-white/90 backdrop-blur-xl border-t border-slate-200/50 z-[100] pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_25px_rgba(0,0,0,0.03)]">
-      <div className="max-w-md mx-auto flex justify-around items-center h-[68px] px-2">
+    // 🛠️ FIX: Quitamos 'fixed' y 'left/right' porque el MainLayout ya controla la posición.
+    // Damos un fondo blanco puro con desenfoque y una sombra superior muy sutil.
+    <nav className="w-full bg-white/95 backdrop-blur-2xl border-t border-slate-100/80 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_30px_rgba(0,0,0,0.04)]">
+      {/* Aumentamos la altura a 76px para dar más "aire" y confort nativo */}
+      <div className="flex justify-around items-center h-[76px] px-4">
         {navItems.map((item) => {
           const isActive = path === item.path;
           const Icon = isActive ? item.solid : item.outline; 
@@ -111,27 +113,28 @@ export default function BottomNavigation({ dbUser }) {
             <Link 
               key={item.path} 
               to={item.path} 
-              // Cambiamos el contenedor a un diseño de columna para centrar y añadir el punto nativo si queremos
-              className="relative flex flex-col items-center justify-center w-full h-full active:scale-[0.92] transition-transform duration-200"
+              // Convertimos toda la columna en un área táctil gigante para los pulgares
+              className="group relative flex flex-col items-center justify-center w-full h-full active:scale-[0.88] transition-transform duration-200 ease-out"
             >
-              <div className="relative flex items-center justify-center">
+              {/* Contenedor del ícono para manejar la animación de color y los badges */}
+              <div className="relative flex items-center justify-center p-2 rounded-2xl group-hover:bg-slate-50 transition-colors">
                 <Icon 
-                  // MANTENEMOS EL MISMO TAMAÑO (w-7 h-7) para evitar saltos raros. Solo cambiamos el color.
-                  className={`transition-colors duration-200 ${isActive ? 'w-7 h-7 text-blue-600' : 'w-7 h-7 text-slate-400'}`} 
+                  // Tamaño constante, colores suaves si está inactivo, vibrantes si está activo
+                  className={`w-[26px] h-[26px] transition-colors duration-300 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} 
                 />
                 
-                {/* Badge NATIVO: Borde blanco, perfectamente circular y posicionado */}
+                {/* Badge NATIVO: Más pequeño, con borde grueso blanco para que "muerda" el ícono */}
                 {item.badge > 0 && (
-                  <span className="absolute -top-1 -right-1.5 bg-red-500 text-white text-[9px] font-black h-4 min-w-[16px] px-1 flex items-center justify-center rounded-full ring-2 ring-white shadow-sm">
+                  <span className="absolute top-0.5 right-0.5 bg-rose-500 text-white text-[10px] font-black h-4 min-w-[16px] px-1 flex items-center justify-center rounded-full ring-[2.5px] ring-white shadow-sm transform translate-x-1/4 -translate-y-1/4">
                     {item.badge}
                   </span>
                 )}
               </div>
               
-              {/* MICRO-INTERACCIÓN: El típico puntito azul debajo del icono activo de las apps modernas */}
-              {isActive && (
-                 <span className="absolute bottom-1.5 w-1 h-1 rounded-full bg-blue-600"></span>
-              )}
+              {/* MICRO-INTERACCIÓN: El punto azul que marca la pestaña activa (Estilo iOS) */}
+              <span 
+                className={`absolute bottom-2 w-1.5 h-1.5 rounded-full bg-blue-600 transition-all duration-300 ${isActive ? 'opacity-100 scale-100' : 'opacity-0 scale-0'}`}
+              ></span>
             </Link>
           );
         })}
