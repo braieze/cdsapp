@@ -18,7 +18,7 @@ export default function MainLayout() {
     path.includes('/post/') || // Detalles de publicación
     path.includes('/estudio/') || // Hub, Clases y Creación de Academia
     path === '/alabanza' || // Módulo de Alabanza
-    path.includes('/notificaciones') || // Pantalla de notificaciones
+    path.includes('/topbar') || // Pantalla de notificaciones
     path.includes('/chat') || // Cualquier chat
     (path.includes('/calendario/') && path !== '/calendario') || // Detalle de evento específico
     (path.includes('/servicios/') && path !== '/servicios'); // Detalle de servicio específico
