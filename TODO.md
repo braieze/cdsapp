@@ -36,7 +36,7 @@
 
 ## 🏃 Sprint 1: Estabilización (Bugs y UX Crítica)
 *Objetivo: Dejar la app sin errores y visualmente perfecta en lo básico.*
-- [ ] 1. **Zoom y Accesibilidad:** Ajustar `index.html` (meta viewport) e `index.css` (text-size-adjust).
+- [x ] 1. **Zoom y Accesibilidad:** Ajustar `index.html` (meta viewport) e `index.css` (text-size-adjust).
 - [ ] 2. **Bug de Confirmación:** Revisar el `useEffect` en `BottomNavigation.jsx` y `MyServices.jsx` para asegurar que el estado escuche correctamente a Firebase.
 - [ ] 3. **UI Rota:** Arreglar el desbordamiento en `PostDetail.jsx` (añadir clases `break-words` o `truncate` de Tailwind).
 - [ ] 4. **Splash Screen:** Ajustar el temporizador en `App.jsx` para forzar los 2 segundos mínimos.

@@ -3,15 +3,14 @@ import { Link, useLocation } from 'react-router-dom';
 import { auth, db } from '../firebase';
 import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
 
-// 🚀 NUEVOS ICONOS MÁS CLAROS E INTUITIVOS
 import { 
   HomeIcon as HomeOutline, 
-  CalendarDaysIcon as CalendarOutline, // Más representativo de una agenda
-  ClipboardDocumentCheckIcon as BriefcaseOutline, // Ideal para Tareas/Servicios
-  SquaresPlusIcon as GridOutline, // Perfecto para un Hub de Apps
-  UserCircleIcon as UserOutline, // Perfil más premium
+  CalendarDaysIcon as CalendarOutline, 
+  ClipboardDocumentCheckIcon as BriefcaseOutline, 
+  SquaresPlusIcon as GridOutline, 
+  UserCircleIcon as UserOutline, 
   BookOpenIcon as BookOutline, 
-  GiftIcon as HeartOutline // Mejor representación para Ofrendas
+  GiftIcon as HeartOutline 
 } from '@heroicons/react/24/outline';
 
 import { 
@@ -30,15 +29,36 @@ export default function BottomNavigation({ dbUser }) {
   const currentUser = auth.currentUser;
 
   const [badges, setBadges] = useState({ agenda: 0, servicios: 0, apps: 0, perfil: 0 });
+  const [isVisible, setIsVisible] = useState(true); // ✅ ESTADO PARA MENÚ FLOTANTE
 
-  // ✅ CORRECCIÓN DE ROLES (Solución del Bug)
   const isPastor = dbUser?.role === 'pastor';
   const isLider = dbUser?.role === 'lider';
-  const isStaff = isPastor || isLider; // Líderes y pastores
+  const isStaff = isPastor || isLider; 
   const isMiembro = dbUser?.role === 'miembro';
-  const isServidor = !isMiembro; // ¡Cualquiera que no sea miembro es servidor! Esto reactiva el useEffect para todos.
+  const isServidor = !isMiembro; 
 
-  // 1. DETECCIÓN PWA
+  // --- 1. LÓGICA DE MENÚ FLOTANTE (ESTILO INSTAGRAM/FACEBOOK) ---
+  useEffect(() => {
+    let lastScrollY = window.scrollY;
+
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      
+      // Si bajamos más de 50px, ocultamos el menú. Si subimos, lo mostramos.
+      if (currentScrollY > lastScrollY && currentScrollY > 50) {
+        setIsVisible(false);
+      } else if (currentScrollY < lastScrollY) {
+        setIsVisible(true);
+      }
+      
+      lastScrollY = currentScrollY;
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // --- 2. DETECCIÓN PWA ---
   useEffect(() => {
     const checkUpdate = () => { if (window.swUpdateAvailable) setBadges(prev => ({ ...prev, apps: 1 })); };
     window.addEventListener('swUpdated', checkUpdate);
@@ -46,13 +66,16 @@ export default function BottomNavigation({ dbUser }) {
     return () => window.removeEventListener('swUpdated', checkUpdate);
   }, []);
 
-  // 2. LÓGICA DE SERVICIOS Y AGENDA MEJORADA
+  // --- 3. LÓGICA DE SERVICIOS Y AGENDA (BUG DE BADGES RESUELTO) ---
   useEffect(() => {
-    // Si no es servidor, no necesita escuchar estos cambios
     if (!currentUser || !dbUser || !isServidor) return;
 
     const unsubscribes = [];
     const readIds = dbUser.readNotifications || [];
+    
+    // Extraemos la fecha de la última vez que el líder vio el panel
+    const lastSeenTeam = dbUser.lastViewedTeam?.toDate() || new Date(0);
+    
     const qEvents = query(collection(db, 'events'), orderBy('date', 'asc'));
 
     const unsubEvents = onSnapshot(qEvents, (snapshot) => {
@@ -60,7 +83,6 @@ export default function BottomNavigation({ dbUser }) {
       let teamIssues = 0;
       let agendaAlerts = 0; 
       
-      // ✅ Normalizamos 'hoy' a la medianoche exacta para evitar desfases de horario
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
@@ -71,31 +93,32 @@ export default function BottomNavigation({ dbUser }) {
         const eventDate = new Date(event.date + 'T00:00:00');
         eventDate.setHours(0, 0, 0, 0);
         
-        // Solo evaluamos eventos de hoy en adelante
         if (eventDate >= today) {
           
-          // --- ALERTAS DE AGENDA (Solo para Staff general) ---
+          // Alertas de Agenda
           if (isStaff && event.published === false) agendaAlerts++;
           const isPublished = event.published !== false;
           if (isPublished && !readIds.includes(`ev-${eventId}`) && !readIds.includes(`asg-${eventId}`)) {
             agendaAlerts++;
           }
 
-          // --- TAREAS PENDIENTES (Para todos los servidores) ---
+          // Tareas Pendientes
           const isAssigned = event.assignments && Object.values(event.assignments).some(arr => Array.isArray(arr) && arr.includes(currentUser.displayName));
           const myStatus = event.confirmations?.[currentUser.displayName];
-          
-          // Si está asignado y NO hay status, suma tarea. (Al confirmar, !myStatus se vuelve false y se descuenta el badge instantáneamente).
           if (isAssigned && !myStatus) pendingTasks++;
           
-          // --- PROBLEMAS DE EQUIPO (Exclusivo para Staff) ---
+          // Problemas de Equipo (✅ AQUÍ ESTABA EL BUG: Faltaba validar la fecha de última vista)
           if (isStaff && event.confirmations) {
-            teamIssues += Object.values(event.confirmations).filter(s => s === 'declined').length;
+            const eventUpdatedAt = event.updatedAt?.toDate() || new Date(0);
+            
+            // Solo sumamos el badge si la baja ocurrió DESPUÉS de la última vez que el líder vio el panel
+            if (eventUpdatedAt > lastSeenTeam) {
+              teamIssues += Object.values(event.confirmations).filter(s => s === 'declined').length;
+            }
           }
         }
       });
       
-      // Actualizamos el estado con la suma real
       setBadges(prev => ({ ...prev, servicios: pendingTasks + teamIssues, agenda: agendaAlerts }));
     });
     
@@ -103,14 +126,14 @@ export default function BottomNavigation({ dbUser }) {
     return () => unsubscribes.forEach(unsub => unsub());
   }, [currentUser, dbUser, isServidor, isStaff]);
 
-  // 3. BADGE DEL PERFIL INCOMPLETO
+  // --- 4. BADGE DEL PERFIL INCOMPLETO ---
   useEffect(() => {
     if (!dbUser) return;
     const isIncomplete = !dbUser.photoURL || !dbUser.phone || !dbUser.ministerio ? 1 : 0;
     setBadges(prev => ({ ...prev, perfil: isIncomplete }));
   }, [dbUser]);
 
-  // 4. EL FILTRO MAESTRO DE NAVEGACIÓN
+  // --- 5. EL FILTRO MAESTRO DE NAVEGACIÓN ---
   const navItems = isMiembro ? [
     { path: '/', outline: HomeOutline, solid: HomeSolid },
     { path: '/ofrendar', outline: HeartOutline, solid: HeartSolid },
@@ -125,7 +148,9 @@ export default function BottomNavigation({ dbUser }) {
   ];
 
   return (
-    <nav className="w-full bg-white/95 backdrop-blur-2xl border-t border-slate-100/80 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_30px_rgba(0,0,0,0.04)]">
+    // ✅ CLASES CLAVE AÑADIDAS: fixed bottom-0 left-0 right-0 z-50 transform transition-transform duration-300
+    // Si isVisible es false, aplicamos translate-y-full para ocultarlo hacia abajo
+    <nav className={`fixed bottom-0 left-0 right-0 z-50 w-full bg-white/95 backdrop-blur-2xl border-t border-slate-100/80 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_30px_rgba(0,0,0,0.04)] transform transition-transform duration-300 ease-in-out ${isVisible ? 'translate-y-0' : 'translate-y-full'}`}>
       <div className="flex justify-around items-center h-[76px] px-4">
         {navItems.map((item) => {
           const isActive = path === item.path;
