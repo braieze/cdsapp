@@ -19,6 +19,8 @@
 - [ ] Mejorar lo del zoom del celular (Aplicar reglas estrictas en `index.html` y CSS).
 - [ ] **Fechas en Posts:** Extraer `post.createdAt` y renderizar la fecha (ej. "Hace 2 horas" o "15/09/2026") junto al nombre del perfil en `Home.jsx`.
 - [ ] **Widget "Próximo Servicio":** Crear componente tipo agenda en la parte superior del Home que muestre la fecha y área del próximo servicio del usuario.
+- [ ] Cambiar el bottom navigation a uno flotante, cuando no se toca nada no aparezca y cuando se dezlice en la pantlla que aparezca, al estilo facebook o instagram
+- [ ] Seperar las notifiaciones del modulo topbar
 
 ## 🗄️ Backend y Base de Datos (Firebase)
 - [ ] Firestore: Agregar campo `iglesiaId` a las colecciones de usuarios para preparar arquitectura Multi-Tenant.

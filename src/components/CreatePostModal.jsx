@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import { 
   X, Image as ImageIcon, Send, Loader2, Link as LinkIcon, 
-  BarChart2, Plus, Trash2, Save, Archive, HandHeart, 
+  BarChart2, Plus, Trash2, Archive, HandHeart, 
   Anchor, Sun, CloudRain, Smile, Layers, Eye, Lock, Globe 
 } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import { db, auth } from '../firebase'; 
-import { collection, addDoc, serverTimestamp, doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
+// ✅ Importamos arrayUnion para la optimización de base de datos
+import { collection, addDoc, serverTimestamp, doc, updateDoc, getDoc, setDoc, arrayUnion } from 'firebase/firestore';
 import { toast } from 'sonner'; 
-import { ONESIGNAL_CONFIG } from '../oneSignalConfig'; 
 
 const MOOD_OPTIONS = [
   { id: 'Fortaleza', icon: Anchor, color: 'text-blue-500', bg: 'bg-blue-50 border-blue-100' },
@@ -22,8 +22,10 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
   const [title, setTitle] = useState('');
   const [link, setLink] = useState('');
   const [linkText, setLinkText] = useState('');
-  const [image, setImage] = useState(null);
+  // ✅ Separamos el archivo a subir (imageFile) de la previsualización (preview)
+  const [imageFile, setImageFile] = useState(null);
   const [preview, setPreview] = useState(null);
+  
   const [loading, setLoading] = useState(false);
   const [type, setType] = useState('Noticia');
   const [visibility, setVisibility] = useState('publico'); 
@@ -37,8 +39,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
 
   const CLOUD_NAME = "djmkggzjp"; 
   const UPLOAD_PRESET = "ml_default"; 
-
-  let setLoadingAction = () => {};
 
   useEffect(() => {
     const fetchSeriesMetadata = async () => {
@@ -73,53 +73,39 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
 
   const resetForm = () => {
     setText(''); setTitle(''); setLink(''); setLinkText('');
-    setImage(null); setPreview(null); setShowPoll(false); setPollOptions(['', '']);
+    setImageFile(null); setPreview(null); setShowPoll(false); setPollOptions(['', '']);
     setIsArchived(false); setType('Noticia'); setVisibility('publico'); 
     setMood(''); setSeriesName('');
   };
 
+  // ✅ Optimización: arrayUnion gasta 1 sola operación en lugar de 2 (lectura + escritura)
   const updateGlobalSeriesMetadata = async (name) => {
     if (!name.trim()) return;
     try {
       const seriesRef = doc(db, 'metadata', 'devotional_series');
-      const seriesSnap = await getDoc(seriesRef);
-      
-      let updatedList = [name];
-      if (seriesSnap.exists()) {
-        const currentList = seriesSnap.data().list || [];
-        const alreadyExists = currentList.some(s => s.toLowerCase() === name.toLowerCase());
-        if (alreadyExists) return;
-        updatedList = [...currentList, name];
-      }
-      await setDoc(seriesRef, { list: updatedList }, { merge: true });
+      await setDoc(seriesRef, { list: arrayUnion(name) }, { merge: true });
     } catch (e) { console.error("Error actualizando metadatos de serie:", e); }
   };
 
+  // ✅ Seguridad: Ahora usamos tu Backend en Vercel
   const sendPushNotification = async (notifTitle, notifContent, postUrl) => {
     try {
-      const APP_ID = ONESIGNAL_CONFIG.APP_ID;
-      const REST_API_KEY = ONESIGNAL_CONFIG.REST_API_KEY;
-      
-      if (!REST_API_KEY) return;
-      if (visibility === 'servidores') return;
+      if (visibility === 'servidores') return; // No notificamos posts privados
 
-      await fetch("https://onesignal.com/api/v1/notifications", {
+      const payload = {
+        included_segments: ["Total Subscriptions"], 
+        headings: { en: notifTitle, es: notifTitle }, 
+        contents: { en: notifContent, es: notifContent }, 
+        data: { route: postUrl }, 
+        large_icon: "https://cdsapp.vercel.app/logo.png",
+        priority: 10,
+        android_visibility: 1
+      };
+
+      await fetch("/api/sendPush", {
         method: "POST",
-        headers: { 
-          "Content-Type": "application/json; charset=utf-8", 
-          "Authorization": `Basic ${REST_API_KEY}` 
-        },
-        body: JSON.stringify({
-          app_id: APP_ID,
-          included_segments: ["Total Subscriptions"], 
-          headings: { en: notifTitle, es: notifTitle }, 
-          contents: { en: notifContent, es: notifContent }, 
-          data: { route: postUrl }, 
-          large_icon: "https://cdsapp.vercel.app/logo.png",
-          priority: 10,
-          android_visibility: 1,
-          android_accent_color: "FF0000"
-        })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
       });
     } catch (error) { console.error("Error notif:", error); }
   };
@@ -128,33 +114,39 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
     const file = e.target.files[0];
     if (!file) return;
     const options = { maxSizeMB: 0.4, maxWidthOrHeight: 1200, useWebWorker: true };
+    
     try {
       setLoading(true); 
       const compressedFile = await imageCompression(file, options);
       
+      // ✅ Guardamos el archivo "crudo" para subirlo más rápido a Cloudinary
+      setImageFile(compressedFile);
+
+      // Usamos FileReader solo para generar la vista previa rápida en pantalla
       const reader = new FileReader();
       reader.readAsDataURL(compressedFile);
       reader.onloadend = () => {
-        const base64String = reader.result;
-        setImage(base64String); 
-        setPreview(base64String); 
+        setPreview(reader.result); 
       };
     } catch (error) { console.log(error); } finally { setLoading(false); }
   };
 
   const handleSubmit = async () => {
-    if (!text.trim() && !image && !preview && !title.trim()) return;
+    if (!text.trim() && !imageFile && !preview && !title.trim()) return;
     setLoading(true);
 
     try {
       let imageUrl = postToEdit ? postToEdit.image : null;
-      if (image) {
+      
+      if (imageFile) {
         const formData = new FormData();
-        formData.append("file", image); 
+        formData.append("file", imageFile); // ✅ Enviamos el archivo directo
         formData.append("upload_preset", UPLOAD_PRESET); 
         const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { method: "POST", body: formData });
         const data = await response.json();
-        if (data.secure_url) imageUrl = data.secure_url; 
+        
+        // ✅ Optimización de Cloudinary: Entregamos la imagen ya en formato y calidad web
+        if (data.secure_url) imageUrl = data.secure_url.replace('/upload/', '/upload/q_auto,f_auto/'); 
       }
 
       const commonData = {
@@ -213,11 +205,13 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
             await sendPushNotification(commonData.title, cleanContent, `/post/${docRef.id}`);
         }
       }
-      resetForm(); setLoading(false); onClose();
+      
+      resetForm(); 
+      setLoading(false); 
+      onClose();
       toast.success("Publicación lanzada con éxito");
     } catch (error) { 
       console.error("Error al publicar:", error); 
-      setLoadingAction(false); 
       setLoading(false);
       toast.error("Hubo un problema al publicar");
     }
@@ -227,33 +221,33 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
 
   return (
     <div className="fixed inset-0 z-[150] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/40 backdrop-blur-sm font-sans text-left transition-all duration-300 animate-fade-in">
-      <div className="bg-white w-full sm:max-w-md rounded-t-[32px] sm:rounded-[32px] p-5 sm:p-8 shadow-2xl relative max-h-[95vh] overflow-y-auto flex flex-col no-scrollbar animate-slide-up border border-slate-100">
+      {/* ✅ SOLUCIÓN AL DESBORDAMIENTO: Se agregó h-[95vh] y flex-col, asegurando la estructura */}
+      <div className="bg-white w-full h-[95vh] sm:max-w-md sm:h-[90vh] rounded-t-[32px] sm:rounded-[32px] shadow-2xl relative flex flex-col overflow-hidden animate-slide-up border border-slate-100">
         
-        {/* INDICADOR DE ARRASTRE PARA MOBILE */}
-        <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-4 sm:hidden shrink-0"></div>
-
-        {/* HEADER MODERNO PREMIUM */}
-        <div className="flex justify-between items-center mb-5 shrink-0">
-          <div>
-            <h3 className="font-bold text-slate-900 text-xl tracking-tight leading-none">
-              {postToEdit ? 'Editar Publicación' : 'Crear Contenido'}
-            </h3>
-            <p className="text-xs font-semibold text-blue-600 mt-1 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span> Panel de Edición
-            </p>
+        {/* HEADER MODERNO PREMIUM (Fijo arriba) */}
+        <div className="px-5 sm:px-8 pt-5 sm:pt-8 pb-4 shrink-0 bg-white border-b border-slate-100">
+          <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-4 sm:hidden shrink-0"></div>
+          <div className="flex justify-between items-center">
+            <div>
+              <h3 className="font-bold text-slate-900 text-xl tracking-tight leading-none">
+                {postToEdit ? 'Editar Publicación' : 'Crear Contenido'}
+              </h3>
+              <p className="text-xs font-semibold text-blue-600 mt-1 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span> Panel de Edición
+              </p>
+            </div>
+            <button onClick={onClose} className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors">
+              <X size={18} />
+            </button>
           </div>
-          <button onClick={onClose} className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors">
-            <X size={18} />
-          </button>
         </div>
 
-        {/* CUERPO DEL PANEL */}
-        <div className="flex-1 space-y-6 pb-24">
+        {/* ✅ CUERPO DEL PANEL: Con scroll propio e independiente */}
+        <div className="flex-1 overflow-y-auto px-5 sm:px-8 py-6 space-y-6 no-scrollbar bg-slate-50">
           
-          {/* TABS TIPO PASTILLERO (SEGMENTED CONTROL SOCIALYO) */}
           <div className="space-y-2">
             <label className="text-xs font-bold text-slate-500 ml-1">Tipo de contenido</label>
-            <div className="flex bg-slate-100/80 p-1 rounded-full overflow-x-auto no-scrollbar border border-slate-200/50">
+            <div className="flex bg-slate-100 p-1 rounded-full overflow-x-auto no-scrollbar border border-slate-200/50">
               {['Noticia', 'Devocional', 'Oración', 'Urgente'].map(t => {
                 const isActive = type === t;
                 return (
@@ -274,7 +268,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
             </div>
           </div>
 
-          {/* CONTROL DE VISIBILIDAD (Pills Limpios) */}
           <div className="space-y-2">
              <label className="text-xs font-bold text-slate-500 ml-1 flex items-center gap-1.5"><Eye size={14}/> Destinatarios</label>
              <div className="flex gap-2">
@@ -293,7 +286,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
              </div>
           </div>
 
-          {/* ENTRADAS PRINCIPALES */}
           <div className="space-y-4">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-500 ml-1">Título</label>
@@ -303,15 +295,14 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
               />
             </div>
 
-            {/* SECCIÓN ESPECIAL DE DEVOCIONALES */}
             {type === 'Devocional' && (
-              <div className="space-y-4 animate-fade-in p-4 bg-slate-50 border border-slate-100 rounded-3xl">
+              <div className="space-y-4 animate-fade-in p-4 bg-white border border-slate-200 rounded-3xl shadow-sm">
                  <div className="space-y-1.5">
                     <label className="text-xs font-bold text-indigo-600 flex items-center gap-1.5 ml-1"><Layers size={14}/> Serie Activa</label>
                     <input 
                       list="series-suggestions"
                       placeholder="Ej: El Sermón del Monte"
-                      className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm"
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/10 transition-all"
                       value={seriesName} 
                       onChange={e => setSeriesName(e.target.value)}
                     />
@@ -328,7 +319,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
                        {MOOD_OPTIONS.map(m => (
                          <button 
                            key={m.id} onClick={() => setMood(m.id)}
-                           className={`flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl border transition-all ${mood === m.id ? `border-blue-300 bg-blue-50 shadow-sm` : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+                           className={`flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl border transition-all ${mood === m.id ? `border-blue-300 bg-blue-50 shadow-sm` : 'border-slate-200 bg-slate-50 hover:bg-slate-100'}`}
                          >
                            <m.icon size={20} className={mood === m.id ? m.color : 'text-slate-400'} />
                            <span className={`text-[10px] font-bold ${mood === m.id ? 'text-slate-800' : 'text-slate-400'}`}>{m.id}</span>
@@ -348,7 +339,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
               />
             </div>
 
-            {/* INTERRUPTOR ARCHIVAR (Estilo Toggle Limpio) */}
             <div className="flex items-center justify-between p-4 rounded-2xl bg-white border border-slate-200 shadow-sm cursor-pointer" onClick={() => setIsArchived(!isArchived)}>
                 <div className="flex items-center gap-3">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isArchived ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-500'}`}>
@@ -364,7 +354,6 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
                 </div>
             </div>
 
-            {/* ENCUESTAS DINÁMICAS */}
             {type !== 'Oración' && !postToEdit && (
               <button 
                 onClick={() => setShowPoll(!showPoll)} 
@@ -375,7 +364,7 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
             )}
 
             {showPoll && (
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3 animate-slide-up text-left">
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3 animate-slide-up text-left shadow-sm">
                 <p className="text-xs font-bold text-slate-500 ml-1">Opciones de votación</p>
                 {pollOptions.map((opt, idx) => (
                   <input 
@@ -384,16 +373,15 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
                         newOptions[idx] = e.target.value;
                         setPollOptions(newOptions);
                     }}
-                    className="w-full p-3 bg-white rounded-xl border border-slate-200 text-sm font-semibold outline-none focus:border-blue-400 transition-colors shadow-sm"
+                    className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 text-sm font-semibold outline-none focus:border-blue-400 transition-colors"
                   />
                 ))}
                 {pollOptions.length < 5 && (
-                  <button onClick={() => setPollOptions([...pollOptions, ''])} className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-xs text-slate-500 font-bold hover:bg-white transition-colors">+ Añadir Alternativa</button>
+                  <button onClick={() => setPollOptions([...pollOptions, ''])} className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-xs text-slate-500 font-bold hover:bg-slate-50 transition-colors">+ Añadir Alternativa</button>
                 )}
               </div>
             )}
 
-            {/* ENLACES EXTERNOS COMPONENT */}
             <div className="p-4 bg-white rounded-2xl border border-slate-200 space-y-3 shadow-sm">
               <p className="text-xs font-bold text-slate-500 ml-1 flex items-center gap-1.5"><LinkIcon size={14}/> Botón de Enlace Externo</p>
               <div className="flex gap-2 text-left">
@@ -402,11 +390,10 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
               </div>
             </div>
 
-            {/* PREVIEW DE FOTO SOCIAL */}
             {preview && (
               <div className="relative rounded-[24px] overflow-hidden border border-slate-200 shadow-sm animate-scale-in">
                 <img src={preview} alt="Preview" className="w-full h-48 object-cover" />
-                <button onClick={() => { setImage(null); setPreview(null); }} className="absolute top-3 right-3 w-8 h-8 bg-black/60 text-white rounded-full flex items-center justify-center backdrop-blur-md active:scale-75 transition-all">
+                <button onClick={() => { setImageFile(null); setPreview(null); }} className="absolute top-3 right-3 w-8 h-8 bg-black/60 text-white rounded-full flex items-center justify-center backdrop-blur-md active:scale-75 transition-all">
                   <X size={16} />
                 </button>
               </div>
@@ -414,8 +401,8 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
           </div>
         </div>
 
-        {/* ACCIONES DEL FOOTER FIJO SOCIALYO */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 bg-white border-t border-slate-100 flex items-center gap-3 shrink-0 rounded-b-[32px] sm:rounded-b-[32px]">
+        {/* ✅ ACCIONES DEL FOOTER: Fijo sin posición absoluta gracias al flex-col */}
+        <div className="p-4 sm:px-8 bg-white border-t border-slate-100 flex items-center gap-3 shrink-0 rounded-b-[32px]">
           <label className="w-14 h-14 flex items-center justify-center bg-slate-50 hover:bg-slate-100 rounded-2xl text-slate-500 cursor-pointer active:scale-95 transition-colors border border-slate-200">
             {loading ? <Loader2 size={24} className="animate-spin text-slate-400" /> : <ImageIcon size={24} />}
             <input type="file" className="hidden" accept="image/*" onChange={handleImageChange} disabled={loading} />
@@ -423,13 +410,14 @@ export default function CreatePostModal({ isOpen, onClose, postToEdit }) {
 
           <button 
             onClick={handleSubmit} 
-            disabled={loading || (!text && !image && !preview && !title)} 
+            disabled={loading || (!text && !imageFile && !preview && !title)} 
             className="flex-1 h-14 bg-blue-600 text-white rounded-2xl font-bold text-sm shadow-sm flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100"
           >
             {loading ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />} 
             {postToEdit ? 'Guardar Cambios' : 'Publicar'}
           </button>
         </div>
+        
       </div>
     </div>
   );

@@ -172,9 +172,9 @@ export default function PostDetail() {
           <button onClick={() => navigate(authUser ? -1 : '/')} className="w-10 h-10 flex items-center justify-center bg-white rounded-full text-slate-700 shadow-sm active:scale-90 transition-transform">
             <ChevronLeft size={24} strokeWidth={2.5} />
           </button>
-          <div className="text-center flex-1 px-4">
-              <h1 className="text-base font-bold text-slate-900 truncate max-w-[200px] mx-auto">{post.title}</h1>
-              <span className={`font-bold text-[11px] uppercase tracking-widest mt-0.5 block ${isOracion ? 'text-purple-500' : 'text-blue-500'}`}>{post.type}</span>
+          <div className="text-center flex-1 px-4 min-w-0">
+              <h1 className="text-base font-bold text-slate-900 truncate mx-auto">{post.title}</h1>
+              <span className={`font-bold text-[11px] uppercase tracking-widest mt-0.5 block truncate ${isOracion ? 'text-purple-500' : 'text-blue-500'}`}>{post.type}</span>
           </div>
           <div className="w-10"></div>
         </header>
@@ -196,7 +196,8 @@ export default function PostDetail() {
                   <span className="px-3 py-1.5 bg-blue-600 text-white text-[10px] font-bold uppercase tracking-widest rounded-full shadow-sm">Devocional</span>
                   {post.mood && <span className="px-3 py-1.5 bg-white/20 backdrop-blur-md text-white text-[10px] font-bold uppercase tracking-widest rounded-full">{post.mood}</span>}
                 </div>
-                <h1 className="text-3xl font-black text-white leading-tight tracking-tight">{post.title}</h1>
+                {/* ✅ Se agregó break-words al título del devocional por si acaso */}
+                <h1 className="text-3xl font-black text-white leading-tight tracking-tight break-words">{post.title}</h1>
              </div>
           </div>
         )}
@@ -204,18 +205,19 @@ export default function PostDetail() {
         <div className={`max-w-md mx-auto ${!isDevocional ? 'mt-4' : 'mt-8'} px-5`}>
             
             {!isDevocional && (
-              <div className="flex items-center gap-4 mb-6 bg-white p-4 rounded-[28px] shadow-[0_2px_20px_rgba(0,0,0,0.03)] border border-slate-100">
+              <div className="flex items-center gap-4 mb-6 bg-white p-4 rounded-[28px] shadow-[0_2px_20px_rgba(0,0,0,0.03)] border border-slate-100 min-w-0">
                   <img src={post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}&background=EBF4FF&color=2563EB`} className="w-12 h-12 rounded-full object-cover shrink-0 bg-slate-100" referrerPolicy="no-referrer" alt="Autor" />
                   <div className="text-left flex-1 min-w-0">
                       <h3 className="font-bold text-slate-900 text-[15px] truncate">{post.authorName}</h3>
-                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">{post.createdAt ? format(post.createdAt.toDate(), "d 'de' MMMM, HH:mm", { locale: es }) : 'Recién publicado'}</p>
+                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-0.5 truncate">{post.createdAt ? format(post.createdAt.toDate(), "d 'de' MMMM, HH:mm", { locale: es }) : 'Recién publicado'}</p>
                   </div>
               </div>
             )}
 
-            <div className={`text-left mb-8 ${isOracion ? 'bg-purple-50 p-6 rounded-[32px] border border-purple-100' : 'px-1'}`}>
+            {/* ✅ Aquí agregamos w-full, overflow-hidden para la caja, y break-words para el texto */}
+            <div className={`text-left mb-8 w-full overflow-hidden ${isOracion ? 'bg-purple-50 p-6 rounded-[32px] border border-purple-100' : 'px-1'}`}>
                 {isOracion && <HandHeart size={28} className="text-purple-500 mb-4"/>}
-                <p className="text-[16px] text-slate-800 whitespace-pre-wrap leading-relaxed font-medium">
+                <p className="text-[16px] text-slate-800 whitespace-pre-wrap break-words leading-relaxed font-medium">
                   {post.content}
                 </p>
             </div>
@@ -229,13 +231,14 @@ export default function PostDetail() {
             {post.link && (
                 <button 
                     onClick={() => post.link.startsWith('/') ? navigate(post.link) : window.open(post.link.startsWith('http') ? post.link : `https://${post.link}`, '_blank')}
-                    className="flex items-center justify-between w-full bg-white text-blue-600 p-5 rounded-[24px] transition-all active:scale-95 mb-8 shadow-sm border border-slate-100"
+                    className="flex items-center justify-between w-full bg-white text-blue-600 p-5 rounded-[24px] transition-all active:scale-95 mb-8 shadow-sm border border-slate-100 overflow-hidden"
                 >
-                    <span className="text-sm font-bold flex items-center gap-3">
-                        {post.link.startsWith('/') ? <Calendar size={20} /> : <LinkIcon size={20} />} 
+                    {/* ✅ break-words y min-w-0 para evitar que enlaces súper largos deformen el botón */}
+                    <span className="text-sm font-bold flex items-center gap-3 min-w-0 break-words text-left">
+                        {post.link.startsWith('/') ? <Calendar size={20} className="shrink-0" /> : <LinkIcon size={20} className="shrink-0" />} 
                         {post.linkText || 'Ver más información'}
                     </span>
-                    <ExternalLink size={18} className="text-slate-300" />
+                    <ExternalLink size={18} className="text-slate-300 shrink-0 ml-2" />
                 </button>
             )}
 
@@ -267,7 +270,7 @@ export default function PostDetail() {
                         <button key={idx} onClick={() => handleVote(idx)} className={`w-full relative h-14 rounded-[20px] overflow-hidden border transition-all text-left ${isMyOption ? 'border-blue-500 bg-blue-50/50' : 'border-slate-100 bg-slate-50 hover:border-slate-300'}`}>
                           <div className={`absolute top-0 left-0 h-full transition-all duration-700 ${isMyOption ? 'bg-blue-100' : 'bg-white'}`} style={{ width: `${percent}%` }}></div>
                           <div className="absolute inset-0 flex items-center justify-between px-5 text-sm font-bold z-10">
-                              <span className={isMyOption ? 'text-blue-700' : 'text-slate-700'}>{opt.text} {isMyOption && '✓'}</span>
+                              <span className={`truncate mr-2 ${isMyOption ? 'text-blue-700' : 'text-slate-700'}`}>{opt.text} {isMyOption && '✓'}</span>
                               <span className={isMyOption ? 'text-blue-700 font-black' : 'text-slate-400'}>{percent}%</span>
                           </div>
                         </button>
@@ -289,17 +292,20 @@ export default function PostDetail() {
                   <p className="text-center text-sm text-slate-400 font-medium py-6">Sé el primero en comentar.</p>
                 ) : (
                   comments.map(c => (
-                    <div key={c.id} className="flex gap-3 animate-fade-in group items-start text-left">
+                    <div key={c.id} className="flex gap-3 animate-fade-in group items-start text-left w-full overflow-hidden">
                       <img src={c.photo || `https://ui-avatars.com/api/?name=${c.name}&background=EBF4FF&color=2563EB`} className="w-10 h-10 rounded-full object-cover shrink-0 shadow-sm" referrerPolicy="no-referrer" alt={c.name} />
-                      <div className="flex-1 bg-white p-4 rounded-[24px] rounded-tl-none border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.02)] relative">
+                      
+                      {/* ✅ Se agregó min-w-0 a la caja blanca y break-words al párrafo del comentario */}
+                      <div className="flex-1 min-w-0 bg-white p-4 rounded-[24px] rounded-tl-none border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.02)] relative">
                         <div className="flex justify-between items-start mb-1.5">
-                          <span className="font-bold text-[12px] text-slate-900">{c.name}</span>
+                          <span className="font-bold text-[12px] text-slate-900 truncate">{c.name}</span>
                           {(authUser && (c.uid === authUser.uid || isModerator)) && (
-                            <button onClick={() => deleteComment(c.id)} className="text-slate-300 hover:text-red-500 transition-colors p-1 -mt-1 -mr-1"><Trash2 size={14}/></button>
+                            <button onClick={() => deleteComment(c.id)} className="text-slate-300 hover:text-red-500 transition-colors p-1 -mt-1 -mr-1 shrink-0"><Trash2 size={14}/></button>
                           )}
                         </div>
-                        <p className="text-sm text-slate-600 leading-relaxed font-medium">{c.text}</p>
+                        <p className="text-sm text-slate-600 leading-relaxed font-medium break-words">{c.text}</p>
                       </div>
+
                     </div>
                   ))
                 )}
