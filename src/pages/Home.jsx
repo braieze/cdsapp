@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom'; 
 import { 
   Cake, MessageCircle, MoreHorizontal, Trash2, 
-  Archive, Pin, Sparkles, BellRing, X, Plus, Heart
+  Archive, Pin, Sparkles, BellRing, X, Plus, Heart, Share2
 } from 'lucide-react';
 import TopBar from '../components/TopBar'; 
 import CreatePostModal from '../components/CreatePostModal';
@@ -12,8 +12,8 @@ import {
   collection, query, orderBy, onSnapshot, 
   deleteDoc, doc, updateDoc, limit, setDoc
 } from 'firebase/firestore';
-import { format } from 'date-fns';
-import { ONESIGNAL_CONFIG } from '../oneSignalConfig';
+import { format, formatDistanceToNow } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 // --- 💬 SUB-COMPONENTE: PREVIEW DE COMENTARIOS ---
 function CommentPreview({ postId, count, onClick }) {
@@ -21,7 +21,6 @@ function CommentPreview({ postId, count, onClick }) {
   
   useEffect(() => {
     if (!postId) return;
-    // Solo traemos la preview, el conteo total ya lo tenemos por props (count)
     const qPreview = query(collection(db, `posts/${postId}/comments`), orderBy('createdAt', 'desc'), limit(2));
     const unsubPreview = onSnapshot(qPreview, (snap) => setPreviewComments(snap.docs.map(d => d.data())));
     return () => unsubPreview();
@@ -51,9 +50,7 @@ function ReactionsListModal({ isOpen, onClose, reactions = [] }) {
   if (!isOpen) return null;
 
   const usedEmojis = [...new Set(reactions.map(r => r.emoji))];
-  const displayedReactions = activeTab === 'Todas' 
-    ? reactions 
-    : reactions.filter(r => r.emoji === activeTab);
+  const displayedReactions = activeTab === 'Todas' ? reactions : reactions.filter(r => r.emoji === activeTab);
 
   return (
     <div className="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 font-sans animate-fade-in">
@@ -104,9 +101,7 @@ function ReactionsListModal({ isOpen, onClose, reactions = [] }) {
                   </div>
                   <span className="text-sm font-semibold text-slate-800">{r.name}</span>
                 </div>
-                <div className="text-xl">
-                  {r.emoji}
-                </div>
+                <div className="text-xl">{r.emoji}</div>
               </div>
             ))
           )}
@@ -153,11 +148,11 @@ export default function Home() {
   const [viewReactionsPostId, setViewReactionsPostId] = useState(null); 
   
   const [editingPost, setEditingPost] = useState(null);
-  const [toast, setToast] = useState({ show: false, message: '' });
+  const [toastMsg, setToastMsg] = useState({ show: false, message: '' });
 
   const showToast = (msg) => {
-    setToast({ show: true, message: msg });
-    setTimeout(() => setToast({ show: false, message: '' }), 3000);
+    setToastMsg({ show: true, message: msg });
+    setTimeout(() => setToastMsg({ show: false, message: '' }), 3000);
   };
 
   useEffect(() => {
@@ -201,7 +196,7 @@ export default function Home() {
       if (newReactions[myIdx].emoji === emoji) {
         newReactions.splice(myIdx, 1);
       } else {
-        newReactions[myIdx] = { ...newReactions[myIdx], emoji }; // ✅ Fix mutación
+        newReactions[myIdx] = { ...newReactions[myIdx], emoji }; 
       }
     } else {
       newReactions.push({ uid: currentUser.uid, name: currentUser.displayName, emoji });
@@ -237,6 +232,7 @@ export default function Home() {
     } catch (e) { showToast("Error al eliminar"); }
   };
 
+  // ✅ 1. MIGRAMOS ESTA FUNCIÓN AL SERVIDOR SEGURO VERCEL
   const handleReNotify = async (post) => {
     setMenuOpenId(null);
     showToast("Enviando aviso push...");
@@ -251,9 +247,7 @@ export default function Home() {
         link: `/post/${post.id}`
       });
 
-      const REST_API_KEY = ONESIGNAL_CONFIG.REST_API_KEY; 
       const payload = {
-        app_id: ONESIGNAL_CONFIG.APP_ID, 
         headings: { en: `RECORDATORIO: ${post.title}`, es: `RECORDATORIO: ${post.title}` },
         contents: { en: notifBody, es: notifBody },
         data: { route: `/post/${post.id}` }, 
@@ -265,13 +259,30 @@ export default function Home() {
       if (post.visibility === 'servidores') payload.filters = [{ field: "tag", key: "role", relation: "!=", value: "miembro" }];
       else payload.included_segments = ["Total Subscriptions"];
 
-      await fetch("https://onesignal.com/api/v1/notifications", {
+      // Llamada segura a Vercel en lugar de OneSignal directo
+      await fetch("/api/sendPush", {
         method: "POST",
-        headers: { "Content-Type": "application/json; charset=utf-8", "Authorization": `Basic ${REST_API_KEY}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
+
       showToast("¡Aviso enviado con éxito!");
-    } catch (error) { showToast("Error al notificar"); }
+    } catch (error) { 
+      console.error(error);
+      showToast("Error al notificar"); 
+    }
+  };
+
+  // ✅ 2. FUNCIÓN DE COMPARTIR NATIVA (Tarea del TODO.md)
+  const handleShare = async (e, post) => {
+    e.stopPropagation();
+    const url = `https://cdsapp.vercel.app/post/${post.id}`;
+    if (navigator.share) {
+      try { await navigator.share({ title: post.title || 'CDS App', text: 'Mira esta publicación', url }); } catch(err){}
+    } else {
+      navigator.clipboard.writeText(url);
+      showToast("Enlace copiado al portapapeles");
+    }
   };
 
   const filteredPosts = useMemo(() => {
@@ -288,28 +299,22 @@ export default function Home() {
 
   const displayedPosts = filteredPosts.slice(0, visibleCount);
   const hasMorePosts = visibleCount < filteredPosts.length;
-
   const myProfileImg = currentUser?.photoURL || `https://ui-avatars.com/api/?name=${currentUser?.displayName}&background=EBF4FF&color=2563EB`;
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans relative flex justify-center">
       
-      {/* OVERLAY INVISIBLE PARA CERRAR MENÚS AL HACER CLIC AFUERA */}
       {(menuOpenId || activeReactionPost) && (
-        <div 
-          className="fixed inset-0 z-40" 
-          onClick={() => { setMenuOpenId(null); setActiveReactionPost(null); }}
-        />
+        <div className="fixed inset-0 z-40" onClick={() => { setMenuOpenId(null); setActiveReactionPost(null); }} />
       )}
 
-      {/* CONTENEDOR CENTRAL ESTRICTO PARA PC */}
       <div className="w-full max-w-md bg-[#F8F9FE] min-h-screen pb-24 shadow-sm border-x border-slate-100 relative">
         
         <TopBar birthdaysCount={birthdays.length} onBirthdayClick={() => setIsBirthdayModalOpen(true)} />
 
-        {toast.show && (
+        {toastMsg.show && (
           <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[250] bg-slate-900 text-white px-5 py-2.5 rounded-full text-sm font-bold shadow-xl animate-slide-up">
-            {toast.message}
+            {toastMsg.message}
           </div>
         )}
 
@@ -391,6 +396,15 @@ export default function Home() {
                 const isDevocional = post.type === 'Devocional';
                 const postReactions = post.reactions || [];
                 const usedEmojisDisplay = [...new Set(postReactions.map(r => r.emoji))].slice(0, 3);
+                
+                // ✅ 3. LÓGICA DE FECHAS (Tarea del TODO.md)
+                let timeAgo = '';
+                if (post.createdAt) {
+                  try {
+                    const dateObj = post.createdAt.toDate ? post.createdAt.toDate() : new Date(post.createdAt);
+                    timeAgo = formatDistanceToNow(dateObj, { addSuffix: true, locale: es });
+                  } catch (e) { timeAgo = ''; }
+                }
 
                 return (
                 <div key={post.id} className="bg-white rounded-[32px] p-5 mb-6 mx-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-50 relative">
@@ -407,9 +421,13 @@ export default function Home() {
                       />
                       <div>
                         <h3 className="font-bold text-sm text-slate-900 leading-tight">{post.authorName}</h3>
-                        <p className="text-[11px] font-medium text-slate-400 mt-0.5">
-                          {isOracion ? '🛐 Pedido de Oración' : isDevocional ? '📖 Devocional' : post.role}
-                        </p>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <p className="text-[11px] font-medium text-slate-400">
+                            {isOracion ? '🛐 Pedido de Oración' : isDevocional ? '📖 Devocional' : post.role}
+                          </p>
+                          {timeAgo && <span className="text-[11px] text-slate-300">•</span>}
+                          {timeAgo && <p className="text-[11px] font-medium text-slate-400">{timeAgo}</p>}
+                        </div>
                       </div>
                     </div>
                     
@@ -454,8 +472,9 @@ export default function Home() {
                   )}
 
                   <div className="flex items-center justify-between pt-1 relative z-50">
-                    <div className="flex items-center gap-5">
+                    <div className="flex items-center gap-4">
                       
+                      {/* BOTÓN REACCIÓN */}
                       <div className="relative">
                         {activeReactionPost === post.id && (
                           <div className="absolute bottom-10 left-0 bg-white rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-slate-100 px-2 py-1.5 flex items-center gap-1 animate-slide-up">
@@ -478,10 +497,18 @@ export default function Home() {
                         </button>
                       </div>
 
+                      {/* BOTÓN COMENTAR */}
                       <button onClick={() => navigate(`/post/${post.id}`)} className="flex items-center gap-1.5 text-slate-500 hover:text-blue-500 transition-colors">
                         <MessageCircle size={20} strokeWidth={1.5} />
                         <span className="text-xs font-medium">{post.commentsCount > 0 ? post.commentsCount : 'Comentar'}</span>
                       </button>
+
+                      {/* ✅ BOTÓN COMPARTIR */}
+                      <button onClick={(e) => handleShare(e, post)} className="flex items-center gap-1.5 text-slate-500 hover:text-blue-500 transition-colors">
+                        <Share2 size={20} strokeWidth={1.5} />
+                        <span className="text-xs font-medium hidden sm:inline">Compartir</span>
+                      </button>
+
                     </div>
 
                     {postReactions.length > 0 && (
@@ -507,7 +534,7 @@ export default function Home() {
               </button>
             </div>
           )}
-        </div>
+        </div> 
       </div>
 
       <CreatePostModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} postToEdit={editingPost} />

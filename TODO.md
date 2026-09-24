@@ -29,6 +29,7 @@
 ## 📝 Notas Técnicas y Fragmentos de Código
 > Aquí puedes pegar ideas de código, variables, o librerías de npm que quieras que instalemos en el futuro.
 
+
 # 🗺️ Plan de Acción por Sprints
 
 ## 🏃 Sprint 1: Estabilización (Bugs y UX Crítica)
