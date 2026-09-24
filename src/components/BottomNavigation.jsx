@@ -29,7 +29,7 @@ export default function BottomNavigation({ dbUser }) {
   const currentUser = auth.currentUser;
 
   const [badges, setBadges] = useState({ agenda: 0, servicios: 0, apps: 0, perfil: 0 });
-  const [isVisible, setIsVisible] = useState(true); // ✅ ESTADO PARA MENÚ FLOTANTE
+  const [isVisible, setIsVisible] = useState(true);
 
   const isPastor = dbUser?.role === 'pastor';
   const isLider = dbUser?.role === 'lider';
@@ -37,25 +37,35 @@ export default function BottomNavigation({ dbUser }) {
   const isMiembro = dbUser?.role === 'miembro';
   const isServidor = !isMiembro; 
 
-  // --- 1. LÓGICA DE MENÚ FLOTANTE (ESTILO INSTAGRAM/FACEBOOK) ---
+  // --- 1. LÓGICA DE MENÚ FLOTANTE (SCROLL Y CLICK) ---
   useEffect(() => {
     let lastScrollY = window.scrollY;
 
+    // Lógica 1: Aparecer/Ocultar con el Scroll
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
-      
-      // Si bajamos más de 50px, ocultamos el menú. Si subimos, lo mostramos.
       if (currentScrollY > lastScrollY && currentScrollY > 50) {
-        setIsVisible(false);
+        setIsVisible(false); // Ocultar al bajar
       } else if (currentScrollY < lastScrollY) {
-        setIsVisible(true);
+        setIsVisible(true);  // Mostrar al subir
       }
-      
       lastScrollY = currentScrollY;
     };
 
+    // Lógica 2: Aparecer al tocar la pantalla (click o touch)
+    const handleInteraction = () => {
+      setIsVisible(true);
+    };
+
     window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
+    window.addEventListener('click', handleInteraction);
+    window.addEventListener('touchstart', handleInteraction, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('click', handleInteraction);
+      window.removeEventListener('touchstart', handleInteraction);
+    };
   }, []);
 
   // --- 2. DETECCIÓN PWA ---
@@ -66,14 +76,12 @@ export default function BottomNavigation({ dbUser }) {
     return () => window.removeEventListener('swUpdated', checkUpdate);
   }, []);
 
-  // --- 3. LÓGICA DE SERVICIOS Y AGENDA (BUG DE BADGES RESUELTO) ---
+  // --- 3. LÓGICA DE SERVICIOS Y AGENDA ---
   useEffect(() => {
     if (!currentUser || !dbUser || !isServidor) return;
 
     const unsubscribes = [];
     const readIds = dbUser.readNotifications || [];
-    
-    // Extraemos la fecha de la última vez que el líder vio el panel
     const lastSeenTeam = dbUser.lastViewedTeam?.toDate() || new Date(0);
     
     const qEvents = query(collection(db, 'events'), orderBy('date', 'asc'));
@@ -95,23 +103,18 @@ export default function BottomNavigation({ dbUser }) {
         
         if (eventDate >= today) {
           
-          // Alertas de Agenda
           if (isStaff && event.published === false) agendaAlerts++;
           const isPublished = event.published !== false;
           if (isPublished && !readIds.includes(`ev-${eventId}`) && !readIds.includes(`asg-${eventId}`)) {
             agendaAlerts++;
           }
 
-          // Tareas Pendientes
           const isAssigned = event.assignments && Object.values(event.assignments).some(arr => Array.isArray(arr) && arr.includes(currentUser.displayName));
           const myStatus = event.confirmations?.[currentUser.displayName];
           if (isAssigned && !myStatus) pendingTasks++;
           
-          // Problemas de Equipo (✅ AQUÍ ESTABA EL BUG: Faltaba validar la fecha de última vista)
           if (isStaff && event.confirmations) {
             const eventUpdatedAt = event.updatedAt?.toDate() || new Date(0);
-            
-            // Solo sumamos el badge si la baja ocurrió DESPUÉS de la última vez que el líder vio el panel
             if (eventUpdatedAt > lastSeenTeam) {
               teamIssues += Object.values(event.confirmations).filter(s => s === 'declined').length;
             }
@@ -148,10 +151,10 @@ export default function BottomNavigation({ dbUser }) {
   ];
 
   return (
-    // ✅ CLASES CLAVE AÑADIDAS: fixed bottom-0 left-0 right-0 z-50 transform transition-transform duration-300
-    // Si isVisible es false, aplicamos translate-y-full para ocultarlo hacia abajo
-    <nav className={`fixed bottom-0 left-0 right-0 z-50 w-full bg-white/95 backdrop-blur-2xl border-t border-slate-100/80 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_30px_rgba(0,0,0,0.04)] transform transition-transform duration-300 ease-in-out ${isVisible ? 'translate-y-0' : 'translate-y-full'}`}>
-      <div className="flex justify-around items-center h-[76px] px-4">
+    // ✅ REDISEÑO VISUAL: Píldora flotante (rounded-full, mx-4, mb-4, shadow-lg)
+    // El padding-bottom safe area asegura que no se pise con la barrita de inicio del iPhone
+    <nav className={`fixed bottom-0 left-0 right-0 z-50 px-4 pb-[calc(env(safe-area-inset-bottom)+16px)] pointer-events-none transform transition-transform duration-300 ease-in-out ${isVisible ? 'translate-y-0' : 'translate-y-[150%]'}`}>
+      <div className="flex justify-around items-center h-[60px] bg-white rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-slate-100 px-2 pointer-events-auto max-w-md mx-auto">
         {navItems.map((item) => {
           const isActive = path === item.path;
           const Icon = isActive ? item.solid : item.outline; 
@@ -160,21 +163,20 @@ export default function BottomNavigation({ dbUser }) {
             <Link 
               key={item.path} 
               to={item.path} 
-              className="group relative flex flex-col items-center justify-center w-full h-full active:scale-[0.88] transition-transform duration-200 ease-out"
+              className="group relative flex items-center justify-center w-full h-full active:scale-95 transition-transform duration-200"
             >
-              <div className="relative flex items-center justify-center p-2 rounded-2xl group-hover:bg-slate-50 transition-colors">
+              {/* ✅ FONDO ACTIVO ESTILO FB: Fondo celeste redondeado cuando está seleccionado */}
+              <div className={`relative flex items-center justify-center w-12 h-10 rounded-full transition-colors duration-300 ${isActive ? 'bg-blue-50' : 'bg-transparent hover:bg-slate-50'}`}>
                 <Icon 
-                  className={`w-[26px] h-[26px] transition-colors duration-300 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} 
+                  className={`w-[24px] h-[24px] transition-colors duration-300 ${isActive ? 'text-blue-600' : 'text-slate-600'}`} 
                 />
                 
                 {item.badge > 0 && (
-                  <span className="absolute top-0.5 right-0.5 bg-rose-500 text-white text-[10px] font-black h-4 min-w-[16px] px-1 flex items-center justify-center rounded-full ring-[2.5px] ring-white shadow-sm transform translate-x-1/4 -translate-y-1/4">
+                  <span className="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-bold h-4 min-w-[16px] px-1 flex items-center justify-center rounded-full ring-2 ring-white transform translate-x-1/4 -translate-y-1/4 shadow-sm">
                     {item.badge}
                   </span>
                 )}
               </div>
-              
-              <span className={`absolute bottom-2 w-1.5 h-1.5 rounded-full bg-blue-600 transition-all duration-300 ${isActive ? 'opacity-100 scale-100' : 'opacity-0 scale-0'}`}></span>
             </Link>
           );
         })}

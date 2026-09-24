@@ -94,6 +94,10 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [splashMinTime, setSplashMinTime] = useState(true);
   
+  // ✅ NUEVOS ESTADOS PARA EFECTO FADE-OUT PREMIUM
+  const [isFading, setIsFading] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
+  
   const isNative = Capacitor.isNativePlatform();
 
   useEffect(() => {
@@ -156,75 +160,86 @@ export default function App() {
     } catch (error) { console.error("Error en syncMaster:", error); }
   };
 
-  if (authLoading || splashMinTime) {
-    return (
-      <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#F8F9FE] font-sans transition-opacity duration-500">
-        <div className="relative flex flex-col items-center animate-fade-in-up">
-          
-          <div className="w-28 h-28 mb-6 bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-slate-50 flex items-center justify-center overflow-hidden relative">
-            <img 
-              src="/logo.png" 
-              alt="SocialYo Logo" 
-              className="w-full h-full object-cover scale-110" 
-              onError={(e) => { e.target.style.display = 'none'; }} 
-            />
-            <div className="absolute inset-0 bg-gradient-to-tr from-white/10 via-white/30 to-transparent"></div>
-          </div>
-          
-          <h1 className="text-[28px] font-black text-slate-900 tracking-tighter">SocialYo.</h1>
-          
-          <div className="mt-8 flex gap-1.5">
-            <div className="w-2 h-2 rounded-full bg-blue-600 animate-bounce" style={{ animationDelay: '0ms' }}></div>
-            <div className="w-2 h-2 rounded-full bg-blue-600 animate-bounce" style={{ animationDelay: '150ms' }}></div>
-            <div className="w-2 h-2 rounded-full bg-blue-600 animate-bounce" style={{ animationDelay: '300ms' }}></div>
-          </div>
-        </div>
-
-        <div className="absolute bottom-10 flex flex-col items-center animate-fade-in">
-          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Powered by</span>
-          <span className="text-sm font-bold text-slate-900">CDS App</span>
-        </div>
-      </div>
-    );
-  }
+  // ✅ CONTROLADOR DEL FADE-OUT
+  // Cuando Firebase carga y pasan los 2 segundos, inicia el desvanecimiento.
+  useEffect(() => {
+    if (!authLoading && !splashMinTime) {
+      setIsFading(true);
+      // Tras 500ms de desvanecimiento CSS, retiramos el componente de la pantalla
+      setTimeout(() => setShowSplash(false), 500);
+    }
+  }, [authLoading, splashMinTime]);
 
   return (
-    <HashRouter>
-      <NavigationHandler /> 
-      <Toaster richColors position="top-center" expand={false} />
-      
-      <Routes>
-        <Route path="/login" element={!user ? <Login /> : <Navigate to="/" replace />} />
-        <Route path="/ofrendar" element={<Ofrendar />} /> 
-        <Route path="/demo-control" element={<PresentationPanel />} />
+    <>
+      {/* ✅ SPLASH SCREEN FLOTANTE: Ahora no bloquea el Router */}
+      {showSplash && (
+        <div className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#ebedf0] font-sans transition-opacity duration-500 ease-in-out ${isFading ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+          <div className="relative flex flex-col items-center animate-fade-in-up">
+            <div className="w-28 h-28 mb-6 bg-white rounded-3xl shadow-md border border-slate-100 flex items-center justify-center overflow-hidden relative">
+              <img 
+                src="/logo.png" 
+                alt="SocialYo Logo" 
+                className="w-full h-full object-cover scale-110" 
+                onError={(e) => { e.target.style.display = 'none'; }} 
+              />
+              <div className="absolute inset-0 bg-gradient-to-tr from-white/10 via-white/30 to-transparent"></div>
+            </div>
+            
+            <h1 className="text-[28px] font-black text-slate-900 tracking-tighter">SocialYo.</h1>
+            
+            <div className="mt-8 flex gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-blue-600 animate-bounce" style={{ animationDelay: '0ms' }}></div>
+              <div className="w-2 h-2 rounded-full bg-blue-600 animate-bounce" style={{ animationDelay: '150ms' }}></div>
+              <div className="w-2 h-2 rounded-full bg-blue-600 animate-bounce" style={{ animationDelay: '300ms' }}></div>
+            </div>
+          </div>
 
-        {/* ✅ RUTA HÍBRIDA (Fuera del candado). PostDetail gestionará la seguridad internamente. */}
-        <Route path="/post/:postId" element={<PostDetail />} />
+          <div className="absolute bottom-10 flex flex-col items-center animate-fade-in">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Powered by</span>
+            <span className="text-sm font-bold text-slate-900">CDS App</span>
+          </div>
+        </div>
+      )}
 
-        {/* 🔒 RUTAS PROTEGIDAS (Solo usuarios con sesión iniciada) */}
-        <Route element={user ? <MainLayout /> : <Navigate to="/login" replace />}>
-          <Route index element={<Home />} />
-          <Route path="calendario" element={<Calendar />} />
-          <Route path="calendario/:id" element={<EventDetails />} />
-          <Route path="servicios" element={<MyServices />} />
-          <Route path="servicios/:id" element={<ServiceDetails />} />
-          <Route path="historial" element={<HistoryPage />} />
-          <Route path="apps" element={<AppsHub />} />
-          <Route path="perfil" element={<Profile />} /> 
-          <Route path="directorio" element={<Directory />} />
-          <Route path="tesoreria" element={<Tesoreria />} /> 
-          <Route path="alabanza" element={<Alabanza />} /> 
-          <Route path="estudio" element={<StudyHub />} />
-          <Route path="estudio/crear" element={<CreateStudy />} /> 
-          <Route path="estudio/crear/:id" element={<CreateStudy />} /> 
-          <Route path="estudio/:id" element={<StudyDetail />} />
-          <Route path="estudio/:id/nueva-clase" element={<CreateLesson />} />
-          <Route path="estudio/:id/editar-clase/:lessonId" element={<CreateLesson />} />
-          <Route path="estudio/clase/:lessonId" element={<LessonView />} />
-        </Route>
+      {/* ✅ EL ENRUTADOR SE CARGA DESDE EL MILISEGUNDO 1 (Para atrapar deep links) */}
+      <HashRouter>
+        <NavigationHandler /> 
+        <Toaster richColors position="top-center" expand={false} />
         
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </HashRouter>
+        <Routes>
+          <Route path="/login" element={!user ? <Login /> : <Navigate to="/" replace />} />
+          <Route path="/ofrendar" element={<Ofrendar />} /> 
+          <Route path="/demo-control" element={<PresentationPanel />} />
+
+          {/* RUTA HÍBRIDA */}
+          <Route path="/post/:postId" element={<PostDetail />} />
+
+          {/* 🔒 RUTAS PROTEGIDAS */}
+          <Route element={user ? <MainLayout /> : <Navigate to="/login" replace />}>
+            <Route index element={<Home />} />
+            <Route path="calendario" element={<Calendar />} />
+            <Route path="calendario/:id" element={<EventDetails />} />
+            <Route path="servicios" element={<MyServices />} />
+            <Route path="servicios/:id" element={<ServiceDetails />} />
+            <Route path="historial" element={<HistoryPage />} />
+            <Route path="apps" element={<AppsHub />} />
+            <Route path="perfil" element={<Profile />} /> 
+            <Route path="directorio" element={<Directory />} />
+            <Route path="tesoreria" element={<Tesoreria />} /> 
+            <Route path="alabanza" element={<Alabanza />} /> 
+            <Route path="estudio" element={<StudyHub />} />
+            <Route path="estudio/crear" element={<CreateStudy />} /> 
+            <Route path="estudio/crear/:id" element={<CreateStudy />} /> 
+            <Route path="estudio/:id" element={<StudyDetail />} />
+            <Route path="estudio/:id/nueva-clase" element={<CreateLesson />} />
+            <Route path="estudio/:id/editar-clase/:lessonId" element={<CreateLesson />} />
+            <Route path="estudio/clase/:lessonId" element={<LessonView />} />
+          </Route>
+          
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </HashRouter>
+    </>
   );
 }

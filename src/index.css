@@ -13,6 +13,13 @@ body {
   background-color: #f3f4f6; /* Fondo gris claro tipo App moderna */
   font-family: system-ui, -apple-system, sans-serif;
   -webkit-tap-highlight-color: transparent; /* Quita el destello azul al tocar botones en el celu */
+  
+  /* ✅ SOLUCIÓN PARA LA CÁMARA DEL IPHONE (Áreas Seguras) */
+  /* El navegador calculará el alto de la cámara/hora y empujará el contenido hacia abajo */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 @layer utilities {
