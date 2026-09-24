@@ -91,13 +91,11 @@ function NavigationHandler() {
 export default function App() {
   const [user, setUser] = useState(null);
   
-  // Dividimos la carga en dos estados para lograr la transición perfecta
   const [authLoading, setAuthLoading] = useState(true);
   const [splashMinTime, setSplashMinTime] = useState(true);
   
   const isNative = Capacitor.isNativePlatform();
 
-  // Forzamos que la pantalla de carga dure al menos 2 segundos
   useEffect(() => {
     const timer = setTimeout(() => {
       setSplashMinTime(false);
@@ -130,7 +128,7 @@ export default function App() {
 
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      setAuthLoading(false); // Firebase ya respondió
+      setAuthLoading(false); 
       if (currentUser) syncMaster(currentUser);
     });
 
@@ -158,14 +156,11 @@ export default function App() {
     } catch (error) { console.error("Error en syncMaster:", error); }
   };
 
-  // 🚀 PANTALLA DE CARGA NATIVA PREMIUM
-  // Solo se oculta cuando Firebase termina Y pasaron al menos los 2 segundos
   if (authLoading || splashMinTime) {
     return (
       <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#F8F9FE] font-sans transition-opacity duration-500">
         <div className="relative flex flex-col items-center animate-fade-in-up">
           
-          {/* Contenedor del Logo con estilo icono de iOS */}
           <div className="w-28 h-28 mb-6 bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-slate-50 flex items-center justify-center overflow-hidden relative">
             <img 
               src="/logo.png" 
@@ -173,13 +168,11 @@ export default function App() {
               className="w-full h-full object-cover scale-110" 
               onError={(e) => { e.target.style.display = 'none'; }} 
             />
-            {/* Brillo superpuesto para efecto premium */}
             <div className="absolute inset-0 bg-gradient-to-tr from-white/10 via-white/30 to-transparent"></div>
           </div>
           
           <h1 className="text-[28px] font-black text-slate-900 tracking-tighter">SocialYo.</h1>
           
-          {/* Animación de carga moderna tipo 'Typing' */}
           <div className="mt-8 flex gap-1.5">
             <div className="w-2 h-2 rounded-full bg-blue-600 animate-bounce" style={{ animationDelay: '0ms' }}></div>
             <div className="w-2 h-2 rounded-full bg-blue-600 animate-bounce" style={{ animationDelay: '150ms' }}></div>
@@ -187,7 +180,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Branding inferior */}
         <div className="absolute bottom-10 flex flex-col items-center animate-fade-in">
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Powered by</span>
           <span className="text-sm font-bold text-slate-900">CDS App</span>
@@ -206,9 +198,12 @@ export default function App() {
         <Route path="/ofrendar" element={<Ofrendar />} /> 
         <Route path="/demo-control" element={<PresentationPanel />} />
 
+        {/* ✅ RUTA HÍBRIDA (Fuera del candado). PostDetail gestionará la seguridad internamente. */}
+        <Route path="/post/:postId" element={<PostDetail />} />
+
+        {/* 🔒 RUTAS PROTEGIDAS (Solo usuarios con sesión iniciada) */}
         <Route element={user ? <MainLayout /> : <Navigate to="/login" replace />}>
           <Route index element={<Home />} />
-          <Route path="post/:postId" element={<PostDetail />} />
           <Route path="calendario" element={<Calendar />} />
           <Route path="calendario/:id" element={<EventDetails />} />
           <Route path="servicios" element={<MyServices />} />

@@ -1,0 +1,10 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.cds.conquistadores",
+    "sha256_cert_fingerprints": [
+      "B1:0E:42:76:62:47:0A:EC:EA:87:73:67:C9:02:84:9F:63:B9:89:36:73:B5:12:53:1C:9B:6B:77:E3:EA:2E:A4"
+    ]
+  }
+}]
