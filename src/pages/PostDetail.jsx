@@ -9,7 +9,7 @@ import {
 import { 
   X, MessageCircle, Send, Trash2, ExternalLink, 
   Link as LinkIcon, Loader2, Calendar, CheckCircle,
-  ChevronLeft, BookOpen, HandHeart, Lock, Heart, Share2, Globe
+  ChevronLeft, BookOpen, HandHeart, Lock, Share2
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -18,7 +18,6 @@ export default function PostDetail() {
   const { postId } = useParams();
   const navigate = useNavigate();
   
-  // 1. ESTADOS LOCALES DE AUTENTICACIÓN
   const [authUser, setAuthUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -28,13 +27,9 @@ export default function PostDetail() {
   const [commentText, setCommentText] = useState('');
   const [loading, setLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
-  const [activeReactionPost, setActiveReactionPost] = useState(null);
 
   const isModerator = userRole === 'pastor' || userRole === 'lider';
 
-  const EMOJIS = ['❤️', '🔥', '🙏', '👍', '😢', '🎉'];
-
-  // 2. VERIFICACIÓN DE SESIÓN INDEPENDIENTE
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -52,7 +47,6 @@ export default function PostDetail() {
     return () => unsubAuth();
   }, []);
 
-  // 3. CARGA DEL POST Y GUARDIA DE SEGURIDAD
   useEffect(() => {
     if (!postId || !authChecked) return; 
     
@@ -97,7 +91,6 @@ export default function PostDetail() {
       newReactions.push({ uid: authUser.uid, name: authUser.displayName, emoji });
     }
     await updateDoc(postRef, { reactions: newReactions });
-    setActiveReactionPost(null);
   };
 
   const handleVote = async (optionIdx) => {
@@ -168,238 +161,200 @@ export default function PostDetail() {
     }
   };
 
-  if (loading) return <div className="fixed inset-0 bg-white z-[100] flex flex-col items-center justify-center font-sans"><Loader2 className="animate-spin text-blue-600 mb-4" size={40}/><p className="text-sm font-semibold text-slate-500">Cargando...</p></div>;
+  if (loading) return <div className="fixed inset-0 bg-[#F8F9FE] z-[100] flex flex-col items-center justify-center font-sans"><Loader2 className="animate-spin text-blue-600 mb-4" size={40}/><p className="text-sm font-semibold text-slate-500">Cargando...</p></div>;
   if (!post) return null;
 
   const isDevocional = post.type === 'Devocional';
   const isOracion = post.type === 'Oración';
   const reactions = post.reactions || [];
 
-  let timeAgo = '';
-  if (post.createdAt) {
-    try {
-      const dateObj = post.createdAt.toDate ? post.createdAt.toDate() : new Date(post.createdAt);
-      timeAgo = formatDistanceToNow(dateObj, { addSuffix: true, locale: es });
-    } catch (e) { timeAgo = ''; }
-  }
-
   return (
-    // ✅ FONDO BLANCO PURO para integrarse estilo FB
-    <div className="fixed inset-0 z-[120] bg-white flex flex-col animate-fade-in font-sans text-left" onClick={() => setActiveReactionPost(null)}>
+    <div className="fixed inset-0 z-[120] bg-[#F8F9FE] flex flex-col animate-fade-in overflow-hidden font-sans text-left">
       
-      {/* HEADER SUPERIOR (BARRA DE NAVEGACIÓN) */}
-      <header className="sticky top-0 bg-white px-4 pt-12 pb-3 flex items-center justify-between z-50 max-w-md mx-auto w-full border-b border-slate-200">
-        <button onClick={() => navigate(authUser ? -1 : '/')} className="w-10 h-10 flex items-center justify-center text-slate-700 active:bg-slate-100 rounded-full transition-colors">
-          <ChevronLeft size={28} strokeWidth={2} />
-        </button>
-        <div className="text-center flex-1 px-4">
-            <h1 className="text-[17px] font-bold text-slate-900 truncate">{isDevocional ? 'Devocional' : 'Publicación'}</h1>
-        </div>
-        <div className="w-10"></div>
-      </header>
+      {!isDevocional && (
+        <header className="sticky top-0 bg-[#F8F9FE]/90 backdrop-blur-xl px-5 pt-12 pb-4 flex items-center justify-between z-50 max-w-md mx-auto w-full">
+          <button onClick={() => navigate(authUser ? -1 : '/')} className="w-10 h-10 flex items-center justify-center bg-white rounded-full text-slate-700 shadow-sm active:scale-90 transition-transform">
+            <ChevronLeft size={24} strokeWidth={2.5} />
+          </button>
+          <div className="text-center flex-1 px-4 min-w-0">
+              <h1 className="text-base font-bold text-slate-900 truncate mx-auto">{post.title}</h1>
+              <span className={`font-bold text-[11px] uppercase tracking-widest mt-0.5 block truncate ${isOracion ? 'text-purple-500' : 'text-blue-500'}`}>{post.type}</span>
+          </div>
+          <div className="w-10"></div>
+        </header>
+      )}
 
-      <div className="flex-1 overflow-y-auto pb-32 no-scrollbar w-full max-w-md mx-auto">
+      <div className="flex-1 overflow-y-auto pb-32 no-scrollbar relative w-full">
         
-        {/* ✅ CABECERA DEL AUTOR (Integrada al post, sin burbuja) */}
-        <div className="px-4 pt-4 flex items-center gap-3 mb-3">
-            <img src={post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}&background=EBF4FF&color=2563EB`} className="w-11 h-11 rounded-full object-cover border border-slate-200" referrerPolicy="no-referrer" alt="Autor" />
-            <div>
-                <h3 className="font-bold text-[16px] text-slate-900 leading-tight">{post.authorName}</h3>
-                <div className="flex items-center gap-1 text-[13px] text-slate-500">
-                  <span>{timeAgo || 'Recién publicado'}</span>
-                  <span>•</span>
-                  <Globe size={11} />
-                  {post.type !== 'Noticia' && (
-                    <>
-                      <span>•</span>
-                      <span className={isOracion ? 'text-purple-600 font-medium' : 'text-blue-600 font-medium'}>{post.type}</span>
-                    </>
-                  )}
+        {isDevocional && (
+          <div className="relative w-full h-[50vh] shrink-0 rounded-b-[40px] overflow-hidden shadow-sm">
+             <button onClick={() => navigate(authUser ? -1 : '/')} className="absolute top-12 left-5 z-[60] w-10 h-10 flex items-center justify-center bg-white/30 backdrop-blur-md rounded-full text-white active:scale-90 transition-transform"><ChevronLeft size={24} strokeWidth={2.5} /></button>
+             {post.image ? (
+               <img src={post.image} className="w-full h-full object-cover" alt="portada" referrerPolicy="no-referrer" />
+             ) : (
+               <div className="w-full h-full bg-gradient-to-br from-blue-600 to-indigo-800" />
+             )}
+             <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/20 to-transparent" />
+             <div className="absolute bottom-0 left-0 right-0 p-8 text-left max-w-md mx-auto">
+                <div className="flex gap-2 mb-3">
+                  <span className="px-3 py-1.5 bg-blue-600 text-white text-[10px] font-bold uppercase tracking-widest rounded-full shadow-sm">Devocional</span>
+                  {post.mood && <span className="px-3 py-1.5 bg-white/20 backdrop-blur-md text-white text-[10px] font-bold uppercase tracking-widest rounded-full">{post.mood}</span>}
                 </div>
-            </div>
-        </div>
-
-        {/* ✅ TEXTO DEL POST (Con break-words y sin fondo gris/morado a menos que sea oración) */}
-        <div className={`px-4 mb-4 ${isOracion ? 'bg-purple-50 p-4 mx-4 rounded-xl border border-purple-100' : ''}`}>
-            {isOracion && <HandHeart size={28} className="text-purple-500 mb-3"/>}
-            {post.title && !isDevocional && <h2 className="font-bold text-[18px] text-slate-900 tracking-tight leading-snug mb-2">{post.title}</h2>}
-            <p className="text-[15px] text-slate-900 leading-relaxed whitespace-pre-wrap break-words">
-              {post.content}
-            </p>
-        </div>
-
-        {/* ✅ IMAGEN EDGE-TO-EDGE (Toca los bordes de la pantalla) */}
-        {post.image && (
-            <div className="w-full bg-slate-100 mb-2">
-                <img src={post.image} className="w-full h-auto object-cover max-h-[600px]" alt="Imagen adjunta" referrerPolicy="no-referrer" />
-            </div>
+                <h1 className="text-3xl font-black text-white leading-tight tracking-tight break-words">{post.title}</h1>
+             </div>
+          </div>
         )}
 
-        {/* ENLACE EXTERNO */}
-        {post.link && (
-            <div className="px-4 mb-4">
-              <button 
-                  onClick={() => post.link.startsWith('/') ? navigate(post.link) : window.open(post.link.startsWith('http') ? post.link : `https://${post.link}`, '_blank')}
-                  className="flex items-center justify-between w-full bg-[#f0f2f5] text-slate-800 p-4 rounded-xl transition-all active:scale-95 border border-slate-200"
-              >
-                  <span className="text-[15px] font-bold flex items-center gap-3 min-w-0 break-words text-left">
-                      {post.link.startsWith('/') ? <Calendar size={20} className="shrink-0 text-blue-600" /> : <LinkIcon size={20} className="shrink-0 text-blue-600" />} 
-                      {post.linkText || 'Ver más información'}
-                  </span>
-                  <ExternalLink size={18} className="text-slate-400 shrink-0 ml-2" />
-              </button>
-            </div>
-        )}
-
-        {/* ENCUESTA */}
-        {post.poll && (
-            <div className="mx-4 mb-6 bg-[#f0f2f5] rounded-xl p-5 border border-slate-200">
-              <p className="text-[13px] font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2"><BookOpen size={16}/> Encuesta</p>
-              <div className="space-y-3">
-                {post.poll.options.map((opt, idx) => {
-                  const total = post.poll.voters?.length || 0;
-                  const percent = total > 0 ? Math.round((opt.votes / total) * 100) : 0;
-                  const myVote = authUser && post.poll.votesDetails?.find(v => v.uid === authUser.uid);
-                  const isMyOption = myVote?.option === opt.text;
-
-                  return (
-                    <button key={idx} onClick={() => handleVote(idx)} className={`w-full relative h-12 rounded-lg overflow-hidden border transition-all text-left ${isMyOption ? 'border-blue-500 bg-blue-50' : 'border-slate-300 bg-white hover:bg-slate-50'}`}>
-                      <div className={`absolute top-0 left-0 h-full transition-all duration-700 ${isMyOption ? 'bg-blue-200' : 'bg-[#e4e6eb]'}`} style={{ width: `${percent}%` }}></div>
-                      <div className="absolute inset-0 flex items-center justify-between px-4 text-[15px] font-semibold z-10">
-                          <span className={`truncate mr-2 ${isMyOption ? 'text-blue-800' : 'text-slate-800'}`}>{opt.text} {isMyOption && '✓'}</span>
-                          <span className={isMyOption ? 'text-blue-800 font-bold' : 'text-slate-600'}>{percent}%</span>
-                      </div>
-                    </button>
-                  )
-                })}
+        <div className={`max-w-md mx-auto ${!isDevocional ? 'mt-4' : 'mt-8'} px-5`}>
+            
+            {/* AUTOR EN BURBUJA FLOTANTE */}
+            {!isDevocional && (
+              <div className="flex items-center gap-4 mb-6 bg-white p-4 rounded-[28px] shadow-[0_2px_20px_rgba(0,0,0,0.03)] border border-slate-100 min-w-0">
+                  <img src={post.authorPhoto || `https://ui-avatars.com/api/?name=${post.authorName}&background=EBF4FF&color=2563EB`} className="w-12 h-12 rounded-full object-cover shrink-0 bg-slate-100" referrerPolicy="no-referrer" alt="Autor" />
+                  <div className="text-left flex-1 min-w-0">
+                      <h3 className="font-bold text-slate-900 text-[15px] truncate">{post.authorName}</h3>
+                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-0.5 truncate">{post.createdAt ? format(post.createdAt.toDate(), "d 'de' MMMM, HH:mm", { locale: es }) : 'Recién publicado'}</p>
+                  </div>
               </div>
-              <p className="text-[12px] text-slate-500 font-semibold text-right mt-3">{post.poll.voters?.length || 0} votos</p>
-            </div>
-        )}
+            )}
 
-        {/* ✅ CONTADORES (Me gusta / Comentarios) - Estilo FB */}
-        <div className="px-4">
-          {(reactions.length > 0 || comments.length > 0) && (
-            <div className="py-3 flex items-center justify-between text-[14px] text-slate-500 border-b border-slate-200">
-              <div className="flex items-center gap-2">
-                {reactions.length > 0 && (
-                  <>
-                    <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center text-white shadow-sm"><Heart size={10} fill="currentColor"/></div>
-                    <span className="font-medium">{reactions.length}</span>
-                  </>
+            {/* TEXTO PROTEGIDO CON BREAK-WORDS */}
+            <div className={`text-left mb-8 w-full overflow-hidden ${isOracion ? 'bg-purple-50 p-6 rounded-[32px] border border-purple-100' : 'px-1'}`}>
+                {isOracion && <HandHeart size={28} className="text-purple-500 mb-4"/>}
+                <p className="text-[16px] text-slate-800 whitespace-pre-wrap break-words leading-relaxed font-medium">
+                  {post.content}
+                </p>
+            </div>
+
+            {/* IMAGEN EN CONTENEDOR REDONDEADO */}
+            {post.image && !isDevocional && (
+                <div className="mb-8 rounded-[32px] overflow-hidden shadow-sm border border-slate-100 bg-white">
+                    <img src={post.image} className="w-full h-auto object-cover" alt="Imagen adjunta" referrerPolicy="no-referrer" />
+                </div>
+            )}
+
+            {/* ENLACES EXTERNOS */}
+            {post.link && (
+                <button 
+                    onClick={() => post.link.startsWith('/') ? navigate(post.link) : window.open(post.link.startsWith('http') ? post.link : `https://${post.link}`, '_blank')}
+                    className="flex items-center justify-between w-full bg-white text-blue-600 p-5 rounded-[24px] transition-all active:scale-95 mb-8 shadow-sm border border-slate-100 overflow-hidden"
+                >
+                    <span className="text-sm font-bold flex items-center gap-3 min-w-0 break-words text-left">
+                        {post.link.startsWith('/') ? <Calendar size={20} className="shrink-0" /> : <LinkIcon size={20} className="shrink-0" />} 
+                        {post.linkText || 'Ver más información'}
+                    </span>
+                    <ExternalLink size={18} className="text-slate-300 shrink-0 ml-2" />
+                </button>
+            )}
+
+            {/* PASTILLAS DE INTERACCIÓN (Reacciones y Compartir) */}
+            <div className="mb-10 flex flex-wrap gap-3 py-1">
+                {[ {e: '❤️'}, {e: '🔥'}, {e: '🙏'}, {e: '👍'}, {e: '😢'}, {e: '🎉'}].map(item => {
+                    const count = reactions.filter(r => r.emoji === item.e).length;
+                    const isSelected = authUser && reactions.some(r => r.uid === authUser.uid && r.emoji === item.e);
+                    return (
+                      <button key={item.e} onClick={() => handleReaction(item.e)} 
+                        className={`flex items-center gap-2 px-5 py-2.5 rounded-full transition-all active:scale-95 shadow-[0_2px_10px_rgba(0,0,0,0.02)] border ${isSelected ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-100 text-slate-600 hover:bg-slate-50'}`}>
+                        <span className="text-lg leading-none">{item.e}</span>
+                        {count > 0 && <span className={`text-xs font-bold leading-none ${isSelected ? 'text-white' : 'text-slate-500'}`}>{count}</span>}
+                      </button>
+                    )
+                })}
+                
+                {/* Botón de compartir integrado como pastilla */}
+                <button 
+                  onClick={handleShare}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white border border-slate-100 text-slate-600 shadow-[0_2px_10px_rgba(0,0,0,0.02)] hover:bg-slate-50 active:scale-95 transition-all"
+                >
+                  <Share2 size={18} strokeWidth={2}/>
+                  <span className="text-[13px] font-bold">Compartir</span>
+                </button>
+            </div>
+
+            {/* ENCUESTA */}
+            {post.poll && (
+               <div className="mb-10 bg-white rounded-[32px] p-6 shadow-sm border border-slate-100">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-5 flex items-center gap-2"><BookOpen size={16}/> Encuesta</p>
+                  <div className="space-y-3">
+                    {post.poll.options.map((opt, idx) => {
+                      const total = post.poll.voters?.length || 0;
+                      const percent = total > 0 ? Math.round((opt.votes / total) * 100) : 0;
+                      const myVote = authUser && post.poll.votesDetails?.find(v => v.uid === authUser.uid);
+                      const isMyOption = myVote?.option === opt.text;
+
+                      return (
+                        <button key={idx} onClick={() => handleVote(idx)} className={`w-full relative h-14 rounded-[20px] overflow-hidden border transition-all text-left ${isMyOption ? 'border-blue-500 bg-blue-50/50' : 'border-slate-100 bg-slate-50 hover:border-slate-300'}`}>
+                          <div className={`absolute top-0 left-0 h-full transition-all duration-700 ${isMyOption ? 'bg-blue-100' : 'bg-white'}`} style={{ width: `${percent}%` }}></div>
+                          <div className="absolute inset-0 flex items-center justify-between px-5 text-sm font-bold z-10">
+                              <span className={`truncate mr-2 ${isMyOption ? 'text-blue-700' : 'text-slate-700'}`}>{opt.text} {isMyOption && '✓'}</span>
+                              <span className={isMyOption ? 'text-blue-700 font-black' : 'text-slate-400'}>{percent}%</span>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-bold text-right mt-4 uppercase tracking-widest">{post.poll.voters?.length || 0} votos</p>
+               </div>
+            )}
+
+            {/* SECCIÓN DE COMENTARIOS TIPO CHAT */}
+            <section className="text-left pb-10 border-t border-slate-200 pt-8">
+              <div className="flex items-center gap-2 mb-6 px-1">
+                <MessageCircle className="text-slate-400" size={20}/>
+                <h3 className="font-bold text-sm text-slate-800">Comentarios ({comments.length})</h3>
+              </div>
+              
+              <div className="space-y-6">
+                {comments.length === 0 ? (
+                  <p className="text-center text-sm text-slate-400 font-medium py-6">Sé el primero en comentar.</p>
+                ) : (
+                  comments.map(c => (
+                    <div key={c.id} className="flex gap-3 animate-fade-in group items-start text-left w-full overflow-hidden">
+                      <img src={c.photo || `https://ui-avatars.com/api/?name=${c.name}&background=EBF4FF&color=2563EB`} className="w-10 h-10 rounded-full object-cover shrink-0 shadow-sm" referrerPolicy="no-referrer" alt={c.name} />
+                      
+                      <div className="flex-1 min-w-0 bg-white p-4 rounded-[24px] rounded-tl-none border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.02)] relative">
+                        <div className="flex justify-between items-start mb-1.5">
+                          <span className="font-bold text-[12px] text-slate-900 truncate">{c.name}</span>
+                          {(authUser && (c.uid === authUser.uid || isModerator)) && (
+                            <button onClick={() => deleteComment(c.id)} className="text-slate-300 hover:text-red-500 transition-colors p-1 -mt-1 -mr-1 shrink-0"><Trash2 size={14}/></button>
+                          )}
+                        </div>
+                        <p className="text-sm text-slate-600 leading-relaxed font-medium break-words">{c.text}</p>
+                      </div>
+
+                    </div>
+                  ))
                 )}
               </div>
-              <div className="flex gap-3 font-medium">
-                {comments.length > 0 && <span>{comments.length} comentarios</span>}
-              </div>
-            </div>
-          )}
+            </section>
         </div>
-
-        {/* ✅ ACTION BAR (Barra de botones de interacción) - Estilo FB */}
-        <div className="flex px-2 py-1 relative z-40 border-b-8 border-[#ebedf0]">
-          {/* BOTÓN ME GUSTA */}
-          <div className="flex-1 relative">
-            {activeReactionPost === post.id && (
-              <div className="absolute bottom-12 left-0 bg-white rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.15)] border border-slate-200 px-3 py-2 flex items-center gap-2 animate-slide-up z-50">
-                {EMOJIS.map(emoji => {
-                  const isSelected = authUser && reactions.some(r => r.uid === authUser.uid && r.emoji === emoji);
-                  return (
-                    <button key={emoji} onClick={(e) => { e.stopPropagation(); handleReaction(emoji); }} 
-                            className={`w-10 h-10 flex items-center justify-center hover:scale-125 hover:-translate-y-2 transition-transform rounded-full text-2xl ${isSelected ? 'bg-slate-100' : 'bg-transparent'}`}>
-                      {emoji}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-            
-            {(() => {
-              const myReaction = authUser ? reactions.find(r => r.uid === authUser.uid) : null;
-              return (
-                <button 
-                  onClick={(e) => { e.stopPropagation(); setActiveReactionPost(activeReactionPost === post.id ? null : post.id); }} 
-                  className={`w-full flex items-center justify-center gap-2 py-2 rounded-md transition-colors text-[15px] font-semibold hover:bg-[#f0f2f5] ${myReaction ? 'text-blue-600' : 'text-slate-600'}`}
-                >
-                  {myReaction ? <Heart size={20} fill="currentColor" /> : <Heart size={20} strokeWidth={1.5} />}
-                  {myReaction ? myReaction.emoji : 'Me gusta'}
-                </button>
-              );
-            })()}
-          </div>
-          
-          <button onClick={() => document.getElementById('commentInput').focus()} className="flex-1 flex items-center justify-center gap-2 py-2 rounded-md transition-colors text-[15px] font-semibold text-slate-600 hover:bg-[#f0f2f5]">
-            <MessageCircle size={20} strokeWidth={1.5} /> Comentar
-          </button>
-
-          <button onClick={(e) => { 
-            e.stopPropagation(); 
-            shareContent(post.title, 'Mira esta publicación', `/post/${post.id}`); 
-          }}>
-            Compartir
-          </button>
-        </div>
-
-        {/* ✅ SECCIÓN DE COMENTARIOS */}
-        <section className="px-4 py-4 bg-white">
-          <h3 className="font-bold text-[15px] text-slate-900 mb-4">Comentarios</h3>
-          <div className="space-y-4">
-            {comments.length === 0 ? (
-              <p className="text-center text-[15px] text-slate-500 py-4">Sé el primero en comentar.</p>
-            ) : (
-              comments.map(c => (
-                <div key={c.id} className="flex gap-2 animate-fade-in items-start w-full">
-                  <img src={c.photo || `https://ui-avatars.com/api/?name=${c.name}&background=EBF4FF&color=2563EB`} className="w-10 h-10 rounded-full object-cover shrink-0 border border-slate-200" referrerPolicy="no-referrer" alt={c.name} />
-                  <div className="flex-1 min-w-0">
-                    <div className="bg-[#f0f2f5] px-4 py-2.5 rounded-2xl inline-block max-w-full">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-bold text-[14px] text-slate-900">{c.name}</span>
-                      </div>
-                      {/* ✅ break-words asegura que no se desborde */}
-                      <p className="text-[15px] text-slate-900 leading-snug break-words">{c.text}</p>
-                    </div>
-                    {/* Botón de eliminar más discreto debajo de la burbuja (estilo FB) */}
-                    {(authUser && (c.uid === authUser.uid || isModerator)) && (
-                      <div className="px-3 pt-1">
-                        <button onClick={() => deleteComment(c.id)} className="text-[12px] font-semibold text-slate-500 hover:text-red-500 transition-colors">Eliminar</button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
       </div>
 
-      {/* FOOTER FIJO (INPUT DE COMENTARIOS) */}
-      <footer className="fixed bottom-0 w-full left-1/2 -translate-x-1/2 max-w-md bg-white border-t border-slate-200 pb-[env(safe-area-inset-bottom)] pt-2 px-4 z-50">
+      {/* FOOTER FLOTANTE (INPUT DE COMENTARIOS) */}
+      <footer className="fixed bottom-0 w-full left-1/2 -translate-x-1/2 max-w-md bg-[#F8F9FE]/90 backdrop-blur-md pb-[env(safe-area-inset-bottom)] pt-3 px-5 z-50">
         {!authUser ? (
-          <button onClick={() => navigate('/login')} className="w-full bg-blue-600 text-white rounded-lg py-3 font-bold text-[15px] flex items-center justify-center gap-2 mb-2">
-            <Lock size={18} /> Inicia sesión para interactuar
+          <button onClick={() => navigate('/login')} className="w-full bg-blue-600 text-white rounded-full py-3.5 font-bold text-[13px] flex items-center justify-center gap-2 shadow-sm mb-6">
+            <Lock size={16} /> Inicia sesión para interactuar
           </button>
         ) : (
-          <div className="flex items-center gap-2 mb-2">
-            <img src={authUser.photoURL || `https://ui-avatars.com/api/?name=${authUser.displayName}&background=EBF4FF&color=2563EB`} className="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200" alt="Tu perfil" />
-            <div className="flex-1 bg-[#f0f2f5] rounded-full flex items-center px-4">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="flex-1 bg-white border border-slate-200 rounded-full flex items-center px-5 shadow-sm">
                <input 
                 id="commentInput"
                 value={commentText} 
                 onChange={e => setCommentText(e.target.value)} 
                 placeholder="Escribe un comentario..." 
-                className="w-full bg-transparent py-2.5 text-[15px] outline-none font-medium text-slate-800 placeholder-slate-500"
+                className="w-full bg-transparent py-3.5 text-[15px] outline-none font-medium text-slate-800 placeholder-slate-400"
                 onKeyDown={(e) => { if (e.key === 'Enter') sendComment(); }}
               />
             </div>
-            {commentText.trim() && (
-              <button 
-                onClick={sendComment} 
-                disabled={isSending} 
-                className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-blue-600 active:scale-90 transition-transform"
-              >
-                {isSending ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} className="ml-1"/>}
-              </button>
-            )}
+            <button 
+              onClick={sendComment} 
+              disabled={!commentText.trim() || isSending} 
+              className={`w-12 h-12 shrink-0 rounded-full flex items-center justify-center transition-all shadow-sm ${commentText.trim() ? 'bg-slate-900 text-white active:scale-90' : 'bg-slate-200 text-slate-400'}`}
+            >
+              {isSending ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} className="-ml-0.5 mt-0.5"/>}
+            </button>
           </div>
         )}
       </footer>
