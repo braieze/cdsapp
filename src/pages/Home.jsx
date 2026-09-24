@@ -273,12 +273,24 @@ export default function Home() {
     }
   };
 
-  // ✅ 2. FUNCIÓN DE COMPARTIR NATIVA (Tarea del TODO.md)
+  // ✅ 2. FUNCIÓN DE COMPARTIR NATIVA (Corrección de Deep Link para HashRouter)
   const handleShare = async (e, post) => {
     e.stopPropagation();
-    const url = `https://cdsapp.vercel.app/post/${post.id}`;
+    
+    // Agregamos /#/ antes de la ruta porque tu App.jsx usa <HashRouter>
+    // Esto evita la pantalla en blanco.
+    const url = `https://cdsapp.vercel.app/#/post/${post.id}`;
+    
     if (navigator.share) {
-      try { await navigator.share({ title: post.title || 'CDS App', text: 'Mira esta publicación', url }); } catch(err){}
+      try { 
+        await navigator.share({ 
+          title: post.title || 'CDS App', 
+          text: 'Mira esta publicación en nuestra app', 
+          url 
+        }); 
+      } catch(err){
+        console.error("Error al compartir:", err);
+      }
     } else {
       navigator.clipboard.writeText(url);
       showToast("Enlace copiado al portapapeles");
