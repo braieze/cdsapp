@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ✅ Bloquea el ajuste automático de tamaño de fuente del sistema operativo */
+html {
+  -moz-text-size-adjust: none;
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+}
+
 body {
   background-color: #f3f4f6; /* Fondo gris claro tipo App moderna */
   font-family: system-ui, -apple-system, sans-serif;
