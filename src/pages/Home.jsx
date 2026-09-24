@@ -3,7 +3,7 @@ import { useOutletContext, useNavigate } from 'react-router-dom';
 import { 
   Cake, MessageCircle, MoreHorizontal, Trash2, 
   Archive, Pin, Sparkles, BellRing, X, Plus, Heart, Share2,
-  Calendar, Clock, ImageIcon
+  Calendar, Clock, ImageIcon, Globe
 } from 'lucide-react';
 import TopBar from '../components/TopBar'; 
 import CreatePostModal from '../components/CreatePostModal';
